@@ -17,6 +17,8 @@ class ActivityManager {
         this.sortMode = 'auto';
         this.currentSort = 'time';
         this.originalTasksOrder = [];
+
+        this.currentUser = null;
     }
 
     async loadEmployees() {
@@ -87,6 +89,10 @@ class ActivityManager {
     // Initialize
     async initialize() {
         this.currentDate = new Date().toISOString().split('T')[0];
+
+        // *** טען משתמש נוכחי ***
+        await this.loadCurrentUser();
+
         // Load employees first
         await this.loadEmployees();
 
@@ -113,6 +119,36 @@ class ActivityManager {
             }
         }
         this.startAutoRefresh();
+    }
+
+    isAdmin() {
+        if (!this.currentUser) return false;
+        return this.currentUser.role === 'Admin';
+    }
+
+    async loadCurrentUser() {
+        try {
+            // *** נסה קודם מ-sessionStorage ***
+            const cached = sessionStorage.getItem('currentUser');
+            if (cached) {
+                this.currentUser = JSON.parse(cached);
+                return;
+            }
+
+            const response = await fetch('/Auth/Me', {
+                credentials: 'include'
+            });
+            if (response.ok) {
+                this.currentUser = await response.json();
+                sessionStorage.setItem(
+                    'currentUser',
+                    JSON.stringify(this.currentUser)
+                );
+            }
+        } catch (err) {
+            console.warn('Could not load current user:', err);
+            this.currentUser = null;
+        }
     }
 
     // Load activities from server
@@ -395,6 +431,19 @@ class ActivityManager {
         if (!activity) return;
 
         const newStatus = !activity.archived;
+
+        // *** חדש: הוצאה מארכיון רק לאדמין ***
+        if (!newStatus === false && activity.archived) {
+            // newStatus = false = הוצאה מארכיון
+        }
+
+        if (activity.archived && !this.isAdmin()) {
+            NotificationManager.show(
+                'רק מנהל מערכת יכול להוציא פעילות מהארכיון',
+                'warning'
+            );
+            return;
+        }
         const actionText = newStatus ? 'להעביר לארכיון' : 'להוציא מהארכיון';
 
         if (!confirm(`האם ${actionText} את הפעילות "${activity.name}"?`)) {
@@ -859,15 +908,33 @@ class ActivityManager {
                     ${activity.activityDate ? `<span class="activity-tab-date"><i class="fas fa-calendar-alt"></i> ${this.formatDate(activity.activityDate)}</span>` : ''}
                 </div>
                 <div class="activity-tab-actions">
+                    ${!activity.archived ? `
                     <button class="activity-tab-action" onclick="event.stopPropagation(); activityManager.editActivity('${activity.id}')" title="ערוך פרטי פעילות">
                         <i class="fas fa-edit"></i>
                     </button>
+                    ` : ''}
                     <button class="activity-tab-action" onclick="event.stopPropagation(); activityManager.duplicateActivity('${activity.id}')" title="שכפל">
                         <i class="fas fa-copy"></i>
                     </button>
-                    <button class="activity-tab-action archive" onclick="event.stopPropagation(); activityManager.archiveActivity('${activity.id}')" title="${activity.archived ? 'הוצא מארכיון' : 'העבר לארכיון'}">
-                        <i class="fas fa-${activity.archived ? 'box-open' : 'archive'}"></i>
-                    </button>
+                    ${activity.archived
+                    ? (this.isAdmin()
+                        ? `<button class="activity-tab-action archive" 
+                                    onclick="event.stopPropagation(); activityManager.archiveActivity('${activity.id}')" 
+                                    title="הוצא מארכיון">
+                                <i class="fas fa-box-open"></i>
+                            </button>`
+                        : `<button class="activity-tab-action archive" 
+                                    disabled
+                                    style="opacity:0.3;cursor:not-allowed"
+                                    title="רק מנהל מערכת יכול להוציא מארכיון">
+                                <i class="fas fa-box-open"></i>
+                            </button>`)
+                    : `<button class="activity-tab-action archive" 
+                                onclick="event.stopPropagation(); activityManager.archiveActivity('${activity.id}')" 
+                                title="העבר לארכיון">
+                            <i class="fas fa-archive"></i>
+                        </button>`
+                }
                     <button class="activity-tab-action delete" onclick="event.stopPropagation(); activityManager.deleteActivity('${activity.id}')" title="מחק">
                         <i class="fas fa-trash"></i>
                     </button>
@@ -1052,6 +1119,14 @@ class ActivityManager {
 
     // Select activity
     async selectActivity(activityId) {
+        // Get the selected activity
+        const activity = this.activities.find(a => a.id === activityId);
+        if (!activity) return;
+
+        // אם הפעילות בארכיון - הצג הודעה ואפשר צפייה בלבד
+        if (activity && activity.archived) {
+            NotificationManager.show('פעילות זו נמצאת בארכיון - מצב צפייה בלבד', 'info');
+        }
 
         const searchTask = document.querySelector('.task-search-container');
         if (searchTask) {
@@ -1060,9 +1135,6 @@ class ActivityManager {
 
         this.currentActivityId = activityId;
 
-        // Get the selected activity
-        const activity = this.activities.find(a => a.id === activityId);
-        if (!activity) return;
 
         const nameDisplay = document.getElementById('activityNameDisplay');
         if (nameDisplay) {
@@ -1085,6 +1157,14 @@ class ActivityManager {
 
         document.querySelector('.task-controls-row').style.display = 'block';
 
+        // אפס את כפתור הוספת המשימה במקרה שהיה נעול
+        const addTaskBtn = document.querySelector('[onclick*="activityManager.openAddTaskModal"]'); if (addTaskBtn) {
+            addTaskBtn.disabled = false;
+            addTaskBtn.style.opacity = '';
+            addTaskBtn.style.cursor = '';
+            addTaskBtn.title = '';
+        }
+
         this.renderActivityTabs();
         await this.loadActivityTasks(activityId, this.currentDate);
     }
@@ -1104,7 +1184,6 @@ class ActivityManager {
 
                 let tasksToRender = [...data];
 
-
                 // שמור את מצב החיפוש הנוכחי
                 const searchInput = document.getElementById('activitySearchInput');
                 const currentSearchTerm = searchInput ? searchInput.value.trim() : '';
@@ -1118,10 +1197,74 @@ class ActivityManager {
                 }
 
                 this.renderActivityTasks(tasksToRender);
+
+                // נעל את כל הכפתורים אם הפעילות בארכיון
+                const activity = this.activities.find(a => a.id === activityId);
+                if (activity && activity.archived) {
+                    this.lockArchivedActivityTasks();
+                }
             }
         } catch (error) {
             console.error('Error fetching tasks:', error);
             this.renderActivityTasks([]);
+        }
+    }
+
+    // נעילת כל הכפתורים והאינטראקציות במשימות של פעילות בארכיון
+    lockArchivedActivityTasks() {
+        const container = document.getElementById('activityTasksContainer');
+        if (!container) return;
+
+        // הוסף שכבת נעילה על כל הקונטיינר
+        container.classList.add('archived-locked');
+
+        // נעל את כל הכפתורים
+        container.querySelectorAll('button').forEach(btn => {
+            btn.disabled = true;
+            btn.style.opacity = '0.4';
+            btn.style.cursor = 'not-allowed';
+            btn.title = 'לא ניתן לערוך פעילות בארכיון';
+        });
+
+        // נעל את כל ה-select (dropdown סטטוס)
+        container.querySelectorAll('select').forEach(select => {
+            select.disabled = true;
+            select.style.opacity = '0.4';
+            select.style.cursor = 'not-allowed';
+        });
+
+        // נעל את תיבות הסימון (checkbox של השלמת משימה)
+        container.querySelectorAll('.task-checkbox').forEach(checkbox => {
+            checkbox.style.pointerEvents = 'none';
+            checkbox.style.opacity = '0.4';
+            checkbox.style.cursor = 'not-allowed';
+        });
+
+        // נעל גרירה של משימות
+        container.querySelectorAll('.task-item').forEach(item => {
+            item.setAttribute('draggable', 'false');
+            item.style.cursor = 'default';
+            const dragHandle = item.querySelector('.drag-handle');
+            if (dragHandle) dragHandle.style.display = 'none';
+        });
+        // נעל את כפתור הוספת משימה
+        const addTaskBtn = document.querySelector('[onclick*="activityManager.openAddTaskModal"]'); if (addTaskBtn) {
+            addTaskBtn.disabled = true;
+            addTaskBtn.style.opacity = '0.4';
+            addTaskBtn.style.cursor = 'not-allowed';
+            addTaskBtn.title = 'לא ניתן להוסיף משימות לפעילות בארכיון';
+        }
+
+        // הוסף באנר הודעה בראש הקונטיינר
+        const existingBanner = container.querySelector('.archived-banner');
+        if (!existingBanner) {
+            const banner = document.createElement('div');
+            banner.className = 'archived-banner';
+            banner.innerHTML = `
+            <i class="fas fa-archive"></i>
+            פעילות זו נמצאת בארכיון - מצב צפייה בלבד
+        `;
+            container.insertBefore(banner, container.firstChild);
         }
     }
 
@@ -1761,6 +1904,12 @@ class ActivityManager {
     async editActivity(activityId) {
         const activity = this.activities.find(a => a.id === activityId);
         if (!activity) return;
+
+        // מניעת עריכת פעילות בארכיון
+        if (activity.archived) {
+            NotificationManager.show('לא ניתן לערוך פעילות שנמצאת בארכיון', 'warning');
+            return;
+        }
 
         document.getElementById('activityModalTitle').textContent = 'ערוך פעילות';
         document.getElementById('activitySubmitBtn').textContent = 'עדכן פעילות';

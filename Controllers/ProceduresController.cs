@@ -20,7 +20,7 @@ namespace MyWebApp.Controllers
 
         public ProceduresController()
         {
-            _proceduresPath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\נהלים";
+            _proceduresPath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\נהלים";
             _pdfCachePath = Path.Combine(Path.GetTempPath(), "ProceduresPdfCache");
             _metadataPath = Path.Combine(@"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\Procedures", "Metadata");
 

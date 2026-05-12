@@ -14,7 +14,7 @@ public class ShiftsController : Controller
     // Define file paths as constants
     private const string SHIFTS_FILE_PATH = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\shifts.csv";
     private const string BACKUP_DIRECTORY = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\shifts_backup";
-    private const string EXCEL_FILE_PATH = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\משמרות\משמרות.xlsx";
+    private const string EXCEL_FILE_PATH = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\משמרות.xlsx";
     private const string FUTURE_SHIFTS_FILE_PATH = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\future_shifts.csv";
 
     [HttpGet]

@@ -41,6 +41,10 @@ public class AlertsController : Controller
     private readonly string _alertsDataFilePath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\alerts_data.txt";
     private readonly string _alertsCacheFilePath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\alerts_cache.json";
 
+    // נתיב לקובץ הסינונים השמורים
+    private readonly string _savedFiltersFilePath = 
+        @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\saved_filters.json";
+
     private static readonly object _fileLock = new object();
 
     public AlertsController(IHttpClientFactory httpClientFactory, IWebHostEnvironment env)
@@ -53,6 +57,7 @@ public class AlertsController : Controller
         // טען את המידע מהקובץ בעת אתחול הקונטרולר
         LoadAlertsData();
     }
+
     private string GenerateStableId(JsonElement source)
     {
         // נסה למצוא מזהה ייחודי יציב יותר
@@ -257,6 +262,24 @@ public class AlertsController : Controller
                 var lastWriteTime = System.IO.File.GetLastWriteTime(_alertsCacheFilePath);
                 var timeSinceLastUpdate = DateTime.Now - lastWriteTime;
                 
+                // אם עברו יותר מ-3 דקות בלי עדכון - מחק את הקאש
+                if (timeSinceLastUpdate.TotalMinutes >= 3)
+                {
+                    lock (_fileLock)
+                    {
+                        if (System.IO.File.Exists(_alertsCacheFilePath))
+                        {
+                            System.IO.File.Delete(_alertsCacheFilePath);
+                            Console.WriteLine($"Cache deleted - not updated for {timeSinceLastUpdate.TotalMinutes:F1} minutes");
+                        }
+                    }
+                    
+                    // נקה את מטמון ההערות
+                    ClearNotesCache();
+                    
+                    // עדכן מחדש
+                    shouldUpdate = true;
+                }
                 // אם עברו פחות מ-1 דקות מהעדכון האחרון, אל תעדכן
                 if (timeSinceLastUpdate.TotalMinutes < 1)
                 {
@@ -548,7 +571,7 @@ public class AlertsController : Controller
                                         (n.Text == note.Text && n.UserName == note.UserName) ||
                                         // או כפילות לפי זמן (בטווח של דקה)
                                         Math.Abs((n.Date - note.Date).TotalMinutes) < 1))
-{
+                                    {
                                         combinedNotes.Add(note);
                                     }
                                 }
@@ -1193,6 +1216,236 @@ public class AlertsController : Controller
     
     }
 
+    // ==========================================
+    // טעינת סינונים שמורים מקובץ
+    // ==========================================
+    private List<SavedFilterData> LoadSavedFilters()
+    {
+        lock (_fileLock)
+        {
+            try
+            {
+                if (!System.IO.File.Exists(_savedFiltersFilePath))
+                    return new List<SavedFilterData>();
+
+                var json = System.IO.File.ReadAllText(_savedFiltersFilePath);
+                return string.IsNullOrEmpty(json)
+                    ? new List<SavedFilterData>()
+                    : JsonSerializer.Deserialize<List<SavedFilterData>>(
+                        json,
+                        new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        }
+                    ) ?? new List<SavedFilterData>();
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(
+                    $"Error loading saved filters: {ex.Message}"
+                );
+                return new List<SavedFilterData>();
+            }
+        }
+    }
+
+    // ==========================================
+    // שמירת סינונים שמורים לקובץ
+    // ==========================================
+    private void SaveFiltersToFile(List<SavedFilterData> filters)
+    {
+        lock (_fileLock)
+        {
+            try
+            {
+                Directory.CreateDirectory(
+                    Path.GetDirectoryName(_savedFiltersFilePath)
+                );
+                var json = JsonSerializer.Serialize(
+                    filters,
+                    new JsonSerializerOptions { WriteIndented = true }
+                );
+                System.IO.File.WriteAllText(_savedFiltersFilePath, json);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine(
+                    $"Error saving filters: {ex.Message}"
+                );
+            }
+        }
+    }
+
+    // ==========================================
+    // GET - קבלת סינונים שמורים
+    // ==========================================
+    [HttpGet]
+    public IActionResult GetSavedFilters()
+    {
+        try
+        {
+            var allFilters = LoadSavedFilters();
+
+            // קבל את שם המשתמש הנוכחי מה-session/claims
+            var currentUsername = User.Identity?.Name ?? "";
+
+            // החזר: גלובליים + אישיים של המשתמש הנוכחי
+            var visibleFilters = allFilters
+                .Where(f =>
+                    f.IsGlobal ||
+                    string.Equals(
+                        f.CreatedBy,
+                        currentUsername,
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                )
+                .OrderByDescending(f => f.IsGlobal)
+                .ThenByDescending(f => f.CreatedAt)
+                .ToList();
+
+            return Json(new { success = true, filters = visibleFilters });
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(
+                $"Error in GetSavedFilters: {ex.Message}"
+            );
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // ==========================================
+    // POST - שמירת סינון חדש
+    // ==========================================
+    [HttpPost]
+    public IActionResult SaveFilter([FromBody] SavedFilterRequest request)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(request?.Name))
+            {
+                return Json(new
+                {
+                    success = false,
+                    message = "שם הסינון לא יכול להיות ריק"
+                });
+            }
+
+            var currentUsername = User.Identity?.Name ?? "anonymous";
+
+            // רק Admin/NOC יכולים לשמור גלובלי
+            bool isAdmin = User.IsInRole("Admin") || User.IsInRole("NOC");
+            bool isGlobal = request.IsGlobal && isAdmin;
+
+            var allFilters = LoadSavedFilters();
+
+            // בדוק כפילות שם (לאותו משתמש)
+            bool nameExists = allFilters.Any(f =>
+                string.Equals(f.Name, request.Name,
+                    StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(f.CreatedBy, currentUsername,
+                    StringComparison.OrdinalIgnoreCase) &&
+                f.IsGlobal == isGlobal
+            );
+
+            if (nameExists)
+            {
+                return Json(new
+                {
+                    success = false,
+                    message = $"סינון בשם \"{request.Name}\" כבר קיים"
+                });
+            }
+
+            var newFilter = new SavedFilterData
+            {
+                Id = $"filter_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}" +
+                    $"_{Guid.NewGuid().ToString("N").Substring(0, 8)}",
+                Name = request.Name.Trim(),
+                IsGlobal = isGlobal,
+                CreatedBy = currentUsername,
+                CreatedAt = DateTime.UtcNow.ToString("o"),
+                Filters = request.Filters
+            };
+
+            allFilters.Add(newFilter);
+            SaveFiltersToFile(allFilters);
+
+            return Json(new
+            {
+                success = true,
+                id = newFilter.Id,
+                message = "הסינון נשמר בהצלחה"
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error in SaveFilter: {ex.Message}");
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
+    // ==========================================
+    // DELETE - מחיקת סינון
+    // ==========================================
+    [HttpDelete]
+    public IActionResult DeleteFilter(string id)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(id))
+            {
+                return Json(new
+                {
+                    success = false,
+                    message = "מזהה הסינון לא יכול להיות ריק"
+                });
+            }
+
+            var currentUsername = User.Identity?.Name ?? "";
+            bool isAdmin = User.IsInRole("Admin") || User.IsInRole("NOC");
+
+            var allFilters = LoadSavedFilters();
+            var filter = allFilters.FirstOrDefault(f => f.Id == id);
+
+            if (filter == null)
+            {
+                return Json(new
+                {
+                    success = false,
+                    message = "הסינון לא נמצא"
+                });
+            }
+
+            // בדוק הרשאה למחיקה
+            bool canDelete = isAdmin ||
+                string.Equals(
+                    filter.CreatedBy,
+                    currentUsername,
+                    StringComparison.OrdinalIgnoreCase
+                );
+
+            if (!canDelete)
+            {
+                return Json(new
+                {
+                    success = false,
+                    message = "אין הרשאה למחוק סינון זה"
+                });
+            }
+
+            allFilters.Remove(filter);
+            SaveFiltersToFile(allFilters);
+
+            return Json(new { success = true, message = "הסינון נמחק בהצלחה" });
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error in DeleteFilter: {ex.Message}");
+            return StatusCode(500, new { success = false, error = ex.Message });
+        }
+    }
+
     private async Task EnsureValidToken()
     {
         // בדוק אם הטוקן תקף
@@ -1376,4 +1629,35 @@ public class AddBulkNotesRequest
     public string[] EventIds { get; set; }
     public string Note { get; set; }
     public string UserName { get; set; }
+}
+
+// ==========================================
+// Saved Filters - מחלקות בקשה
+// ==========================================
+
+public class SavedFilterRequest
+{
+    public string Id { get; set; }
+    public string Name { get; set; }
+    public bool IsGlobal { get; set; }
+    public string CreatedBy { get; set; }
+    public string CreatedAt { get; set; }
+    public SavedFilterSnapshot Filters { get; set; }
+}
+
+public class SavedFilterSnapshot
+{
+    public List<string> SeverityFilters { get; set; }
+    public List<string> StatusFilters { get; set; }
+    public string SearchTerm { get; set; }
+}
+
+public class SavedFilterData
+{
+    public string Id { get; set; }
+    public string Name { get; set; }
+    public bool IsGlobal { get; set; }
+    public string CreatedBy { get; set; }
+    public string CreatedAt { get; set; }
+    public SavedFilterSnapshot Filters { get; set; }
 }

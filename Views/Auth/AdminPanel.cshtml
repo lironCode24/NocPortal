@@ -1,0 +1,1138 @@
+@{
+    @functions {
+        string GetDashboardIcon(string id) => id switch
+        {
+            "alerts"       => "fa-list-ul",
+            "rack-metrics" => "fa-server",
+            "suite-results"=> "fa-chart-bar",
+            _              => "fa-chart-bar"
+        };
+    }
+    Layout = null;
+    ViewData["Title"] = "ניהול משתמשים";
+    var allUsers        = ViewBag.AllUsers        as List<NocPortal.Models.AppUser>;
+    var unapprovedUsers = ViewBag.UnapprovedUsers as List<NocPortal.Models.AppUser>;
+
+    // ספירות לסטטיסטיקות
+    var totalUsers    = allUsers?.Count ?? 0;
+    var approvedCount = allUsers?.Count(u => u.IsApproved) ?? 0;
+    var pendingCount  = unapprovedUsers?.Count ?? 0;
+    var adminCount    = allUsers?.Count(u => u.Role == NocPortal.Models.UserRole.Admin) ?? 0;
+    var nocCount      = allUsers?.Count(u => u.Role == NocPortal.Models.UserRole.NOC) ?? 0;
+    var dashCount     = allUsers?.Count(u => u.Role == NocPortal.Models.UserRole.Dashboard) ?? 0;
+    var israelTz = TimeZoneInfo.FindSystemTimeZoneById("Israel Standard Time");
+    var allDashboards = NocPortal.Models.AvailableDashboards.All;
+}
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>@ViewData["Title"]</title>
+    <link rel="icon" type="image/x-icon"
+          href="https://www.menoramivt.co.il/customers-homepage/static/img/favicon.ico">
+    <link rel="stylesheet" href="https://cdn.menoramivt.co.il/public/fonts/fonts.css">
+    <link rel="stylesheet" href="/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="~/css/admin-panel.css">
+</head>
+<body>
+
+<!-- ============ HEADER ============ -->
+<header class="admin-header">
+    <h1>
+        <i class="fas fa-users-cog"></i>
+        ניהול משתמשים — NOC Portal
+    </h1>
+    <div class="header-actions">
+        <span class="header-user-info">
+            <i class="fas fa-user-shield"></i>
+            @User.FindFirst("DisplayName")?.Value
+        </span>
+        <div class="back-dropdown-wrapper">
+            <button class="btn btn-secondary back-dropdown-toggle" 
+                    id="backDropdownBtn"
+                    type="button"
+                    onclick="toggleBackDropdown()">
+                חזור ל...
+                <i class="fas fa-chevron-down back-chevron" id="backChevron"></i>
+            </button>
+            <div class="back-dropdown-menu" id="backDropdownMenu">
+                <a href="/Home" class="back-dropdown-item">
+                    <i class="fas fa-home"></i>
+                    פורטל
+                </a>
+                <a href="/dashboards" class="back-dropdown-item">
+                    <i class="fas fa-chart-bar"></i>
+                    דשבורדים
+                </a>
+            </div>
+        </div>
+        <form method="post" asp-action="Logout" asp-controller="Auth" style="margin:0">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="btn btn-secondary">
+                <i class="fas fa-sign-out-alt"></i> יציאה
+            </button>
+        </form>
+    </div>
+</header>
+
+<!-- ============ MAIN CONTENT ============ -->
+<div class="admin-content">
+
+    <!-- הודעת הצלחה -->
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success">
+            <i class="fas fa-check-circle"></i>
+            @TempData["Success"]
+        </div>
+    }
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-error">
+            <i class="fas fa-exclamation-circle"></i>
+            @TempData["Error"]
+        </div>
+    }
+
+    <!-- באנר ממתינים לאישור -->
+    @if (pendingCount > 0)
+    {
+        <div class="pending-banner">
+            <i class="fas fa-bell"></i>
+            <div class="pending-banner-text">
+                יש <strong>@pendingCount משתמשים</strong> הממתינים לאישור
+            </div>
+            <a href="#pending-section" class="btn btn-warning btn-sm">
+                <i class="fas fa-arrow-down"></i> עבור לאישור
+            </a>
+        </div>
+    }
+
+    <!-- ============ STATS BAR ============ -->
+    <div class="stats-bar">
+        <div class="stat-card">
+            <div class="stat-icon blue">
+                <i class="fas fa-users"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-value">@totalUsers</span>
+                <span class="stat-label">סה"כ משתמשים</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon green">
+                <i class="fas fa-user-check"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-value">@approvedCount</span>
+                <span class="stat-label">מאושרים</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon orange">
+                <i class="fas fa-user-clock"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-value">@pendingCount</span>
+                <span class="stat-label">ממתינים לאישור</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon red">
+                <i class="fas fa-user-shield"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-value">@adminCount</span>
+                <span class="stat-label">מנהלים</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon purple">
+                <i class="fas fa-headset"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-value">@nocCount</span>
+                <span class="stat-label">NOC</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ SEARCH BAR ============ -->
+    <div class="search-bar-wrapper">
+        <div class="search-bar" id="mainSearchBar">
+            <i class="fas fa-search search-icon"></i>
+            <input
+                type="text"
+                id="userSearchInput"
+                placeholder="חיפוש לפי שם, שם משתמש, תפקיד..."
+                autocomplete="off"
+            />
+            <button
+                class="search-clear-btn"
+                id="searchClearBtn"
+                type="button"
+                title="נקה חיפוש"
+            >
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="search-results-info" id="searchResultsInfo" style="display:none">
+            <i class="fas fa-info-circle"></i>
+            <span id="searchResultsText"></span>
+        </div>
+    </div>
+
+    <!-- ============ FILTER CHIPS ============ -->
+    <div class="filter-tabs-bar" id="filterChipsBar">
+        <button class="filter-chip active" data-filter="all">
+            <i class="fas fa-list"></i>
+            הכל
+            <span class="chip-count">@totalUsers</span>
+        </button>
+        <button class="filter-chip chip-admin" data-filter="Admin">
+            <i class="fas fa-user-shield"></i>
+            Admin
+            <span class="chip-count">@adminCount</span>
+        </button>
+        <button class="filter-chip chip-noc" data-filter="NOC">
+            <i class="fas fa-headset"></i>
+            NOC
+            <span class="chip-count">@nocCount</span>
+        </button>
+        <button class="filter-chip chip-dashboard" data-filter="Dashboard">
+            <i class="fas fa-chart-bar"></i>
+            Dashboard
+            <span class="chip-count">@dashCount</span>
+        </button>
+        <button class="filter-chip chip-pending" data-filter="pending">
+            <i class="fas fa-clock"></i>
+            ממתינים
+            <span class="chip-count">@pendingCount</span>
+        </button>
+    </div>
+
+    <!-- ============ PENDING USERS ============ -->
+    <div class="section-card" id="pending-section">
+        <div class="section-card-header">
+            <h2>
+                <i class="fas fa-user-clock" style="color:#f0a500"></i>
+                ממתינים לאישור
+                <span class="badge badge-orange">@pendingCount</span>
+            </h2>
+        </div>
+
+        @if (unapprovedUsers == null || !unapprovedUsers.Any())
+        {
+            <div class="empty-state">
+                <i class="fas fa-check-double"></i>
+                <p>אין משתמשים הממתינים לאישור</p>
+            </div>
+        }
+        else
+        {
+            <div class="table-wrapper">
+                <table class="users-table" id="pendingTable">
+                    <thead>
+                        <tr>
+                            <th>משתמש</th>
+                            <th>שם משתמש</th>
+                            <th>תפקיד מבוקש</th>
+                            <th><i class="fas fa-desktop"></i>הרשאות דשבורד</th>
+                            <th>תאריך הרשמה</th>
+                            <th>פעולות</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var user in unapprovedUsers)
+                        {
+                            <tr data-username="@user.Username.ToLower()"
+                                data-displayname="@user.DisplayName.ToLower()"
+                                data-role="@user.Role"
+                                data-status="pending">
+                                <td>
+                                    <div class="user-cell">
+                                        <div class="user-avatar avatar-@user.Role.ToString().ToLower()">
+                                            @user.DisplayName.Substring(0, 1).ToUpper()
+                                        </div>
+                                        <div>
+                                            <div class="user-name">@user.DisplayName</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span style="color:rgba(255,255,255,0.6); font-size:0.88rem">
+                                        @user.Username
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="role-badge role-@user.Role">
+                                        @user.Role
+                                    </span>
+                                </td>
+                                <td>
+                                    <button type="button"
+                                            class="btn btn-secondary btn-sm"
+                                            onclick="openPermissionsModal('@user.Id', '@user.DisplayName')"
+                                            title="ניהול הרשאות דשבורד">
+                                        <i class="fas fa-desktop"></i>
+                                        @if (user.AllowedDashboards != null && user.AllowedDashboards.Any())
+                                        {
+                                            <span class="permissions-count-badge">
+                                                @user.AllowedDashboards.Count
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="permissions-count-badge badge-empty">0</span>
+                                        }
+                                    </button>
+                                </td>
+                                <td style="color:rgba(255,255,255,0.4); font-size:0.82rem">
+                                    @TimeZoneInfo.ConvertTimeFromUtc(user.CreatedAt, israelTz).ToString("dd/MM/yyyy HH:mm")
+                                </td>
+                                <td>
+                                    <div class="actions-cell">
+                                        <form method="post"
+                                              asp-action="ApproveUser"
+                                              asp-controller="Auth"
+                                              style="margin:0">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="userId" value="@user.Id" />
+                                            <button type="submit" class="btn btn-success btn-sm">
+                                                <i class="fas fa-check"></i> אשר
+                                            </button>
+                                        </form>
+                                        <form method="post"
+                                              asp-action="DeleteUser"
+                                              asp-controller="Auth"
+                                              style="margin:0"
+                                              onsubmit="return confirmDelete('@user.Username')">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="userId" value="@user.Id" />
+                                            <button type="submit" class="btn btn-danger btn-sm">
+                                                <i class="fas fa-times"></i> דחה
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+    <!-- ============ ALL USERS ============ -->
+    <div class="section-card">
+        <div class="section-card-header">
+            <h2>
+                <i class="fas fa-users" style="color:#4a9eff"></i>
+                כל המשתמשים
+                <span class="badge badge-blue" id="allUsersCount">@totalUsers</span>
+            </h2>
+            <div class="section-card-header-actions">
+                <span style="font-size:0.82rem; color:rgba(255,255,255,0.35)">
+                    <i class="fas fa-sort-alpha-down"></i>
+                    ממוין לפי תאריך הרשמה
+                </span>
+            </div>
+        </div>
+
+        @if (allUsers == null || !allUsers.Any())
+        {
+            <div class="empty-state">
+                <i class="fas fa-users"></i>
+                <p>אין משתמשים במערכת</p>
+            </div>
+        }
+        else
+        {
+            <div class="table-wrapper">
+                <table class="users-table" id="allUsersTable">
+                    <thead>
+                        <tr>
+                            <th class="sortable" data-col="name">
+                                <i class="fas fa-sort sort-icon"></i>
+                                משתמש
+                            </th>
+                            <th class="sortable" data-col="username">
+                                <i class="fas fa-sort sort-icon"></i>
+                                שם משתמש
+                            </th>
+                            <th class="sortable" data-col="role">
+                                <i class="fas fa-sort sort-icon"></i>
+                                תפקיד
+                            </th>
+                            <th><i class="fas fa-desktop"></i>הרשאות דשבורד</th>
+                            <th class="sortable" data-col="status">
+                                <i class="fas fa-sort sort-icon"></i>
+                                סטטוס
+                            </th>
+                            <th class="sortable" data-col="date">
+                                <i class="fas fa-sort sort-icon"></i>
+                                תאריך הרשמה
+                            </th>
+                            <th>פעולות</th>
+                        </tr>
+                    </thead>
+                    <tbody id="allUsersBody">
+                        @foreach (var user in allUsers)
+                        {
+                            <tr data-username="@user.Username.ToLower()"
+                                data-displayname="@user.DisplayName.ToLower()"
+                                data-role="@user.Role"
+                                data-status="@(user.IsApproved ? "approved" : "pending")"
+                                data-date="@user.CreatedAt.ToString("yyyy-MM-dd")">
+
+                                <!-- עמודת משתמש -->
+                                <td>
+                                    <div class="user-cell">
+                                        <div class="user-avatar avatar-@user.Role.ToString().ToLower()">
+                                            @user.DisplayName.Substring(0, 1).ToUpper()
+                                        </div>
+                                        <div>
+                                            <div class="user-name" data-field="displayname">
+                                                @user.DisplayName
+                                            </div>
+                                            <div class="user-username" data-field="username">
+                                                @user.Username
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+
+                                <!-- עמודת שם משתמש -->
+                                <td>
+                                    <span style="color:rgba(255,255,255,0.6); font-size:0.88rem"
+                                        data-field="username">
+                                        @user.Username
+                                    </span>
+                                </td>
+
+                                <!-- ══════════════════════════════════
+                                    עמודת תפקיד - עם אפשרות שינוי
+                                    ══════════════════════════════════ -->
+                                <td>
+                                    @if (user.Role != NocPortal.Models.UserRole.Admin)
+                                    {
+                                        <!-- כפתור תצוגה - לחיצה פותחת את ה-select -->
+                                        <div class="role-change-wrapper" id="role-wrapper-@user.Id">
+
+                                            <!-- תצוגת תפקיד נוכחי -->
+                                            <div class="role-display" id="role-display-@user.Id">
+                                                <span class="role-badge role-@user.Role" data-field="role">
+                                                    @user.Role
+                                                </span>
+                                                <button type="button"
+                                                        class="btn-role-edit"
+                                                        onclick="openRoleEdit('@user.Id', '@user.Role')"
+                                                        title="שנה תפקיד">
+                                                    <i class="fas fa-pen"></i>
+                                                </button>
+                                            </div>
+
+                                            <!-- טופס שינוי תפקיד (מוסתר בהתחלה) -->
+                                            <form method="post"
+                                                asp-action="ChangeRole"
+                                                asp-controller="Auth"
+                                                class="role-edit-form"
+                                                id="role-form-@user.Id"
+                                                style="display:none">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="userId" value="@user.Id" />
+                                                <div class="role-edit-row">
+                                                    <select name="newRole"
+                                                            class="role-select"
+                                                            id="role-select-@user.Id"
+                                                            onchange="previewRoleChange('@user.Id', this.value)">
+
+                                                        @{
+                                                            var isNoc       = user.Role == NocPortal.Models.UserRole.NOC;
+                                                            var isDashboard = user.Role == NocPortal.Models.UserRole.Dashboard;
+                                                            var isAdmin     = user.Role == NocPortal.Models.UserRole.Admin;
+
+                                                        }
+
+                                                        <option value="NOC" selected="@isNoc">
+                                                            NOC
+                                                        </option>
+
+                                                        <option value="Dashboard" selected="@isDashboard">
+                                                            Dashboard
+                                                        </option>
+
+                                                        <option value="Admin" selected="@isAdmin">Admin</option> 
+
+
+                                                    </select>
+                                                    <button type="submit"
+                                                            class="btn btn-success btn-sm btn-icon"
+                                                            title="שמור">
+                                                        <i class="fas fa-check"></i>
+                                                    </button>
+                                                    <button type="button"
+                                                            class="btn btn-secondary btn-sm btn-icon"
+                                                            onclick="closeRoleEdit('@user.Id', '@user.Role')"
+                                                            title="בטל">
+                                                        <i class="fas fa-times"></i>
+                                                    </button>
+                                                </div>
+                                                <!-- תצוגה מקדימה של השינוי -->
+                                                <div class="role-preview" id="role-preview-@user.Id">
+                                                </div>
+                                            </form>
+
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span class="role-badge role-Admin" data-field="role">
+                                            <i class="fas fa-shield-alt"></i>
+                                            Admin
+                                        </span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (user.Role == NocPortal.Models.UserRole.Dashboard)
+                                    {
+                                        <button type="button"
+                                                class="btn btn-secondary btn-sm"
+                                                onclick="openPermissionsModal('@user.Id', '@user.DisplayName')"
+                                                title="ניהול הרשאות דשבורד">
+                                            <i class="fas fa-desktop"></i>
+                                            @if (user.AllowedDashboards != null && user.AllowedDashboards.Any())
+                                            {
+                                                <span class="permissions-count-badge">
+                                                    @user.AllowedDashboards.Count
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="permissions-count-badge badge-empty">0</span>
+                                            }
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span style="color:rgba(255,255,255,0.2); font-size:0.8rem">—</span>
+                                    }
+                                </td>
+
+                                <!-- עמודת סטטוס -->
+                                <td>
+                                    @if (user.IsApproved)
+                                    {
+                                        <span class="status-badge status-approved">
+                                            <i class="fas fa-check-circle"></i> מאושר
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="status-badge status-pending">
+                                            <i class="fas fa-clock"></i> ממתין
+                                        </span>
+                                    }
+                                </td>
+
+                                <!-- עמודת תאריך -->
+                                <td style="color:rgba(255,255,255,0.4); font-size:0.82rem">
+                                    @TimeZoneInfo.ConvertTimeFromUtc(user.CreatedAt, israelTz).ToString("dd/MM/yyyy HH:mm")
+                                </td>
+
+                                <!-- ══════════════════════════════════
+                                    עמודת פעולות
+                                    ══════════════════════════════════ -->
+                                <td>
+                                    @if (user.Role != NocPortal.Models.UserRole.Admin)
+                                    {
+                                        <div class="actions-cell">
+                                            <form method="post"
+                                                asp-action="DeleteUser"
+                                                asp-controller="Auth"
+                                                style="margin:0"
+                                                onsubmit="return confirmDelete('@user.Username')">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="userId" value="@user.Id" />
+                                                <button type="submit" class="btn btn-danger btn-sm">
+                                                    <i class="fas fa-trash"></i> מחק
+                                                </button>
+                                            </form>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span class="protected-label">
+                                            <i class="fas fa-shield-alt"></i> מוגן
+                                        </span>
+                                    }
+                                </td>
+
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Empty state לחיפוש ללא תוצאות -->
+            <div class="empty-state search-empty" id="noSearchResults" style="display:none">
+                <i class="fas fa-search"></i>
+                <p>
+                    לא נמצאו משתמשים עבור
+                    "<span class="search-term" id="noResultsTerm"></span>"
+                </p>
+            </div>
+        }
+    </div>
+
+</div>
+
+<!-- ============ TOAST CONTAINER ============ -->
+<div class="toast-container" id="toastContainer"></div>
+
+
+<!-- ============ PERMISSIONS MODAL ============ -->
+<div class="modal-overlay" id="permissionsModal" style="display:none"
+     onclick="if(event.target===this) closePermissionsModal()">
+    <div class="modal-box">
+
+        <div class="modal-header">
+            <div class="modal-title">
+                <i class="fas fa-desktop"></i>
+                הרשאות דשבורד
+            </div>
+            <button class="modal-close-btn" onclick="closePermissionsModal()">
+                &times;
+            </button>
+        </div>
+
+        <div class="modal-user-info" id="modalUserInfo">
+            <!-- ימולא ב-JS -->
+        </div>
+
+        <form method="post"
+              asp-action="UpdateDashboardPermissions"
+              asp-controller="Auth"
+              id="permissionsForm">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="userId" id="permissionsUserId" />
+
+            <div class="modal-section-label">בחר דשבורדים מורשים:</div>
+
+            <div class="permissions-grid" id="permissionsGrid">
+                @foreach (var dashboard in allDashboards)
+                {
+                    <label class="permission-card" id="perm-card-@dashboard.DashboardId">
+                        <input type="checkbox"
+                               name="dashboardIds"
+                               value="@dashboard.DashboardId"
+                               class="perm-checkbox"
+                               id="perm-@dashboard.DashboardId" />
+                        <div class="perm-card-icon">
+                            <i class="fas @GetDashboardIcon(dashboard.DashboardId)"></i>
+                        </div>
+                        <div class="perm-card-name">@dashboard.DashboardName</div>
+                        <div class="perm-card-check">
+                            <i class="fas fa-check"></i>
+                        </div>
+                    </label>
+                }
+            </div>
+
+            <div class="modal-actions">
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-save"></i> שמור הרשאות
+                </button>
+                <button type="button"
+                        class="btn btn-secondary"
+                        onclick="closePermissionsModal()">
+                    <i class="fas fa-times"></i> ביטול
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ============ JAVASCRIPT ============ -->
+<script>
+// ─────────────────────────────────────────
+//  SEARCH
+// ─────────────────────────────────────────
+const searchInput     = document.getElementById('userSearchInput');
+const searchClearBtn  = document.getElementById('searchClearBtn');
+const searchInfo      = document.getElementById('searchResultsInfo');
+const searchInfoText  = document.getElementById('searchResultsText');
+const noResults       = document.getElementById('noSearchResults');
+const noResultsTerm   = document.getElementById('noResultsTerm');
+const allUsersCount   = document.getElementById('allUsersCount');
+
+// כל השורות בשתי הטבלאות
+const allRows = [
+    ...document.querySelectorAll('#allUsersBody tr'),
+    ...document.querySelectorAll('#pendingTable tbody tr')
+];
+
+let activeFilter = 'all';
+let searchTerm   = '';
+
+function runSearch() {
+    searchTerm = searchInput.value.trim().toLowerCase();
+
+    // כפתור ניקוי
+    searchClearBtn.classList.toggle('visible', searchTerm.length > 0);
+
+    applyFilters();
+}
+
+function applyFilters() {
+    let visibleCount = 0;
+
+    allRows.forEach(row => {
+        const username    = row.dataset.username    || '';
+        const displayname = row.dataset.displayname || '';
+        const role        = row.dataset.role        || '';
+        const status      = row.dataset.status      || '';
+
+        // בדיקת filter chip
+        let chipMatch = true;
+        if (activeFilter === 'pending') {
+            chipMatch = status === 'pending';
+        } else if (activeFilter !== 'all') {
+            chipMatch = role === activeFilter;
+        }
+
+        // בדיקת חיפוש טקסט
+        let searchMatch = true;
+        if (searchTerm) {
+            searchMatch =
+                username.includes(searchTerm)    ||
+                displayname.includes(searchTerm) ||
+                role.toLowerCase().includes(searchTerm);
+        }
+
+        const isVisible = chipMatch && searchMatch;
+
+        row.classList.toggle('search-hidden', !isVisible);
+        row.classList.toggle('search-highlight', isVisible && searchTerm.length > 0);
+
+        if (isVisible) {
+            visibleCount++;
+            // הדגשת טקסט תואם
+            if (searchTerm) highlightRow(row, searchTerm);
+            else            clearHighlight(row);
+        } else {
+            clearHighlight(row);
+        }
+    });
+
+    // עדכון מונה
+    if (allUsersCount) allUsersCount.textContent = visibleCount;
+
+    // הודעת תוצאות
+    updateSearchInfo(visibleCount);
+}
+
+function highlightRow(row, term) {
+    row.querySelectorAll('[data-field]').forEach(el => {
+        const original = el.getAttribute('data-original') || el.textContent;
+        el.setAttribute('data-original', original);
+
+        const regex   = new RegExp(`(${escapeRegex(term)})`, 'gi');
+        el.innerHTML  = original.replace(
+            regex,
+            '<span class="search-match-text">$1</span>'
+        );
+    });
+}
+
+function clearHighlight(row) {
+    row.querySelectorAll('[data-field]').forEach(el => {
+        const original = el.getAttribute('data-original');
+        if (original) {
+            el.textContent = original;
+            el.removeAttribute('data-original');
+        }
+    });
+}
+
+function updateSearchInfo(count) {
+    if (!searchTerm && activeFilter === 'all') {
+        searchInfo.style.display = 'none';
+        if (noResults) noResults.style.display = 'none';
+        return;
+    }
+
+    searchInfo.style.display = 'flex';
+
+    if (count === 0) {
+        searchInfo.classList.remove('has-results');
+        searchInfoText.textContent = 'לא נמצאו תוצאות';
+        if (noResults) {
+            noResults.style.display = 'block';
+            if (noResultsTerm) noResultsTerm.textContent = searchTerm;
+        }
+    } else {
+        searchInfo.classList.add('has-results');
+        searchInfoText.textContent = `נמצאו ${count} משתמשים`;
+        if (noResults) noResults.style.display = 'none';
+    }
+}
+
+function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// אירועי חיפוש
+searchInput.addEventListener('input', runSearch);
+
+searchInput.addEventListener('keydown', e => {
+    if (e.key === 'Escape') clearSearch();
+});
+
+searchClearBtn.addEventListener('click', clearSearch);
+
+function clearSearch() {
+    searchInput.value = '';
+    searchTerm = '';
+    searchClearBtn.classList.remove('visible');
+    applyFilters();
+    searchInput.focus();
+}
+
+// ─────────────────────────────────────────
+//  FILTER CHIPS
+// ─────────────────────────────────────────
+document.querySelectorAll('.filter-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+        document.querySelectorAll('.filter-chip').forEach(c =>
+            c.classList.remove('active')
+        );
+        chip.classList.add('active');
+        activeFilter = chip.dataset.filter;
+        applyFilters();
+    });
+});
+
+// ─────────────────────────────────────────
+//  SORT
+// ─────────────────────────────────────────
+let sortState = { col: null, dir: 'asc' };
+
+document.querySelectorAll('.users-table th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+        const col = th.dataset.col;
+
+        if (sortState.col === col) {
+            sortState.dir = sortState.dir === 'asc' ? 'desc' : 'asc';
+        } else {
+            sortState.col = col;
+            sortState.dir = 'asc';
+        }
+
+        // עדכון אייקונים
+        document.querySelectorAll('.users-table th.sortable').forEach(t => {
+            t.classList.remove('sort-asc', 'sort-desc');
+            t.querySelector('.sort-icon').className = 'fas fa-sort sort-icon';
+        });
+
+        th.classList.add(`sort-${sortState.dir}`);
+        th.querySelector('.sort-icon').className =
+            `fas fa-sort-${sortState.dir === 'asc' ? 'up' : 'down'} sort-icon`;
+
+        sortTable(col, sortState.dir);
+    });
+});
+
+function sortTable(col, dir) {
+    const tbody = document.getElementById('allUsersBody');
+    if (!tbody) return;
+
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+
+    rows.sort((a, b) => {
+        let valA = '';
+        let valB = '';
+
+        switch (col) {
+            case 'name':
+                valA = a.dataset.displayname || '';
+                valB = b.dataset.displayname || '';
+                break;
+            case 'username':
+                valA = a.dataset.username || '';
+                valB = b.dataset.username || '';
+                break;
+            case 'role':
+                valA = a.dataset.role || '';
+                valB = b.dataset.role || '';
+                break;
+            case 'status':
+                valA = a.dataset.status || '';
+                valB = b.dataset.status || '';
+                break;
+            case 'date':
+                valA = a.dataset.date || '';
+                valB = b.dataset.date || '';
+                break;
+        }
+
+        const cmp = valA.localeCompare(valB, 'he');
+        return dir === 'asc' ? cmp : -cmp;
+    });
+
+    rows.forEach(r => tbody.appendChild(r));
+}
+
+// ─────────────────────────────────────────
+//  CONFIRM DELETE
+// ─────────────────────────────────────────
+function confirmDelete(username) {
+    return confirm(`האם למחוק את המשתמש "${username}"?\nפעולה זו אינה ניתנת לביטול.`);
+}
+
+// ─────────────────────────────────────────
+//  TOAST
+// ─────────────────────────────────────────
+function showToast(message, type = 'info') {
+    const container = document.getElementById('toastContainer');
+    const toast     = document.createElement('div');
+
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `
+        <i class="fas fa-${type === 'success' ? 'check-circle' :
+                           type === 'error'   ? 'exclamation-circle' :
+                                                'info-circle'}"></i>
+        <span>${message}</span>
+    `;
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.classList.add('toast-out');
+        setTimeout(() => toast.remove(), 300);
+    }, 3500);
+}
+
+// הצגת toast אם יש הודעת הצלחה
+@if (TempData["Success"] != null)
+{
+    <text>
+    document.addEventListener('DOMContentLoaded', () => {
+        showToast('@TempData["Success"]', 'success');
+    });
+    </text>
+}
+
+// ─────────────────────────────────────────
+//  KEYBOARD SHORTCUT  Ctrl+F → focus search
+// ─────────────────────────────────────────
+document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        searchInput.focus();
+        searchInput.select();
+    }
+});
+
+// ─────────────────────────────────────────
+//  ROLE CHANGE
+// ─────────────────────────────────────────
+
+// פתיחת טופס עריכת תפקיד
+function openRoleEdit(userId, currentRole) {
+    const display = document.getElementById(`role-display-${userId}`);
+    const form    = document.getElementById(`role-form-${userId}`);
+    const select  = document.getElementById(`role-select-${userId}`);
+
+    if (!display || !form) return;
+
+    display.style.display = 'none';
+    form.style.display    = 'block';
+
+    // וודא שה-select מציג את התפקיד הנוכחי
+    if (select) select.value = currentRole;
+
+    // נקה תצוגה מקדימה
+    updateRolePreview(userId, currentRole, currentRole);
+
+    // פוקוס על ה-select
+    setTimeout(() => select && select.focus(), 50);
+}
+
+// סגירת טופס עריכת תפקיד (ביטול)
+function closeRoleEdit(userId, originalRole) {
+    const display = document.getElementById(`role-display-${userId}`);
+    const form    = document.getElementById(`role-form-${userId}`);
+    const select  = document.getElementById(`role-select-${userId}`);
+
+    if (!display || !form) return;
+
+    // החזר לתפקיד המקורי
+    if (select) select.value = originalRole;
+
+    form.style.display    = 'none';
+    display.style.display = 'flex';
+}
+
+// תצוגה מקדימה של שינוי תפקיד
+function previewRoleChange(userId, newRole) {
+    const row         = document.querySelector(`tr[data-username]`);
+    const currentRole = document.getElementById(`role-select-${userId}`)
+                            ?.getAttribute('data-original-role');
+
+    updateRolePreview(userId, currentRole, newRole);
+}
+
+function updateRolePreview(userId, currentRole, newRole) {
+    const preview = document.getElementById(`role-preview-${userId}`);
+    const select  = document.getElementById(`role-select-${userId}`);
+    if (!preview) return;
+
+    // שמור תפקיד מקורי
+    if (select && !select.getAttribute('data-original-role')) {
+        select.setAttribute('data-original-role', currentRole);
+    }
+
+    const origRole = select?.getAttribute('data-original-role') || currentRole;
+
+    if (newRole === origRole) {
+        preview.className = 'role-preview';
+        preview.innerHTML = '';
+        return;
+    }
+
+    const roleLabels = {
+        'NOC':       { label: 'NOC',       cls: 'role-NOC'       },
+        'Dashboard': { label: 'Dashboard', cls: 'role-Dashboard'  }
+    };
+
+    const newRoleInfo = roleLabels[newRole];
+    if (!newRoleInfo) return;
+
+    preview.className = 'role-preview has-change';
+    preview.innerHTML = `
+        <i class="fas fa-arrow-left preview-arrow"></i>
+        <span class="preview-new-role ${newRoleInfo.cls}">
+            ${newRoleInfo.label}
+        </span>
+        <span style="color:rgba(255,255,255,0.25)">יישמר לאחר אישור</span>
+    `;
+}
+
+// סגירת עריכה בלחיצה על Escape
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+        // סגור כל טפסי עריכת תפקיד פתוחים
+        document.querySelectorAll('.role-edit-form').forEach(form => {
+            if (form.style.display !== 'none') {
+                const userId = form.id.replace('role-form-', '');
+                const select = document.getElementById(`role-select-${userId}`);
+                const origRole = select?.getAttribute('data-original-role');
+                if (origRole) closeRoleEdit(userId, origRole);
+            }
+        });
+    }
+});
+
+// ─────────────────────────────────────────
+//  BACK DROPDOWN
+// ─────────────────────────────────────────
+function toggleBackDropdown() {
+    const menu    = document.getElementById('backDropdownMenu');
+    const chevron = document.getElementById('backChevron');
+    const isOpen  = menu.classList.contains('open');
+
+    if (isOpen) {
+        menu.classList.remove('open');
+        chevron.classList.remove('open');
+    } else {
+        menu.classList.add('open');
+        chevron.classList.add('open');
+    }
+}
+
+// סגירת הדרופדאון בלחיצה מחוץ לו
+document.addEventListener('click', e => {
+    const wrapper = document.querySelector('.back-dropdown-wrapper');
+    if (wrapper && !wrapper.contains(e.target)) {
+        document.getElementById('backDropdownMenu')
+            ?.classList.remove('open');
+        document.getElementById('backChevron')
+            ?.classList.remove('open');
+    }
+});
+
+// ─────────────────────────────────────────
+//  PERMISSIONS MODAL
+// ─────────────────────────────────────────
+
+// נתוני הרשאות לכל משתמש (מגיע מה-Razor)
+const userPermissions = {
+    @if (allUsers != null)
+    {
+        foreach (var u in allUsers)
+        {
+            @:  '@u.Id': @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+            u.AllowedDashboards ?? new List<string>())),
+        }
+    }
+};
+
+function openPermissionsModal(userId, displayName) {
+    const modal       = document.getElementById('permissionsModal');
+    const userInfo    = document.getElementById('modalUserInfo');
+    const userIdInput = document.getElementById('permissionsUserId');
+
+    userInfo.innerHTML = `
+        <i class="fas fa-user"></i>
+        <strong>${displayName}</strong>
+    `;
+
+    userIdInput.value = userId;
+
+    // קבל הרשאות נוכחיות
+    const currentPerms = userPermissions[userId] || [];
+
+    document.querySelectorAll('.perm-checkbox').forEach(cb => {
+        const card      = cb.closest('.permission-card');
+        const isChecked = currentPerms.includes(cb.value);
+
+        cb.checked = isChecked;
+
+        if (isChecked) {
+            card.classList.add('checked');
+        } else {
+            card.classList.remove('checked');
+        }
+    });
+
+    modal.style.display = 'flex';
+    document.body.style.overflow = 'hidden';
+}
+
+function closePermissionsModal() {
+    const modal = document.getElementById('permissionsModal');
+    modal.style.display = 'none';
+    document.body.style.overflow = '';
+}
+
+// Toggle permission cards
+document.querySelectorAll('.permission-card').forEach(card => {
+    card.addEventListener('click', () => {
+        const cb = card.querySelector('.perm-checkbox');
+        cb.checked = !cb.checked;
+        card.classList.toggle('checked', cb.checked);
+    });
+});
+
+// סגירה ב-Escape
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+        closePermissionsModal();
+    }
+});
+</script>
+</body>
+</html>

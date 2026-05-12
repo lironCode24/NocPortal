@@ -379,7 +379,7 @@ public class MessagesController : Controller
             else
             {
                 // אם זה נתיב יחסי - בנה נתיב מוחלט
-                fullPath = Path.Combine(@"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files", decodedPath);
+                fullPath = Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", decodedPath);
             }
 
             // נרמל את הנתיב (תקן slashes)
@@ -398,7 +398,7 @@ public class MessagesController : Controller
                     }
                     else
                     {
-                        alternativePath = Path.Combine(@"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files", filePath);
+                        alternativePath = Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", filePath);
                     }
                     
                     alternativePath = Path.GetFullPath(alternativePath);
@@ -786,6 +786,12 @@ public class MessagesController : Controller
                 default:
                     newMessage["content"] = request.Content;
                     break;
+            }
+
+            // טיפול באישורי כניסה
+            if (request.IsEntryPermit && request.EntryPermitData != null)
+            {
+                newMessage["entryPermitData"] = request.EntryPermitData;
             }
 
             var messages = ReadMessagesFromFile();
@@ -1490,6 +1496,12 @@ public class MessagesController : Controller
                             break;
                     }
                     
+                    // טיפול באישורי כניסה
+                    if (request.IsEntryPermit && request.EntryPermitData != null)
+                    {
+                        updatedMessage["entryPermitData"] = request.EntryPermitData;
+                    }
+
                     messages[i] = updatedMessage;
                     WriteMessagesToFile(messages);
                     
@@ -1530,7 +1542,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(@"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files", filePath);
+                fullPath = Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", filePath);
             }
 
             // נרמל את הנתיב
@@ -1631,7 +1643,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(@"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files", filePath);
+                fullPath = Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", filePath);
             }
 
             // נרמל את הנתיב
@@ -1665,7 +1677,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(@"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files", filePath);
+                fullPath = Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", filePath);
             }
 
             // נרמל את הנתיב
@@ -1722,7 +1734,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(@"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files", filePath);
+                fullPath = Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", filePath);
             }
 
             // נרמל את הנתיב
@@ -1825,7 +1837,7 @@ public class MessagesController : Controller
             return filePath;
             
         // Otherwise, combine with base path
-        return Path.Combine(@"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files", filePath);
+        return Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", filePath);
     }
 
     private string ConvertWordToPdf(string wordFilePath)
@@ -1980,7 +1992,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(@"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files", filePath);
+                fullPath = Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", filePath);
             }
 
             // נרמל את הנתיב
@@ -2250,7 +2262,7 @@ public class MessagesController : Controller
                         }
                         else
                         {
-                            fullPath = Path.Combine(@"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files", emailPath);
+                            fullPath = Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", emailPath);
                         }
                         
                         // נרמל את הנתיב
@@ -2378,7 +2390,7 @@ public class MessagesController : Controller
             else
             {
                 // אם זה נתיב יחסי - בנה נתיב מוחלט
-                fullPath = Path.Combine(@"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files", decodedPath);
+                fullPath = Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", decodedPath);
             }
 
             // נרמל את הנתיב (תקן slashes)
@@ -2397,7 +2409,7 @@ public class MessagesController : Controller
                     }
                     else
                     {
-                        alternativePath = Path.Combine(@"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files", filePath);
+                        alternativePath = Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", filePath);
                     }
                     
                     alternativePath = Path.GetFullPath(alternativePath);
@@ -2569,7 +2581,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(@"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files", emailPath);
+                fullPath = Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", emailPath);
             }
 
             // נרמל את הנתיב
@@ -3475,7 +3487,7 @@ public class MessagesController : Controller
         try
         {
             var mappings = new List<object>();
-            string phoneDirectoryPath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\phone_directory.csv";
+            string phoneDirectoryPath = @"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files\phone_directory.csv";
             bool emailMappingExists = System.IO.File.Exists(_emailMappingFilePath);
             bool phoneDirectoryExists = System.IO.File.Exists(phoneDirectoryPath);
             
@@ -3880,6 +3892,9 @@ public class MessageRequest
     public List<string> Attachments { get; set; } // קבצים מצורפים לסיכומי משמרת
     public List<AlertItem> AlertItems { get; set; }
 
+    public EntryPermitData EntryPermitData { get; set; }
+    public bool IsEntryPermit { get; set; }
+
 }
 
 
@@ -4002,4 +4017,30 @@ public class JobStatusUpdate
     public string RunningBy { get; set; }
     public string CompletedDate { get; set; } 
     public string RunningDate { get; set; } 
+}
+
+public class EntryPermitData
+{
+    public List<string> Sites { get; set; }
+    public string Site { get; set; }
+    public string Date { get; set; }
+    public string DateLabel { get; set; }
+    public List<EntryPermitPerson> Persons { get; set; }
+    public List<string> Names { get; set; }
+    public string FullName { get; set; }
+    public string Company { get; set; }
+    public List<string> CarNumbers { get; set; }
+    public string CarNumber { get; set; }
+    public string IdNumber { get; set; }
+    public string Escort { get; set; }
+    public string Time { get; set; }
+    public string Phone { get; set; }
+}
+
+public class EntryPermitPerson
+{
+    public string Name { get; set; }
+    public string CarNumber { get; set; }
+    public string IdNumber { get; set; }
+    public string Phone { get; set; }
 }

@@ -49,10 +49,17 @@ body {
     padding: 0 20px;
 }
 
+.header .container {
+    max-width: 6000px;
+}
+
 .logo-section {
-    order: 2;
-    margin-right: 10px;
-    margin-left: auto;
+    order: 5;
+    flex-shrink: 0;
+    margin-right: 0; 
+    margin-left: 0;
+    position: relative;
+    left: 5%;
 }
 
 .logo {
@@ -104,7 +111,6 @@ body {
     align-items: center;
     justify-content: center;
     order: 3;
-    margin-right: 120px;
 }
 
 .title-row {
@@ -113,6 +119,8 @@ body {
     justify-content: center;
     gap: 15px;
     flex-wrap: wrap;
+    position: relative;
+    right: 10%;
 }
 
 .main-title {
@@ -127,20 +135,297 @@ body {
     gap: 15px;
 }
 
+/* ═══════════════════════════════════════════
+   User Menu - Header
+═══════════════════════════════════════════ */
+.shift-and-user-wrapper {
+    display: flex;
+    flex-direction: row; 
+    align-items: center;
+    gap: 30px;
+    order: 3;
+}
+
+.user-menu-section {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.shift-and-user-wrapper .user-menu-section {
+    order:4;
+}
+
+/* פרטי משתמש */
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: #334155;
+    font-size: 0.8rem;
+    position: relative;
+}
+
+.user-info i {
+    font-size: 0.95rem;
+    color: #667eea;
+}
+
+.dashboard-header .user-display-name,
+.dashboard-header .btn-header-logout {
+    color: #9ca8b9;
+}
+
+.dashboard-header .user-menu-section {
+    position: fixed;
+    right: 20%;
+}
+
+.user-display-name {
+    font-weight: 600;
+    max-width: 100px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #334155;
+}
+
+.user-role-badge {
+    padding: 1px 6px;
+    border-radius: 20px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.role-Admin {
+    background: rgba(220, 53, 69, 0.15);
+    color: #dc3545;
+    border: 1px solid rgba(220, 53, 69, 0.3);
+}
+
+.role-NOC {
+    background: rgba(102, 126, 234, 0.15);
+    color: #667eea;
+    border: 1px solid rgba(102, 126, 234, 0.3);
+}
+
+.role-Dashboard {
+    background: rgba(40, 167, 69, 0.15);
+    color: #28a745;
+    border: 1px solid rgba(40, 167, 69, 0.3);
+}
+
+.btn-header-admin {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: rgba(220, 53, 69, 0.1);
+    border: 1px solid rgba(220, 53, 69, 0.3);
+    border-radius: 5px;
+    color: #dc3545;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background 0.2s;
+    white-space: nowrap;
+}
+
+.btn-header-admin:hover {
+    background: rgba(220, 53, 69, 0.2);
+}
+
+/* ── Pending Users Badge & Alert ─────────────────────────── */
+
+/* Badge מספרי על כפתור הניהול */
+.admin-panel-link {
+    position: relative;
+}
+
+.btn-pending-admin {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 5px;
+    color: #ffff;
+    font-weight: 500;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.pending-badge {
+    position: absolute;
+    top: -8px;
+    left: -8px;               /* RTL - שמאל */
+    background-color: #e74c3c;
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    border: 2px solid #fff;
+    animation: pulse-badge 1.5s infinite;
+    pointer-events: none;
+    z-index: 10;
+}
+
+/* אנימציית פעימה לבאדג' */
+@keyframes pulse-badge {
+    0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(231, 76, 60, 0.6); }
+    50%  { transform: scale(1.15); box-shadow: 0 0 0 5px rgba(231, 76, 60, 0);  }
+    100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(231, 76, 60, 0);    }
+}
+
+/* פס התראה מתחת ל-Header */
+.pending-users-alert {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: linear-gradient(135deg, #e74c3c, #c0392b);
+    color: #fff;
+    padding: 6px 16px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    white-space: nowrap;
+    animation: slide-in-alert 0.4s ease;
+    box-shadow: 0 2px 8px rgba(231, 76, 60, 0.4);
+}
+
+.pending-users-alert i {
+    font-size: 1rem;
+    animation: pulse-badge 1.5s infinite;
+}
+
+.pending-approve-link {
+    color: #fff;
+    text-decoration: underline;
+    font-weight: 700;
+    margin-right: 6px;
+    transition: opacity 0.2s;
+}
+
+.pending-approve-link:hover {
+    opacity: 0.8;
+    color: #fff;
+}
+
+@keyframes slide-in-alert {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0);    }
+}
+
+/* ── Back To Portal Button ─────────────────────────── */
+.logout-section #backToPortalBtn {
+    position: relative;
+    left: 20px;
+    top: 6px;
+}
+
+#backToPortalBtn {
+    display: none; /* מוצג רק דרך JS ל-Admin / NOC */
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #7c3aed, #5b21b6);
+    color: #ffffff;
+    font-size: 0.75rem;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35);
+    transition: all 0.2s ease;
+}
+
+#backToPortalBtn i {
+    font-size: 1rem;
+}
+
+/* hover */
+#backToPortalBtn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(124, 58, 237, 0.5);
+}
+
+/* active */
+#backToPortalBtn:active {
+    transform: translateY(0);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+}
+
+.btn-header-logout {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    background: rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 5px;
+    color: #64748b;
+    font-size: 0.75rem;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.2s;
+    white-space: nowrap;
+}
+
+.btn-header-logout:hover {
+    background: rgba(0, 0, 0, 0.1);
+    color: #8b9aaf;
+}
+
+.btn-header-logout i { font-size: 0.85rem; }
+/* ── Responsive - מסכים קטנים ── */
+@media (max-width: 768px) {
+    .user-display-name,
+    .user-role-badge,
+    .btn-header-admin span,
+    .btn-header-logout span {
+        display: none;  /* הסתר טקסט - השאר רק אייקונים */
+    }
+
+    .user-menu-section { gap: 6px; }
+
+    .btn-header-admin,
+    .btn-header-logout {
+        padding: 7px 10px;
+    }
+}
+
+.user-greeting-section {
+    order: 2;   /* היי.. */
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    position: relative;
+    right: 5%;
+}
+
 /* Control Panel - Inline in Header */
 .control-panel {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(248, 249, 250, 0.95));
+    background: linear-gradient(135deg, 
+        rgba(255, 255, 255, 0.95), 
+        rgba(248, 249, 250, 0.95));
     border-radius: 10px;
     box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08);
     overflow: hidden;
     border: 1px solid rgba(255, 255, 255, 0.8);
     min-width: 160px;
     max-width: 190px;
-    position: absolute;
-    z-index: 1000; 
-    order: 1;
-    right: 2%;
-    top: 2%;
+    position: relative;
+    z-index: 100;
+    order: 1; 
+    flex-shrink: 0;   
 }
 
 .control-panel-header {
@@ -326,9 +611,15 @@ body {
     display: flex;
     align-items: center;
     gap: 10px;
-    order: 3;
+    order: 4;
     position: relative;
-    right: 160px;
+    flex-shrink: 0;
+    left: 8%;
+}
+
+.logout-section {
+    order: 6;
+    flex-shrink: 0;
 }
 
 .alerts-title,
@@ -585,7 +876,7 @@ body {
 .category-filters-row {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
     flex-wrap: wrap;
 }
 
@@ -595,7 +886,7 @@ body {
     color: #320F5B;
     font-size: 0.9rem;
     white-space: nowrap;
-    margin-left: 10px;
+    margin-left: 5px;
 }
 
 /* Time Filter Buttons */
@@ -640,7 +931,7 @@ body {
 /* Category Filter Tabs */
 .filter-tab {
     flex: 0 0 auto;
-    padding: 8px 16px;
+    padding: 5px 9px;
     border-radius: 8px;
     border: 2px solid #e1e8ed;
     background: white;
@@ -4264,9 +4555,11 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 20px;
+    gap: 15px;
     flex-wrap: wrap;
-    position: relative; 
+    position: relative;
+    direction: rtl;      
+    width: 100%;
 }
 
 /* Add Message Modal */
@@ -9432,7 +9725,7 @@ button.folder-view-btn:focus,
     overflow: hidden;
     transition: max-height 0.4s ease, opacity 0.4s ease, padding 0.4s ease;
     opacity: 1;
-    padding: 20px;
+    padding: 2px;
 }
 
 .employee-filters-content.collapsed {
@@ -10041,6 +10334,23 @@ button.folder-view-btn:focus,
 .employee-task-edit-btn:hover {
     background: rgba(23, 162, 184, 0.1);
     transform: scale(1.1);
+}
+
+/* כפתור יומן Outlook */
+.employee-task-calendar-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #0078d4;          /* צבע Outlook */
+    font-size: 1rem;
+    padding: 4px 6px;
+    border-radius: 4px;
+    transition: background 0.2s, color 0.2s;
+}
+
+.employee-task-calendar-btn:hover {
+    background: #e3f2fd;
+    color: #005a9e;
 }
 
 .employee-task-delete-btn {
@@ -10789,6 +11099,147 @@ button.folder-view-btn:focus,
     white-space: nowrap;
 }
 
+/* ═══════════════════════════════════════════
+   MULTI-SELECT FILTER GROUPS
+═══════════════════════════════════════════ */
+
+.multi-filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+}
+
+.multi-filter-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #320F5B;
+    font-weight: 700;
+    font-size: 0.82rem;
+    white-space: nowrap;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(102, 126, 234, 0.15);
+}
+
+.multi-filter-label i {
+    color: #667eea;
+    font-size: 0.8rem;
+}
+
+.multi-filter-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+/* ── פריט בחירה ─────────────────────────── */
+.multi-filter-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 10px;
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 20px;       /* pill shape */
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #555;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.multi-filter-item:hover {
+    border-color: #667eea;
+    background: rgba(102, 126, 234, 0.06);
+    color: #667eea;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+}
+
+/* ── מצב נבחר ───────────────────────────── */
+.multi-filter-item:has(input:checked) {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    border-color: #667eea;
+    color: white;
+    box-shadow: 0 3px 10px rgba(102, 126, 234, 0.35);
+    transform: translateY(-1px);
+}
+
+.multi-filter-item:has(input:checked) i {
+    color: white !important;
+}
+
+/* הסתר את ה-checkbox עצמו */
+.multi-filter-item input[type="checkbox"] {
+    display: none;
+}
+
+/* ── נקודת צבע להתקדמות ─────────────────── */
+.progress-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* ── צבעים ספציפיים לעדיפות ─────────────── */
+.multi-filter-item.high-priority:has(input:checked) {
+    background: linear-gradient(135deg, #dc3545, #c82333);
+    border-color: #dc3545;
+}
+
+.multi-filter-item.medium-priority:has(input:checked) {
+    background: linear-gradient(135deg, #ffc107, #e0a800);
+    border-color: #ffc107;
+    color: #212529;
+}
+
+.multi-filter-item.low-priority:has(input:checked) {
+    background: linear-gradient(135deg, #28a745, #1e7e34);
+    border-color: #28a745;
+}
+
+/* ── צבעים ספציפיים לתאריך יעד ─────────── */
+.multi-filter-item.condition-overdue:has(input:checked) {
+    background: linear-gradient(135deg, #dc3545, #c82333);
+    border-color: #dc3545;
+}
+
+.multi-filter-item.condition-today:has(input:checked) {
+    background: linear-gradient(135deg, #fd7e14, #e96b02);
+    border-color: #fd7e14;
+}
+
+.multi-filter-item.condition-upcoming:has(input:checked) {
+    background: linear-gradient(135deg, #17a2b8, #138496);
+    border-color: #17a2b8;
+}
+
+.multi-filter-item.condition-nodate:has(input:checked) {
+    background: linear-gradient(135deg, #6c757d, #5a6268);
+    border-color: #6c757d;
+}
+
+/* ── צבעים ספציפיים להתקדמות ────────────── */
+.multi-filter-item.progress-not-started:has(input:checked) {
+    background: linear-gradient(135deg, #6c757d, #5a6268);
+    border-color: #6c757d;
+}
+
+.multi-filter-item.progress-in-progress:has(input:checked) {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    border-color: #667eea;
+}
+
+.multi-filter-item.progress-completed:has(input:checked) {
+    background: linear-gradient(135deg, #28a745, #1e7e34);
+    border-color: #28a745;
+}
 
 .filter-select {
     padding: 8px 12px;
@@ -11286,6 +11737,31 @@ button.folder-view-btn:focus,
     font-size: 0.7rem;
     font-weight: bold;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* נעילת פעילות בארכיון */
+.archived-locked {
+    position: relative;
+}
+
+.archived-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: #fff3cd;
+    border: 1px solid #ffc107;
+    border-radius: 8px;
+    padding: 10px 16px;
+    margin-bottom: 12px;
+    color: #856404;
+    font-weight: 600;
+    font-size: 14px;
+    direction: rtl;
+}
+
+.archived-banner i {
+    font-size: 16px;
+    color: #856404;
 }
 
 /* No Activities State */
@@ -11941,6 +12417,10 @@ button.folder-view-btn:focus,
     vertical-align: middle;
 }
 
+.master-checkbox {
+    left: 5px;
+}
+
 .alert-checkbox,
 .master-checkbox {
     width: 18px;
@@ -12071,6 +12551,21 @@ button.folder-view-btn:focus,
     color: white;
 }
 
+.export-excel-btn {
+    color: #1D6F42;
+    border-color: #1D6F42;
+}
+
+.export-excel-btn:hover {
+    background-color: #1D6F42;
+    color: white;
+}
+
+.export-excel-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .bulk-assign-btn {
     color: #007bff;
     border-color: #007bff;
@@ -12178,6 +12673,178 @@ button.folder-view-btn:focus,
 /* שמירה על צבע הרקע המקורי בעת hover על שורה נבחרת */
 .alerts-table tr.selected:hover {
     background-color: rgba(33, 150, 243, 0.3) !important;
+}
+
+/* ==========================================
+   מצב צבע טקסט להתראות (ללא רקע צבעוני)
+   ========================================== */
+
+/* איפוס צבע רקע במצב טקסט */
+.alerts-table tr.severity-text-critical,
+.alerts-table tr.severity-text-major,
+.alerts-table tr.severity-text-unknown {
+    background-color: transparent !important;
+}
+
+/* צבע טקסט לפי חומרה */
+.alerts-table tr.severity-text-critical td {
+    color: #cc0000 !important;
+    font-weight: 600;
+}
+
+.alerts-table tr.severity-text-major td {
+    color: #cc6600 !important;
+    font-weight: 600;
+}
+
+.alerts-table tr.severity-text-unknown td {
+    color: #7700cc !important;
+    font-weight: 600;
+}
+
+/* hover במצב טקסט */
+.alerts-table tr.severity-text-critical:hover {
+    background-color: rgba(204, 0, 0, 0.05) !important;
+}
+
+.alerts-table tr.severity-text-major:hover {
+    background-color: rgba(204, 102, 0, 0.05) !important;
+}
+
+.alerts-table tr.severity-text-unknown:hover {
+    background-color: rgba(119, 0, 204, 0.05) !important;
+}
+
+/* שמירה על צבע אייקוני severity גם במצב טקסט */
+.alerts-table tr.severity-text-critical .severity-icon,
+.alerts-table tr.severity-text-major .severity-icon,
+.alerts-table tr.severity-text-unknown .severity-icon {
+    color: white !important; /* האייקון עצמו נשאר לבן כי יש לו רקע */
+}
+
+/* שמירה על צבע שורה נבחרת */
+.alerts-table tr.severity-text-critical.selected,
+.alerts-table tr.severity-text-major.selected,
+.alerts-table tr.severity-text-unknown.selected {
+    background-color: rgba(33, 150, 243, 0.2) !important;
+    border: 2px solid #2196F3 !important;
+}
+
+/* ==========================================
+   מצב צבע טקסט - רקע בהיר
+   ========================================== */
+.alerts-table tr.severity-text-light-critical,
+.alerts-table tr.severity-text-light-major,
+.alerts-table tr.severity-text-light-unknown {
+    background-color: #f8f9fa !important;
+}
+
+.alerts-table tr.severity-text-light-critical td {
+    color: #cc0000 !important;
+    font-weight: 600;
+}
+.alerts-table tr.severity-text-light-major td {
+    color: #cc6600 !important;
+    font-weight: 600;
+}
+.alerts-table tr.severity-text-light-unknown td {
+    color: #7700cc !important;
+    font-weight: 600;
+}
+
+/* hover */
+.alerts-table tr.severity-text-light-critical:hover {
+    background-color: #f0f0f0 !important;
+}
+.alerts-table tr.severity-text-light-major:hover {
+    background-color: #f0f0f0 !important;
+}
+.alerts-table tr.severity-text-light-unknown:hover {
+    background-color: #f0f0f0 !important;
+}
+
+/* ==========================================
+   מצב צבע טקסט - רקע כהה
+   ========================================== */
+.alerts-table tr.severity-text-dark-critical,
+.alerts-table tr.severity-text-dark-major,
+.alerts-table tr.severity-text-dark-unknown {
+    background-color: #1a1a2e !important;
+}
+
+.alerts-table tr.severity-text-dark-critical td {
+    color: #ff6b6b !important;
+    font-weight: 600;
+}
+.alerts-table tr.severity-text-dark-major td {
+    color: #ffa94d !important;
+    font-weight: 600;
+}
+.alerts-table tr.severity-text-dark-unknown td {
+    color: #cc99ff !important;
+    font-weight: 600;
+}
+
+/* hover */
+.alerts-table tr.severity-text-dark-critical:hover {
+    background-color: #2d2d44 !important;
+}
+.alerts-table tr.severity-text-dark-major:hover {
+    background-color: #2d2d44 !important;
+}
+.alerts-table tr.severity-text-dark-unknown:hover {
+    background-color: #2d2d44 !important;
+}
+
+/* כותרות טבלה במצב כהה */
+.alerts-table.dark-mode-active thead th {
+    background-color: #0d0d1a !important;
+    color: #e0e0e0 !important;
+}
+
+/* שורה נבחרת במצב כהה */
+.alerts-table tr.severity-text-dark-critical.selected,
+.alerts-table tr.severity-text-dark-major.selected,
+.alerts-table tr.severity-text-dark-unknown.selected {
+    background-color: rgba(33, 150, 243, 0.3) !important;
+    border: 2px solid #2196F3 !important;
+}
+
+/* כפתור החלפת מצב צבע */
+.alerts-color-mode-btn {
+    background: linear-gradient(135deg, #e67e22, #d35400);
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    margin-right: 5px;
+}
+
+.alerts-color-mode-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(230, 126, 34, 0.4);
+}
+
+/* fullscreen במצב טקסט */
+.fullscreen-mode .severity-text-critical td {
+    color: #ff0000 !important;
+    font-weight: 700;
+}
+
+.fullscreen-mode .severity-text-major td {
+    color: #ff6600 !important;
+    font-weight: 700;
+}
+
+.fullscreen-mode .severity-text-unknown td {
+    color: #aa00ff !important;
+    font-weight: 700;
 }
 
 .alerts-container .clear-search-btn {
@@ -13391,7 +14058,7 @@ button.folder-view-btn:focus,
 .rack-details-modal {
     width: 95%;
     height: 95%;
-    max-width: 600px; 
+    max-width: 750px;
 }
 
 .all-racks-modal {
@@ -14495,6 +15162,8 @@ button.folder-view-btn:focus,
     padding: 10px;
     height: 100%;
     overflow: hidden;
+    display: flex; 
+    align-items: stretch; 
 }
 
 #allRacksModal .modal-footer,
@@ -14690,8 +15359,34 @@ button.folder-view-btn:focus,
 
 /* סגנונות לתיבת החיפוש */
 .datacenter-search-container {
-    margin-bottom: 5px;
+    margin-bottom: 10px;
     display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 500px;
+}
+
+.datacenter-search-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+}
+
+.datacenter-free-row {
+    position: relative;
+    right: 20px;
+}
+
+.datacenter-search-row .search-box {
+    flex: 1;
+    max-width: none;
+    margin-bottom: 0;
+}
+
+#searchResultsInfo {
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 
 .datacenter-search-container .search-box {
@@ -14710,12 +15405,15 @@ button.folder-view-btn:focus,
     color: #1565c0;
     font-size: 0.9rem;
     margin-bottom: 10px;
+    background: #e8f5e9;
+    color: #155724;
 }
 
 .btn-clear-search {
     background: rgba(255, 255, 255, 0.5);
     border: 1px solid #90caf9;
-    color: #1565c0;
+    color: #155724;
+    border: 1px solid #28a745;
     border-radius: 4px;
     padding: 4px 8px;
     cursor: pointer;
@@ -14731,12 +15429,48 @@ button.folder-view-btn:focus,
     border-color: #1565c0;
 }
 
-/* סגנונות לסימון ארונות בתוצאות חיפוש */
+/* סימון ארונות בתוצאות חיפוש ציוד - ירוק */
 .room.search-result, .rack.search-result {
+    background-color: #c8e6c9 !important;
+    border: 2px solid #28a745 !important;
+    box-shadow: 0 0 10px rgba(40, 167, 69, 0.5) !important;
+    z-index: 10;
+}
+
+/* חיפוש מקום פנוי - כחול */
+.room.free-space-rack, .rack.free-space-rack {
     background-color: #bbdefb !important;
     border: 2px solid #2196f3 !important;
     box-shadow: 0 0 10px rgba(33, 150, 243, 0.5) !important;
     z-index: 10;
+    animation: freeSpacePulse 2s ease-in-out infinite;
+}
+
+/* ארון שמופיע בשני החיפושים - צבע משולב */
+.room.search-result.free-space-rack,
+.rack.search-result.free-space-rack {
+    background: linear-gradient(135deg, #c8e6c9 50%, #bbdefb 50%) !important;
+    border: 2px solid #9c27b0 !important;
+    box-shadow: 0 0 12px rgba(156, 39, 176, 0.6) !important;
+}
+
+/* תוצאות מקום פנוי - כחול */
+.search-results-info.free-space-results {
+    background: #e3f2fd;
+    border: 1px solid #2196f3;
+    color: #0d47a1;
+    margin-bottom: 0;
+}
+
+.search-results-info.free-space-results .btn-clear-search {
+    border-color: #2196f3;
+    color: #0d47a1;
+}
+
+/* שדה חיפוש ציוד */
+.search-box-equipment input:not(:placeholder-shown) {
+    border-color: #2196f3;
+    background: #e3f2fd;
 }
 
 /* סגנונות לסימון ציוד בתוצאות חיפוש */
@@ -14757,7 +15491,11 @@ button.folder-view-btn:focus,
 .equipment-connections-modal {
     max-width: 1500px;
     width: 90%;
-    max-height: 90vh;
+    height: 87%;
+}
+
+.equipment-connections-modal .modal-body{
+    height: 70vh;
 }
 
 .connections-upload-container {
@@ -14775,7 +15513,7 @@ button.folder-view-btn:focus,
 }
 
 .connections-table-container {
-    max-height: 50vh;
+    max-height: 59vh;
     overflow-y: auto;
     margin-bottom: 15px;
 }
@@ -14804,15 +15542,17 @@ button.folder-view-btn:focus,
     width: 8%; /* פורט */
 }
 .connections-table th:nth-child(2), 
-.connections-table td:nth-child(2) {
-    width: 10%; /* סוג */
-}
+.connections-table td:nth-child(2),
 .connections-table th:nth-child(3), 
-.connections-table td:nth-child(3) {
-    width: 60%; /* מחובר אל */
+.connections-table td:nth-child(3)  {
+    width: 10%; /*  מהירות + סוג */
 }
 .connections-table th:nth-child(4), 
 .connections-table td:nth-child(4) {
+    width: 60%; /* מחובר אל */
+}
+.connections-table th:nth-child(5), 
+.connections-table td:nth-child(5) {
     width: 22%; /* תיאור */
 }
 
@@ -14843,12 +15583,19 @@ button.folder-view-btn:focus,
 }
 
 .connections-table input[type="text"],
+.connections-table input[type="number"],
 .connections-table select {
     width: 100%;
     padding: 6px;
     border: 1px solid #ced4da;
     border-radius: 4px;
     font-size: 14px;
+    margin-top: 18px; /* הוספת מרווח עליון כדי ליישר עם שדות מחובר אל */
+}
+
+.connection-target-fields input,
+.connection-target-fields select {
+    margin-top: 0 !important;
 }
 
 .connections-table input[type="text"]:focus,
@@ -14860,7 +15607,8 @@ button.folder-view-btn:focus,
 }
 
 .add-connection-container {
-    margin-top: 10px;
+    margin-top: 100px;
+    margin-bottom: 30px;
     text-align: center;
 }
 
@@ -15192,6 +15940,362 @@ button.folder-view-btn:focus,
     width: 50%;
 }
 
+/* עיצוב מטריקות ארון */
+.rack-metrics-container {
+    padding: 10px;
+}
+
+.metrics-panels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.metrics-panel {
+    flex: 1;
+    min-width: 250px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    padding: 15px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.metrics-panel h4 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #333;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 8px;
+}
+
+.metrics-data {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+/* עיצוב מטריקות מפורטות - תצוגה צד לצד */
+.metrics-side-by-side {
+    display: flex;
+    flex-direction: row;
+    gap: 20px;
+    width: 100%;
+}
+
+.metrics-side {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 10px;
+    height: 100%;
+    overflow: hidden;
+}
+
+.chart-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 15px;
+    height: calc(50% - 15px); /* חצי מהגובה פחות מרווח */
+    min-height: 100px;
+}
+
+.chart-container {
+    width: 100%;
+    height: 70%;
+    min-height: 200px; /* הוספת גובה מינימלי למיכל הגרף עצמו */
+}
+
+.chart-section h5 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: #333;
+    font-size: 16px;
+}
+
+.metric-item {
+    flex: 1;
+    min-width: 120px;
+    text-align: center;
+    padding: 10px;
+    background-color: white;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.metric-icon {
+    font-size: 24px;
+    margin-bottom: 5px;
+    color: #0d6efd;
+}
+
+.metric-value {
+    font-size: 22px;
+    font-weight: bold;
+    margin-bottom: 5px;
+    direction: ltr;
+}
+
+.metric-label {
+    font-size: 14px;
+    color: #666;
+}
+
+.metrics-actions {
+    margin-top: 20px;
+    text-align: center;
+}
+
+.metrics-graph-modal{
+    width: 85%;
+}
+
+/* עיצוב מטריקות מפורטות */
+.detailed-metrics-container {
+    padding: 10px;
+}
+
+.metrics-tabs {
+    display: flex;
+    border-bottom: 1px solid #dee2e6;
+    margin-bottom: 15px;
+}
+
+.tab-button {
+    padding: 10px 15px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+/* עיצוב כפתור מטריקות בארון */
+.view-metrics-btn {
+    background: linear-gradient(135deg, #17a2b8, #764ba2);
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 15px;
+}
+
+.view-metrics-btn i {
+    margin-left: 5px;
+}
+
+.view-metrics-btn:hover {
+    background-color: #138496;
+}
+
+/* עיצוב כפתור מטריקות בכרטיסיית ארון */
+.rack-actions {
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    display: flex;
+    gap: 5px;
+}
+
+.rack-metrics-btn {
+    background-color: #17a2b8;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 12px;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.rack-metrics-btn:hover {
+    opacity: 1;
+}
+
+/* מבנה חדש לתצוגת פרטי ארון */
+.rack-details-layout {
+    display: flex;
+    gap: 20px;
+    height: 100%;
+}
+
+/* מיכל המטריקות */
+.rack-metrics-container {
+    margin-top: 15px;
+    margin-bottom: 15px;
+    width: 400px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    position: relative;
+    right: 50%;
+}
+
+/* עיצוב סיכום המטריקות */
+.rack-metrics-summary {
+    padding: 15px;
+}
+
+.rack-metrics-summary h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 18px;
+    color: #343a40;
+    text-align: center;
+    border-bottom: 1px solid #dee2e6;
+    padding-bottom: 10px;
+}
+
+/* פאנלים של המטריקות בשורה */
+.metrics-panels {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 15px;
+}
+
+.metrics-panel {
+    flex: 1;
+    padding: 15px;
+    background-color: white;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.metrics-panel h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 16px;
+    color: #495057;
+    border-bottom: 1px solid #dee2e6;
+    padding-bottom: 5px;
+}
+
+/* כפתורי פעולה למטריקות */
+.metrics-actions {
+    display: flex;
+    justify-content: center;
+    margin-top: 10px;
+}
+
+/* עיצוב פריטי מטריקה */
+.metrics-data {
+    display: flex;
+    justify-content: space-around;
+    gap: 15px;
+}
+
+.metric-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 10px;
+    border-radius: 8px;
+    background-color: #f8f9fa;
+    min-width: 100px;
+}
+
+.metric-icon {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #e9ecef;
+    border-radius: 50%;
+    color: #495057;
+    margin-bottom: 8px;
+    font-size: 18px;
+}
+
+.metric-value {
+    font-size: 20px;
+    font-weight: bold;
+    color: #343a40;
+    margin-bottom: 5px;
+}
+
+.metric-label {
+    font-size: 14px;
+    color: #6c757d;
+}
+
+/* עיצוב תפריט הקשר */
+.rack-context-menu {
+    position: absolute;
+    background-color: white;
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    z-index: 1000;
+    min-width: 180px;
+    direction: rtl;
+}
+
+.context-menu-header {
+    padding: 8px 12px;
+    font-weight: bold;
+    border-bottom: 1px solid #eee;
+    background-color: #f8f9fa;
+    border-radius: 4px 4px 0 0;
+}
+
+.context-menu-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    width: 100%;
+    text-align: right;
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.context-menu-item i {
+    margin-left: 8px;
+    width: 16px;
+    text-align: center;
+}
+
+.context-menu-item:hover {
+    background-color: #f0f0f0;
+}
+
+.context-menu-item.view-details i {
+    color: #0d6efd;
+}
+
+.context-menu-item.view-metrics i {
+    color: #17a2b8;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between; /* שומר על הכותרת בצד אחד והכפתורים בצד שני */
+    width: 100%;
+    gap: 10px; /* רווח בין הכותרת לכפתורים */
+    flex-direction: column;
+}
+
+.header-buttons {
+    display: flex;
+    gap: 8px; /* רווח בין הכפתורים עצמם */
+    align-items: center;
+}
+
 /* סגנונות למצב צפייה בלבד */
 .view-mode-cell {
     padding: 8px;
@@ -15222,6 +16326,80 @@ button.folder-view-btn:focus,
 
 .clickable-equipment:hover {
     box-shadow: 0 0 10px rgba(102, 126, 234, 0.5);
+}
+
+.tooltip-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    margin-right: 6px;
+    cursor: help;
+}
+
+.tooltip-icon {
+    color: #667eea;
+    font-size: 0.9rem;
+    transition: color 0.2s ease;
+}
+
+.tooltip-wrapper:hover .tooltip-icon {
+    color: #764ba2;
+}
+
+.tooltip-text {
+    visibility: hidden;
+    opacity: 0;
+    position: absolute;
+    bottom: calc(100% + 8px);
+    right: 50%;
+    transform: translateX(50%);
+    background: linear-gradient(135deg, #2c3e50, #34495e);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    white-space: nowrap;
+    z-index: 9999;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+    display: flex;
+    flex-direction: row;
+    gap: 4px;
+    text-align: center;
+    pointer-events: none;
+}
+
+/* חץ של הטולטיפ */
+.tooltip-text::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    right: 50%;
+    transform: translateX(50%);
+    border: 6px solid transparent;
+    border-top-color: #34495e;
+}
+
+.tooltip-wrapper:hover .tooltip-text {
+    visibility: visible;
+    opacity: 1;
+}
+
+.tooltip-divider {
+    display: block;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.2);
+    margin: 2px 0;
+}
+
+.tooltip-text i {
+    font-size: 0.75rem;
+    margin-left: 4px;
+}
+
+.tooltip-text strong {
+    color: #a29bfe;
 }
 
 /* סגנונות למצב טעינה בטבלת חיבורים */
@@ -15311,12 +16489,32 @@ button:disabled {
     transition: all 0.3s ease;
     display: flex;
     align-items: center;
-    margin-right: 5px;
 }
 
 .expand-alerts-btn:hover {
     transform: translateY(-2px);
     box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+}
+
+/* כפתור ניהול עמודות - פריוינקל (בין כחול לסגול) */
+.column-manager-btn {
+    background: linear-gradient(135deg, #3f3cbb, #2f2a8c);
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    margin-right: 5px;
+}
+
+.column-manager-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(63, 60, 187, 0.4);
 }
 
 /* סגנונות לכפתור הסתרת סינונים */
@@ -15332,7 +16530,6 @@ button:disabled {
     transition: all 0.3s ease;
     display: flex;
     align-items: center;
-    margin-right: 5px;
 }
 
 .toggle-filters-btn:hover {
@@ -15514,8 +16711,10 @@ button:disabled {
     overflow-x: auto;
     max-height: 400px;
     overflow-y: auto;
-    position: relative; 
+    position: relative;
     overflow-anchor: none;
+    /* חיוני ל-sticky */
+    -webkit-overflow-scrolling: touch;
 }
 
 .alerts-table {
@@ -15548,15 +16747,108 @@ button:disabled {
     color: black;
 }
 
+.alerts-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
 .alerts-table th {
     background-color: #f2f2f2;
     position: sticky;
     top: 0;
-    z-index: 1;
+    z-index: 10;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* סגנון כותרות ניתנות למיון */
+.alerts-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    transition: background-color 0.2s;
+}
+
+.alerts-table th.sortable:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+/* אייקון מיון פעיל */
+.alerts-table th.sort-asc .sort-icon i,
+.alerts-table th.sort-desc .sort-icon i {
+    opacity: 1;
+    color: #320F5B;
+}
+
+/* הסתרת אייקון ניטרלי כשיש מיון פעיל */
+.alerts-table th.sort-asc .sort-icon-neutral,
+.alerts-table th.sort-desc .sort-icon-neutral {
+    display: none;
 }
 
 .alerts-table tr:hover {
     background-color: #f5f5f5;
+}
+
+/* ==========================================
+   ALERTS BUTTONS GRID - 2 שורות של כפתורים
+   ========================================== */
+
+.alerts-btn-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    row-gap: 8px;
+    flex-shrink: 0;
+}
+
+.alerts-btn-row {
+    display: flex;
+    flex-direction: row;
+    gap: 5px;
+    align-items: center;
+}
+
+.alerts-btn-row button {
+    width: 40px;          /* רוחב קבוע לכל הכפתורים */
+    height: 40px;         /* גובה קבוע לכל הכפתורים */
+    padding: 0;           /* ביטול padding שגורם לאי-אחידות */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    flex: 1;
+    min-width: 40px;
+    max-width: 40px;
+    justify-content: center;
+    margin-right: 0; /* ביטול margin קיים */
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+/* שורה אחת כשסינון סגור */
+.alerts-btn-row-single {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 5px;
+    align-items: center;
+}
+
+.alerts-btn-row-single button {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    min-width: 40px;
+    max-width: 40px;
+    font-size: 0.9rem;
+    font-weight: 600;
 }
 
 /* סגנונות לאייקוני חומרה */
@@ -15567,7 +16859,6 @@ button:disabled {
     width: 20px;
     height: 20px;
     border-radius: 50%;
-    margin: 0 auto;
     color: white;
     font-size: 10px;
     position: relative; /* חשוב לטולטיפ */
@@ -15832,6 +17123,23 @@ td .status-assign {
 .alerts-table-container {
     overflow-y: auto !important;
     overflow-x: auto !important;
+}
+
+.alerts-btn-grid button {
+  background: #f1f3f5;
+  color: #334155;
+  border: 1px solid #d0d5dd;
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+.alerts-btn-grid button:hover {
+  background: #e9ecef;
+}
+
+.alerts-btn-grid button.active {
+  background: #dee2e6;
+  font-weight: 600;
 }
 
 /* תיקון למיקום הפופאפ כשהוא מוצג מעל */
@@ -16186,7 +17494,6 @@ td .status-assign {
 .severity-major:hover {
     background-color: rgba(255, 165, 0, 0.2);
 }
-
 
 .severity-unknown:hover {
     background-color: rgba(128, 128, 128, 0.2);
@@ -16841,6 +18148,772 @@ td .status-assign {
     display: block;
     width: 100%;
     height: 100%;
+}
+
+#dashboardTitle{
+    height: 3px;
+    font-size: 20px;
+    position: relative;
+    bottom: 15px;
+}
+
+.fullscreen-mode .alerts-table {
+    width: 98%;
+    right: 1%;
+}
+
+.fullscreen-mode .alerts-table-container {
+    max-height: 100vh;
+    height: calc(100vh); 
+}
+
+/* ==========================================
+גוונים לפי סטטוס - מוסיפים על גבי צבעי החומרה
+========================================== */
+.fullscreen-mode .severity-critical.status-open-row {
+    background-color: rgba(255, 0, 0, 0.99);
+}
+
+.fullscreen-mode .severity-major.status-open-row {
+    background-color: rgba(255, 140, 0, 0.99);
+}
+
+.fullscreen-mode .severity-unknown.status-open-row {
+    background-color: rgba(183, 0, 255 ,0.99);
+}
+
+.fullscreen-mode .severity-critical.status-ack-row {
+    background-color: rgba(115, 153, 219, 0.8);
+}
+
+.fullscreen-mode .severity-major.status-ack-row {
+     background-color: rgba(255, 190, 0, 0.99);
+}
+
+.fullscreen-mode .severity-unknown.status-ack-row {
+    background-color: rgba(183, 0, 255 ,0.7);
+}
+
+.fullscreen-mode .severity-critical.status-assign-row {
+    background-color: rgba(73, 131, 225, 0.8);
+}
+
+.fullscreen-mode .severity-major.status-assign-row {
+     background-color: rgba(255, 165, 0, 0.99);
+}
+
+.fullscreen-mode .severity-unknown.status-assign-row {
+    background-color: rgba(183, 0, 255 ,0.5);
+}
+
+
+#findFreeSpaceModal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+}
+
+#findFreeSpaceModal .small-modal {
+  width: 320px;
+}
+
+#findFreeSpaceModal .modal-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* ========================================
+   RACK PREVIEW POPUP
+   ======================================== */
+
+#rackPreviewPopup {
+    position: fixed;
+    z-index: 99999;
+    width: 260px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+    border: 2px solid #667eea;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    direction: rtl;
+    animation: rackPreviewSlideIn 0.25s ease;
+}
+
+@keyframes rackPreviewSlideIn {
+    from {
+        opacity: 0;
+        transform: translateX(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* כותרת */
+.rack-preview-header {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    padding: 1px 2px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.rack-preview-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    flex: 1;
+}
+
+.rack-preview-title i {
+    font-size: 0.85rem;
+    opacity: 0.9;
+}
+
+.rack-preview-stats {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.rack-preview-stat {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.18);
+    padding: 2px 6px;
+    border-radius: 8px;
+    white-space: nowrap;
+}
+
+.rack-preview-stat i {
+    font-size: 0.65rem;
+}
+
+.rack-preview-close {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+    transition: background 0.2s;
+}
+
+.rack-preview-close:hover {
+    background: rgba(255, 255, 255, 0.35);
+}
+
+/* סרגל תפיסה */
+.rack-preview-occupancy {
+    padding: 5px 12px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e0e0e0;
+    flex-shrink: 0;
+}
+
+.rack-preview-occupancy-bar {
+    height: 5px;
+    background: #e9ecef;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.rack-preview-occupancy-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+}
+
+/* גוף - גלילה */
+.rack-preview-body {
+    overflow-y: auto;
+    flex: 1;
+    padding: 10px;
+    background: #2c2c2c;
+    scrollbar-width: thin;
+    scrollbar-color: #667eea #444;
+}
+
+.rack-preview-body::-webkit-scrollbar {
+    width: 5px;
+}
+
+.rack-preview-body::-webkit-scrollbar-track {
+    background: #444;
+    border-radius: 10px;
+}
+
+.rack-preview-body::-webkit-scrollbar-thumb {
+    background: #667eea;
+    border-radius: 10px;
+}
+
+/* מסגרת ארון */
+.rack-preview-rack-frame {
+    background: #e8e8e8;
+    border: 3px solid #555;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+/* כותרת ארון */
+.rack-preview-rack-header {
+    background: #444;
+    color: white;
+    text-align: center;
+    padding: 4px 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 1px;
+    border-bottom: 2px solid #333;
+}
+
+/* יחידות */
+.rack-preview-units {
+    display: flex;
+    flex-direction: column;
+    background: repeating-linear-gradient(
+        0deg,
+        #ccc 0px,
+        #ccc 0.5px,
+        transparent 0.5px,
+        transparent 18px
+    );
+}
+
+/* שורת U */
+.rack-preview-row {
+    display: flex;
+    align-items: center;
+    min-height: 18px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    position: relative;
+    overflow: hidden;
+    transition: filter 0.15s ease;
+    background-color: #cce5ff;
+    border-color: #b8daff;
+}
+
+.rack-preview-row:hover {
+    filter: brightness(0.93);
+    z-index: 2;
+}
+
+/* שורה ריקה */
+.empty-row {
+    background: linear-gradient(
+        90deg,
+        #d8d8d8 0%,
+        #e8e8e8 50%,
+        #d8d8d8 100%
+    );
+    height: 18px !important;
+}
+
+/* מספר U */
+.rack-preview-u-num {
+    width: 26px;
+    min-width: 26px;
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 2px 0;
+    background: rgba(0, 0, 0, 0.08);
+    border-left: 1px solid rgba(0, 0, 0, 0.1);
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+.empty-u {
+    justify-content: center;
+}
+
+/* מספר יחיד (ציוד 1U או אבן דרך) */
+.u-single {
+    font-size: 0.58rem;
+    font-weight: 700;
+    color: #555;
+    line-height: 1;
+}
+
+/* מספר עליון של טווח */
+.u-top {
+    font-size: 0.58rem;
+    font-weight: 700;
+    color: #444;
+    line-height: 1;
+}
+
+/* נקודות באמצע */
+.u-dots {
+    font-size: 0.5rem;
+    color: #999;
+    line-height: 1;
+    letter-spacing: -1px;
+}
+
+/* מספר תחתון של טווח */
+.u-bottom {
+    font-size: 0.58rem;
+    font-weight: 700;
+    color: #444;
+    line-height: 1;
+}
+
+/* אבני דרך בשורות ריקות (5, 10, 15...) */
+.u-milestone {
+    color: #888;
+    font-weight: 600;
+}
+
+/* תוכן ציוד */
+.rack-preview-equip-content {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 5px;
+    min-width: 0;
+    height: 100%;
+}
+
+.rack-preview-equip-name {
+    font-size: 0.65rem;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.2;
+}
+
+/* תווית ריק */
+.rack-preview-empty-label {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #aaa;
+    font-size: 0.65rem;
+}
+
+/* badge גודל */
+.rack-preview-size-badge {
+    font-size: 0.58rem;
+    font-weight: 700;
+    padding: 1px 4px;
+    border-radius: 3px;
+    margin-left: 3px;
+    flex-shrink: 0;
+    align-self: flex-start;
+    margin-top: 3px;
+}
+
+/* כפתור פתיחה */
+.rack-preview-footer {
+    padding: 8px 10px;
+    border-top: 1px solid #e0e0e0;
+    background: white;
+    flex-shrink: 0;
+}
+
+.rack-preview-open-btn {
+    width: 100%;
+    padding: 7px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border: none;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: opacity 0.2s;
+}
+
+.rack-preview-open-btn:hover {
+    opacity: 0.88;
+}
+
+.rack-preview-open-btn i {
+    font-size: 0.75rem;
+}
+
+/* ==========================================
+   FIND FREE SPACE BUTTON & MODAL
+   ========================================== */
+
+/* כפתור חפש מקום פנוי */
+#findFreeSpaceBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 14px;
+    background: linear-gradient(135deg, #2196f3, #1976d2);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    font-family: 'Almoni', Arial, sans-serif;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
+    white-space: nowrap;
+    height: 40px;
+    width: 170px;
+}
+
+#findFreeSpaceBtn:hover {
+    transform: translateY(-2px);
+    background: linear-gradient(135deg, #1976d2, #1565c0);
+    box-shadow: 0 6px 20px rgba(33, 150, 243, 0.4);
+}
+
+#findFreeSpaceBtn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+}
+
+#findFreeSpaceBtn i {
+    font-size: 1rem;
+}
+
+/* ==========================================
+   FIND FREE SPACE MODAL
+   ========================================== */
+
+#findFreeSpaceModal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    animation: modalFadeIn 0.2s ease;
+}
+
+@keyframes modalFadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+#findFreeSpaceModal .modal-content {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+    width: 90%;
+    max-width: 380px;
+    animation: modalSlideDown 0.3s ease;
+    overflow: hidden;  
+    position: relative;
+    bottom: 10%;
+}
+
+@keyframes modalSlideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-30px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* כותרת המודל */
+#findFreeSpaceModal .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 20px;
+    background: linear-gradient(135deg, #2196f3, #1976d2);
+    color: white;
+    margin-bottom: 0;
+    border-bottom: none;
+}
+
+#findFreeSpaceModal .modal-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: white;
+}
+
+#findFreeSpaceModal .modal-header h3 i {
+    font-size: 1.1rem;
+    color: white;
+}
+
+#findFreeSpaceModal .modal-close {
+    background: rgba(255, 255, 255, 0.2);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+}
+
+#findFreeSpaceModal .modal-close:hover {
+    background: rgba(255, 255, 255, 0.35);
+    transform: rotate(90deg);
+}
+
+/* גוף המודל */
+#findFreeSpaceModal .modal-body {
+    padding: 24px 20px 16px;
+}
+
+#findFreeSpaceModal .form-group {
+    margin-bottom: 0;
+}
+
+#findFreeSpaceModal .form-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    color: #320F5B;
+    font-weight: 700;
+    font-size: 1rem;
+}
+
+#findFreeSpaceModal .form-label i {
+    color: #2196f3;;
+    font-size: 1rem;
+}
+
+/* תיבת הבחירה */
+#freeSpaceUnitsSelect {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid #e1e8ed;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #333;
+    background: white;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: 'Almoni', Arial, sans-serif;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2328a745' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: left 14px center;
+    padding-left: 40px;
+}
+
+#freeSpaceUnitsSelect:hover {
+    border-color: #2196f3;;
+    background-color: #f8fff9;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.15);
+}
+
+#freeSpaceUnitsSelect:focus {
+    outline: none;
+    border-color: #2196f3;;
+    box-shadow: 0 0 0 3px rgba(40, 167, 69, 0.15);
+    background-color: white;
+}
+
+/* תיאור עזר */
+.free-space-hint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: linear-gradient(135deg, #e3f2fd, #e8f4fd);
+    border-radius: 8px;
+    border-right: 3px solid #2196f3;
+    font-size: 0.85rem;
+    color: #0d47a1;
+}
+
+.free-space-hint i {
+    color: #2196f3;;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+}
+
+/* כפתורי הפעולה */
+#findFreeSpaceModal .modal-footer {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    padding: 16px 20px 20px;
+    border-top: 1px solid #f0f0f0;
+    background: #fafafa;
+}
+
+#confirmFindFreeSpaceBtn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 22px;
+    background: linear-gradient(135deg, #2196f3, #1976d2);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 700;
+    font-family: 'Almoni', Arial, sans-serif;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(173, 216, 230, 0.3);
+}
+
+#confirmFindFreeSpaceBtn:hover {
+    transform: translateY(-2px);
+    background: linear-gradient(135deg, #1e88e5, #1565c0);
+    box-shadow: 0 6px 20px rgba(33, 150, 243, 0.45);
+}
+
+#confirmFindFreeSpaceBtn:active {
+    transform: translateY(0);
+}
+
+#confirmFindFreeSpaceBtn i {
+    font-size: 0.95rem;
+}
+
+/* כפתור ביטול */
+#findFreeSpaceModal .btn-cancel {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 18px;
+    background: white;
+    color: #6c757d;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 600;
+    font-family: 'Almoni', Arial, sans-serif;
+    transition: all 0.3s ease;
+}
+
+#findFreeSpaceModal .btn-cancel:hover {
+    background: #f8f9fa;
+    border-color: #adb5bd;
+    color: #495057;
+    transform: translateY(-1px);
+}
+
+@keyframes freeSpacePulse {
+    0%, 100% {
+        box-shadow: 0 0 8px rgba(40, 167, 69, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 18px rgba(40, 167, 69, 0.7);
+    }
+}
+
+/* ==========================================
+   FREE SPACE INFO BAR - פס מידע תוצאות
+   ========================================== */
+
+#freeSpaceInfo {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: linear-gradient(135deg, #d4edda, #c3e6cb);
+    border: 1px solid #28a745;
+    border-radius: 8px;
+    color: #155724;
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-right: 10px;
+}
+
+#freeSpaceInfo i {
+    color: #2196f3;;
+    font-size: 1rem;
+}
+
+#freeSpaceCount {
+    font-weight: 800;
+    font-size: 1.1rem;
+    color: #155724;
+}
+
+#freeSpaceUnits {
+    font-weight: 800;
+    color: #155724;
+}
+
+/* כפתור ניקוי תוצאות */
+.btn-clear-free-space {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid #28a745;
+    border-radius: 6px;
+    color: #155724;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-right: auto;
+}
+
+.btn-clear-free-space:hover {
+    background: rgba(255, 255, 255, 0.9);
+    border-color: #155724;
+    transform: translateY(-1px);
 }
 
 @@media (max-width: 768px) {

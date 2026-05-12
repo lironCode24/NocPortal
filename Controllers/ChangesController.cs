@@ -9,9 +9,12 @@ using System.Text.Json;
 public class ChangesController : Controller
 {
     // נתיב לתיקיית השינויים
-    private const string CHANGES_FILE_PATH = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\CAB_Automation\results";
+    private const string CHANGES_FILE_PATH = @"R:\USERS\TASHTIT\NOC\CAB_Automation\results";
     // נתיב לקובץ המאגד את כל השינויים
-    private const string AGGREGATED_CHANGES_PATH = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\CAB_Automation\aggregated_changes.json";
+    private const string AGGREGATED_CHANGES_PATH = @"R:\USERS\TASHTIT\NOC\CAB_Automation\aggregated_changes.json";
+    
+    private const string SERVICENOW_FILE_PATH = 
+        @"R:\USERS\TASHTIT\NOC\CAB_Automation\change_request.csv";
 
     [HttpGet]
     public IActionResult GetChanges()
@@ -170,6 +173,132 @@ public class ChangesController : Controller
         result.Add(current.ToString().Trim().Trim('"'));
         return result.ToArray();
     }
+    
+    /*
+        Import changes from serviceNow' when export manually and save as CSV
+    */
+    [HttpPost]
+    public IActionResult ImportServiceNowChanges()
+    {
+        try
+        {
+            // טעינת השינויים הקיימים במערכת
+            List<ChangeItem> aggregatedChanges = LoadAggregatedChanges();
+
+            // בדיקה שהקובץ קיים
+            if (!System.IO.File.Exists(SERVICENOW_FILE_PATH))
+            {
+                return Json(new { 
+                    success = false, 
+                    message = "קובץ ServiceNow לא נמצא" 
+                });
+            }
+
+            // קריאת קובץ ServiceNow
+            var lines = System.IO.File.ReadAllLines(
+                SERVICENOW_FILE_PATH, 
+                new UTF8Encoding(false)
+            );
+
+            if (lines.Length <= 1)
+            {
+                return Json(new { 
+                    success = false, 
+                    message = "הקובץ ריק" 
+                });
+            }
+
+            // קריאת כותרות
+            var headers = ParseCsvLine(lines[0]);
+            
+            // מציאת אינדקסים
+            int numberIndex    = Array.IndexOf(headers, "מספר");
+            int descIndex      = Array.IndexOf(headers, "כותרת");
+            int startDateIndex = Array.IndexOf(headers, "זמן התחלה מתוכנן");
+
+            // בדיקת עמודות חובה
+            if (numberIndex == -1 || descIndex == -1)
+            {
+                return Json(new { 
+                    success = false, 
+                    message = "עמודות חובה חסרות בקובץ" 
+                });
+            }
+
+            int addedCount   = 0;
+            int skippedCount = 0;
+
+            // עיבוד כל שורה
+            for (int i = 1; i < lines.Length; i++)
+            {
+                if (string.IsNullOrWhiteSpace(lines[i])) 
+                    continue;
+
+                var columns = ParseCsvLine(lines[i]);
+
+                if (columns.Length <= numberIndex || 
+                    columns.Length <= descIndex)
+                    continue;
+
+                string number = columns[numberIndex]?.Trim().Trim('"') 
+                                ?? string.Empty;
+
+                if (string.IsNullOrWhiteSpace(number)) 
+                    continue;
+
+                // בדיקה אם השינוי כבר קיים במערכת
+                bool exists = aggregatedChanges
+                    .Any(c => c.Number == number);
+
+                if (!exists)
+                {
+                    // השינוי לא קיים - מוסיפים אותו
+                    string description = columns[descIndex]
+                        ?.Trim().Trim('"') ?? string.Empty;
+
+                    string startDate = startDateIndex != -1 && 
+                                    columns.Length > startDateIndex
+                        ? columns[startDateIndex]?.Trim().Trim('"') 
+                        ?? string.Empty
+                        : string.Empty;
+
+                    aggregatedChanges.Add(new ChangeItem
+                    {
+                        Number = number,
+                        Name   = description,
+                        Date   = startDate,
+                        Link   = string.Empty
+                    });
+
+                    addedCount++;
+                }
+                else
+                {
+                    skippedCount++;
+                }
+            }
+
+            // שמירת השינויים המעודכנים
+            SaveAggregatedChanges(aggregatedChanges);
+
+            return Json(new { 
+                success = true, 
+                message = $"יובאו בהצלחה: {addedCount} שינויים חדשים נוספו, " +
+                        $"{skippedCount} שינויים כבר קיימים",
+                added   = addedCount,
+                skipped = skippedCount,
+                total   = aggregatedChanges.Count
+            });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { 
+                success = false, 
+                message = ex.Message 
+            });
+        }
+    }
+
 }
 
 // מחלקה לייצוג פריט שינוי

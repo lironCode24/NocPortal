@@ -1,0 +1,56 @@
+@{
+    Layout = null;
+    ViewData["Title"] = "גישה נדחתה";
+}
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>@ViewData["Title"]</title>
+    <link rel="stylesheet" href="https://cdn.menoramivt.co.il/public/fonts/fonts.css">
+    <link rel="stylesheet" href="/fontawesome/css/all.min.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a1a2e, #0f3460);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Rubik', sans-serif;
+            color: #fff;
+        }
+        .denied-box {
+            text-align: center;
+            padding: 40px;
+        }
+        .denied-box i {
+            font-size: 4rem;
+            color: #dc3545;
+            margin-bottom: 20px;
+        }
+        .denied-box h1 { font-size: 1.8rem; margin-bottom: 10px; }
+        .denied-box p  { color: rgba(255,255,255,0.6); margin-bottom: 24px; }
+        .btn-back {
+            padding: 10px 24px;
+            background: #4a9eff;
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 0.95rem;
+            font-family: inherit;
+            cursor: pointer;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="denied-box">
+        <i class="fas fa-ban"></i>
+        <h1>גישה נדחתה</h1>
+        <p>אין לך הרשאות לצפות בדף זה</p>
+        <a href="/" class="btn-back">
+            <i class="fas fa-home"></i> חזור לדף הבית
+        </a>
+    </div>
+</body>
+</html>

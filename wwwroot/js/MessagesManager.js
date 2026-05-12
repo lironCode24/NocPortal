@@ -156,7 +156,8 @@ class MessagesManager {
             'סיכומי משמרת': 'סיכומי משמרת',
             'בקשות וביצוע': 'בקשות וביצוע',
             'כללי': 'כללי',
-            'דחוף': 'דחוף'
+            'דחוף': 'דחוף',
+            'אישורי כניסה': 'אישורי כניסה',
         };
 
         return categoryMap[filterText] || 'כללי';
@@ -1329,7 +1330,7 @@ ${base64Data}`;
             this.allMessages = data;
 
             // Apply current filters and search
-            this.applyFiltersAndSearch();
+            this.applyFiltersAndSearch(true);
 
             if (!this.refreshInterval) {
                 this.startAutoRefresh();
@@ -1356,7 +1357,15 @@ ${base64Data}`;
                 this.handleCategoryFilterClick(category);
             });
             tab.addEventListener('dblclick', (e) => {
-                this.openAddMessageModal();
+                const category = e.currentTarget.getAttribute('data-category');
+
+                // אם זה טאב אישורי כניסה, פתח את מודל אישור הכניסה
+                if (category === 'אישורי כניסה') {
+                    this.openEntryPermitModal();
+                } else {
+                    // אחרת, פתח את מודל ההודעה הרגיל
+                    this.openAddMessageModal();
+                }
             });
         });
     }
@@ -1491,6 +1500,7 @@ ${base64Data}`;
 
         // Create pagination controls
         this.createPaginationControls(messages.length);
+        this.showEntryPermitHistoryButton();
     }
 
     handleMessageDoubleClick(messageId) {
@@ -2032,8 +2042,20 @@ ${base64Data}`;
                     // אסוף את כל נתיבי המיילים
                     for (const item of emailItems) {
                         // אם זה קובץ חדש שהועלה
+
                         if (item.file) {
-                            const uploadResult = await this.uploadFile(item.file, messageData.id || 'temp');
+                            const ext = item.file.name.split('.').pop().toLowerCase();
+                            const allowed = ['eml', 'msg'];
+                            if (!allowed.includes(ext)) {
+                                NotificationManager.show(
+                                    'לשדה מייל ניתן לצרף רק קבצי EML או MSG',
+                                    'error'
+                                );
+                                return; // מפסיק שמירה
+                            }
+
+                            const uploadResult = await this.uploadFile(item.file, messageData.id || 'temp')
+
                             if (uploadResult.success) {
                                 emailPaths.push(uploadResult.filePath);
                             }
@@ -2949,7 +2971,7 @@ ${this.formatContentWithTables(messageData.openItems)}
             if (Path.isPathRooted(imagePath)) {
                 fullPath = imagePath;
             } else {
-                fullPath = Path.join('R:\\USERS\\TASHTIT\\NOC\\Portal\\files', imagePath);
+                fullPath = Path.join('C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files', imagePath);
             }
 
             // בדוק אם הקובץ קיים
@@ -3280,7 +3302,7 @@ ${data.base64Data}`;
             return path;
         } else {
             // Join with base path
-            return 'R:\\USERS\\TASHTIT\\NOC\\Portal\\files\\' + path;
+            return 'C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files\\' + path;
         }
     }
 
@@ -3290,6 +3312,10 @@ ${data.base64Data}`;
             const message = this.allMessages.find(m => m.id === messageId);
             if (!message) {
                 NotificationManager.show('הודעה לא נמצאה', 'error');
+                return;
+            }
+            if (message.category === 'אישורי כניסה') {
+                this.openEntryPermitModal(message, true);
                 return;
             }
 
@@ -3532,6 +3558,9 @@ ${data.base64Data}`;
                     }
                 }
                 break;
+            case 'אישורי כניסה':
+                // אין שדות נוספים - הכל מנוהל במודל הייעודי
+                break;
             case 'כללי':
             case 'דחוף':
                 document.getElementById('contentField').style.display = 'block';
@@ -3687,8 +3716,7 @@ ${data.base64Data}`;
                 Array.from(files).forEach(file => {
                     // בדוק את סוג הקובץ
                     const fileExt = file.name.split('.').pop().toLowerCase();
-                    const allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx'];
-
+                    const allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt'];
                     if (allowedExtensions.includes(fileExt)) {
                         this.handleShiftAttachmentFile(file);
                     } else {
@@ -3714,7 +3742,7 @@ ${data.base64Data}`;
 
         // בדוק את סוג הקובץ
         const fileExt = file.name.split('.').pop().toLowerCase();
-        const allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx'];
+        const allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt'];
 
         if (!allowedExtensions.includes(fileExt)) {
             NotificationManager.show(`סוג קובץ לא נתמך: ${fileExt}. יש להעלות רק קבצי תמונה או מסמכים נתמכים.`, 'error');
@@ -5098,22 +5126,6 @@ ${data.base64Data}`;
         window.addEventListener('message', this.documentMessageListener);
     }
 
-    // עדכן את פונקציית closeMessagePopup כדי לנקות את ה-PDF המומר
-    closeMessagePopup() {
-        // בדוק אם יש שינויים לא שמורים ושמור אותם
-        const messageId = document.getElementById('popupTitle').getAttribute('data-message-id');
-        if (messageId) {
-            const message = this.allMessages.find(m => m.id === messageId);
-            if (message && message._hasUnsavedChanges) {
-                this.saveAllJobChanges(messageId);
-            }
-        }
-
-        this.isModalOpen = false;
-        document.getElementById('messagePopup').style.display = 'none';
-        document.body.style.overflow = 'auto';
-    }
-
     // הוסף פונקציה לסגירת מודל המסמך
     closeDocumentModal() {
         this.isModalOpen = false;
@@ -5890,6 +5902,10 @@ ${data.base64Data}`;
             return;
         }
 
+        if (message.category === 'אישורי כניסה') {
+            this.openEntryPermitModal(message, false);
+            return;
+        }
         document.getElementById('messageId').value = message.id;
         document.getElementById('messageTitle').value = message.title;
         document.getElementById('messageCategory').value = message.category;
@@ -10065,6 +10081,7 @@ ${data.base64Data}`;
                 'סיכומי משמרת': 'סיכומי משמרת',
                 'בקשות': 'בקשות',
                 'בקשות וביצוע': 'בקשות וביצוע',
+                'אישורי כניסה': 'אישורי כניסה',
                 'כללי': 'כללי',
                 'דחוף': 'דחוף'
             };
@@ -10715,7 +10732,7 @@ ${data.base64Data}`;
                 this.currentCategoryFilter = currentCategoryFilter;
 
                 // החל מחדש את הפילטרים
-                this.applyFiltersAndSearch();
+                this.applyFiltersAndSearch(true);
                 // התחל מעקב אחרי התראות אם עדיין לא התחיל
                 if (!this.alarmCheckInterval) {
                     this.startAlarmMonitoring();
@@ -10751,6 +10768,3813 @@ ${data.base64Data}`;
             if (content) content.classList.add('collapsed');
             if (btn) btn.classList.add('collapsed');
         }
+    }
+
+    // ========== אישורי כניסה ==========
+    createEntryPermitContent(message) {
+        const data = message.entryPermitData || {};
+        let html = '<div class="entry-permit-preview">';
+
+        // אתר - תמיכה במערך
+        const siteDisplay = data.sites && data.sites.length > 1
+            ? data.sites.join(' ו')
+            : (data.site || '');
+
+        if (siteDisplay) {
+            html += `<div class="permit-field">
+            <i class="fas fa-map-marker-alt"></i>
+            <span>אתר: <strong>${siteDisplay}</strong></span>
+        </div>`;
+        }
+
+        if (data.date) {
+            html += `<div class="permit-field">
+            <i class="fas fa-calendar"></i>
+            <span>תאריך: <strong>${data.date}</strong></span>
+        </div>`;
+        }
+
+        // שמות - תמיכה במערך
+        if (data.names && data.names.length > 0) {
+            if (data.names.length === 1) {
+                html += `<div class="permit-field">
+                <i class="fas fa-user"></i>
+                <span>שם: <strong>${data.names[0]}</strong></span>
+            </div>`;
+            } else {
+                html += `<div class="permit-field">
+                <i class="fas fa-users"></i>
+                <span>אנשים: <strong>${data.names.length}</strong>
+                    <small>(${data.names[0]} ואחרים)</small>
+                </span>
+            </div>`;
+            }
+        } else if (data.fullName) {
+            html += `<div class="permit-field">
+            <i class="fas fa-user"></i>
+            <span>שם: <strong>${data.fullName}</strong></span>
+        </div>`;
+        }
+
+        if (data.company) {
+            html += `<div class="permit-field">
+            <i class="fas fa-building"></i>
+            <span>חברה: <strong>${data.company}</strong></span>
+        </div>`;
+        }
+
+        // רכבים - תמיכה במערך
+        if (data.carNumbers && data.carNumbers.length > 0) {
+            if (data.carNumbers.length === 1) {
+                html += `<div class="permit-field">
+                <i class="fas fa-car"></i>
+                <span>רכב: <strong>${data.carNumbers[0]}</strong></span>
+            </div>`;
+            } else {
+                html += `<div class="permit-field">
+                <i class="fas fa-car"></i>
+                <span>רכבים: <strong>${data.carNumbers.join(', ')}</strong></span>
+            </div>`;
+            }
+        } else if (data.carNumber) {
+            html += `<div class="permit-field">
+            <i class="fas fa-car"></i>
+            <span>רכב: <strong>${data.carNumber}</strong></span>
+        </div>`;
+        }
+
+        // ת"ז - רק אם קיים
+        if (data.idNumber) {
+            html += `<div class="permit-field">
+            <i class="fas fa-id-card"></i>
+            <span>ת.ז.: <strong>${data.idNumber}</strong></span>
+        </div>`;
+        }
+
+        // מלווה - רק אם קיים
+        if (data.escort) {
+            html += `<div class="permit-field">
+            <i class="fas fa-user-friends"></i>
+            <span>מלווה: <strong>${data.escort}</strong></span>
+        </div>`;
+        }
+
+        if (data.time) {
+            html += `<div class="permit-field">
+            <i class="fas fa-clock"></i>
+            <span>שעה: <strong>${data.time}</strong></span>
+        </div>`;
+        }
+
+        html += `<span class="read-more-btn" 
+        onclick="messagesManager.openEntryPermitModal(
+            messagesManager.allMessages.find(m => m.id === '${message.id}')
+        )">
+        ערוך אישור
+    </span>`;
+
+        html += '</div>';
+        return html;
+    }
+
+    clearPermitTime() {
+        document.getElementById('permitTimeHour').value = '';
+        document.getElementById('permitTimeMinute').value = '';
+        document.getElementById('permitTimeClearBtn').style.display = 'none';
+    }
+
+    _initPermitTimeSelects() {
+        const hourSelect = document.getElementById('permitTimeHour');
+        const minuteSelect = document.getElementById('permitTimeMinute');
+        const clearBtn = document.getElementById('permitTimeClearBtn');
+
+        if (!hourSelect || !minuteSelect) return;
+
+        // מלא שעות רק אם ריק
+        if (hourSelect.options.length <= 1) {
+            for (let i = 0; i < 24; i++) {
+                const option = document.createElement('option');
+                option.value = i.toString().padStart(2, '0');
+                option.textContent = i.toString().padStart(2, '0');
+                hourSelect.appendChild(option);
+            }
+        }
+
+        // מלא דקות רק אם ריק
+        if (minuteSelect.options.length <= 1) {
+            for (let i = 0; i < 60; i += 5) {
+                const option = document.createElement('option');
+                option.value = i.toString().padStart(2, '0');
+                option.textContent = i.toString().padStart(2, '0');
+                minuteSelect.appendChild(option);
+            }
+        }
+
+        // מאזינים להצגת כפתור ניקוי
+        const updateClearBtn = () => {
+            if (clearBtn) {
+                clearBtn.style.display =
+                    (hourSelect.value || minuteSelect.value) ? 'inline-block' : 'none';
+            }
+        };
+
+        // הסר מאזינים ישנים והוסף חדשים
+        const newHourSelect = hourSelect.cloneNode(true);
+        const newMinuteSelect = minuteSelect.cloneNode(true);
+        hourSelect.parentNode.replaceChild(newHourSelect, hourSelect);
+        minuteSelect.parentNode.replaceChild(newMinuteSelect, minuteSelect);
+
+        newHourSelect.addEventListener('change', updateClearBtn);
+        newMinuteSelect.addEventListener('change', updateClearBtn);
+    }
+
+    _populatePermitAuthorSelect() {
+        const select = document.getElementById('permitAuthor');
+        if (!select) return;
+
+        // שמור ערך נוכחי אם יש
+        const currentValue = select.value;
+
+        // נקה אפשרויות קיימות
+        select.innerHTML = '<option value="">בחר מחבר...</option>';
+
+        // הוסף עובדים
+        if (this.employees && this.employees.length > 0) {
+            this.employees.forEach(employee => {
+                const option = document.createElement('option');
+                option.value = employee.name;
+                option.textContent = employee.name;
+                select.appendChild(option);
+            });
+        }
+
+        // הוסף אפשרות "אחר"
+        const otherOption = document.createElement('option');
+        otherOption.value = 'other';
+        otherOption.textContent = 'אחר...';
+        select.appendChild(otherOption);
+
+        // הגדר ברירת מחדל - העובד האחרון שנבחר
+        const lastAuthor = this.getLastSelectedAuthor();
+        if (lastAuthor) {
+            const optionExists = Array.from(select.options)
+                .some(opt => opt.value === lastAuthor);
+            if (optionExists) {
+                select.value = lastAuthor;
+            }
+        }
+
+        // אם הרשימה ריקה, טען עובדים
+        if (!this.employees || this.employees.length === 0) {
+            this.loadEmployees().then(() => {
+                this._populatePermitAuthorSelect();
+            });
+        }
+    }
+
+    openEntryPermitModal(existingMessage = null, isDuplicate = false) {
+        const isEditing = existingMessage !== null && !isDuplicate;
+
+        let modal = document.getElementById('entryPermitModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'entryPermitModal';
+            modal.className = 'modal-overlay';
+
+            modal.innerHTML = `
+            <div class="modal-content entry-permit-modal">
+                <div class="modal-header">
+                    <h3 id="entryPermitModalTitle">
+                        <i class="fas fa-id-badge"></i> אישור כניסה
+                    </h3>
+                    <button class="close-btn" id="entryPermitCloseBtn">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form id="entryPermitForm" novalidate>
+                        <div class="form-group">
+                            <label class="form-label required-field">
+                                <i class="fas fa-map-marker-alt"></i> אתר
+                                <span class="optional-label">(ניתן לבחור יותר מאחד)</span>
+                            </label>
+                            <div class="site-selector">
+                                <label class="site-option">
+                                    <input type="checkbox" name="permitSite" value='ר"ג' id="siteRG">
+                                    <span class="site-btn">ר"ג</span>
+                                </label>
+                                <label class="site-option">
+                                    <input type="checkbox" name="permitSite" value='פ"ת' id="sitePT">
+                                    <span class="site-btn">פ"ת</span>
+                                </label>
+                            </div>
+                            <div class="field-error" id="siteError" style="display:none;">
+                                <i class="fas fa-exclamation-circle"></i> יש לבחור לפחות אתר אחד
+                            </div>
+                        </div>
+
+                        <!-- תאריך -->
+                        <div class="form-group">
+                            <label class="form-label required-field" for="permitDate">
+                                <i class="fas fa-calendar"></i> תאריך
+                            </label>
+                            <div class="date-input-wrapper">
+                                <input type="text" id="permitDate" class="form-input" 
+                                    placeholder="בחר תאריך" readonly>
+                                <input type="hidden" id="permitDateHidden">
+                            </div>
+                            <div class="field-error" id="dateError" style="display:none;">
+                                <i class="fas fa-exclamation-circle"></i> יש לבחור תאריך
+                            </div>
+                        </div>
+
+
+                        <div class="form-group">
+                            <label class="form-label required-field">
+                                <i class="fas fa-users"></i> אנשים
+                                <span class="optional-label">(ניתן להוסיף מספר אנשים)</span>
+                            </label>
+                            <div class="person-columns-header">
+                                <span class="person-col-label col-name">שם מלא *</span>
+                                <span class="person-col-label col-car">מס' רכב</span>
+                                <span class="person-col-label col-id">ת.ז.</span>
+                                <span class="person-col-label col-phone">טלפון</span>
+                            </div>
+
+                            <div id="permitNamesContainer">
+                                ${this._buildNameRowHtml(0)}
+                            </div>
+
+                            <button type="button" class="add-entry-btn" 
+                                    onclick="messagesManager._addPersonRow()">
+                                <i class="fas fa-plus"></i> הוסף אדם
+                            </button>
+
+                            <div class="field-error" id="nameError" style="display:none;">
+                                <i class="fas fa-exclamation-circle"></i> יש להזין לפחות שם אחד
+                            </div>
+                            <div class="field-error" id="carError" style="display:none;">
+                                <i class="fas fa-exclamation-circle"></i> יש להזין מספר רכב תקין לכל אדם
+                            </div>
+                        </div > 
+
+                        <!-- חברה -->
+                        <div class="form-group">
+                            <label class="form-label required-field" for="permitCompany">
+                                <i class="fas fa-building"></i> חברה
+                            </label>
+                            <input type="text" id="permitCompany" class="form-input" 
+                                placeholder="שם החברה" maxlength="100">
+                            <div class="field-error" id="companyError" style="display:none;">
+                                <i class="fas fa-exclamation-circle"></i> יש להזין שם חברה
+                            </div>
+                        </div>
+
+                        <!-- מי מלווה - לא חובה -->
+                        <div class="form-group">
+                            <label class="form-label" for="permitEscort">
+                                <i class="fas fa-user-friends"></i> מי מלווה
+                                <span class="optional-label">(רשות)</span>
+                            </label>
+                            <input type="text" id="permitEscort" class="form-input" 
+                                placeholder="שם המלווה מהחברה" maxlength="100">
+                        </div>
+
+                        <!-- שעה -->
+                        <div class="form-group">
+                            <label class="form-label">
+                                <i class="fas fa-clock"></i> שעה
+                                <span class="optional-label">(רשות)</span>
+                            </label>
+                            <div class="time-input-group permit-time-group">
+                                <select id="permitTimeMinute" class="job-minute">
+                                    <option value="">דקות</option>
+                                </select>
+                                <span class="time-separator">:</span>
+                                <select id="permitTimeHour" class="job-hour">
+                                    <option value="">שעה</option>
+                                </select>
+                                <button type="button" class="time-job-clear-btn" id="permitTimeClearBtn"
+                                        onclick="messagesManager.clearPermitTime()"
+                                        title="נקה בחירת זמן" style="display:none;">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- מחבר -->
+                        <div class="form-group">
+                            <label class="form-label required-field" for="permitAuthor">
+                                <i class="fas fa-user-edit"></i> מחבר
+                            </label>
+                            <select id="permitAuthor" class="form-input form-select">
+                                <option value="">בחר מחבר...</option>
+                            </select>
+                            <div id="permitCustomAuthorContainer" style="display:none; margin-top:8px;">
+                                <input type="text"
+                                       id="permitCustomAuthorInput"
+                                       class="form-input"
+                                       placeholder="הזן שם מחבר"
+                                       maxlength="100">
+                            </div>
+                            <div class="field-error" id="authorError" style="display:none;">
+                                <i class="fas fa-exclamation-circle"></i> יש לבחור מחבר
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" id="entryPermitHistoryBtn">
+                        <i class="fas fa-history"></i> היסטוריית בקשות
+                    </button>
+                    <button class="btn btn-primary" id="entryPermitSubmitBtn">
+                        <i class="fas fa-envelope"></i> צור מייל אישור כניסה
+                    </button>
+                    <button class="btn btn-secondary" id="entryPermitCancelBtn">
+                        <i class="fas fa-times"></i> ביטול
+                    </button>
+                </div>
+            </div>
+        `;
+            document.body.appendChild(modal);
+
+            this._addEntryPermitStyles();
+
+
+            document.getElementById('entryPermitCloseBtn')
+                .addEventListener('click', () => this.closeEntryPermitModal());
+            document.getElementById('entryPermitCancelBtn')
+                .addEventListener('click', () => this.closeEntryPermitModal());
+            document.getElementById('entryPermitSubmitBtn')
+                .addEventListener('click', () => this.submitEntryPermit());
+
+            // מאזין לחברה
+            document.getElementById('permitCompany')
+                .addEventListener('input', () => {
+                    this._clearFieldError('companyError', 'permitCompany');
+                });
+
+            // מאזין לשדה הרכב הראשון - ניקוי מקפים
+            const firstCarInput = document.querySelector('.permit-car-input');
+            if (firstCarInput) {
+                firstCarInput.addEventListener('input', (e) => {
+                    const cleaned = e.target.value.replace(/[-\s]/g, '');
+                    if (e.target.value !== cleaned) {
+                        e.target.value = cleaned;
+                    }
+                    // נקה שגיאה אם יש ערך תקין
+                    const carRegex = /^\d{5,8}$/;
+                    const hasValidCar = Array.from(carInputs).some(input => {
+                        const cleaned = input.value.trim().replace(/[-\s]/g, ''); // ← הסר מקפים
+                        input.value = cleaned; // ← עדכן את השדה
+                        return cleaned !== '' && carRegex.test(cleaned);
+                    });
+                });
+
+                firstCarInput.addEventListener('paste', (e) => {
+                    e.preventDefault();
+                    const pastedText = (e.clipboardData || window.clipboardData).getData('text');
+                    const cleaned = pastedText.replace(/[-\s]/g, '');
+                    const start = e.target.selectionStart;
+                    const end = e.target.selectionEnd;
+                    const currentValue = e.target.value;
+                    e.target.value = currentValue.substring(0, start) + cleaned + currentValue.substring(end);
+                    const newPos = start + cleaned.length;
+                    e.target.setSelectionRange(newPos, newPos);
+                });
+            }
+
+            // מאזין לשדה השם הראשון
+            const firstNameInput = document.querySelector('.permit-name-input');
+            if (firstNameInput) {
+                firstNameInput.addEventListener('input', () => {
+                    if (firstNameInput.value.trim() !== '') {
+                        document.getElementById('nameError').style.display = 'none';
+                        firstNameInput.classList.remove('input-error');
+                    }
+                });
+            }
+
+            // מאזיני checkboxes של אתר
+            document.querySelectorAll('input[name="permitSite"]').forEach(checkbox => {
+                checkbox.addEventListener('change', () => {
+                    document.getElementById('siteError').style.display = 'none';
+                    // עדכן מראה הכפתור
+                    checkbox.nextElementSibling.classList.toggle('selected', checkbox.checked);
+                });
+            });
+
+            const historyBtn = document.getElementById('entryPermitHistoryBtn');
+            if (historyBtn) {
+                historyBtn.addEventListener('click', () => this.openEntryPermitHistory());
+            }
+
+            // מאזין לשדה המחבר
+            const permitAuthorSelect = document.getElementById('permitAuthor');
+            if (permitAuthorSelect) {
+                permitAuthorSelect.addEventListener('change', () => {
+                    const customContainer = document.getElementById('permitCustomAuthorContainer');
+                    const customInput = document.getElementById('permitCustomAuthorInput');
+                    if (permitAuthorSelect.value === 'other') {
+                        customContainer.style.display = 'block';
+                        if (customInput) customInput.focus();
+                    } else {
+                        customContainer.style.display = 'none';
+                    }
+                    // נקה שגיאה
+                    document.getElementById('authorError').style.display = 'none';
+                    permitAuthorSelect.classList.remove('input-error');
+                });
+            }
+
+
+            this._initEntryPermitDatePicker();
+            this._initPermitTimeSelects();
+        }
+
+        // *** שמור מצב על המודל ***
+        modal.dataset.editingMessageId = isEditing ? existingMessage.id : '';
+        modal.dataset.isDuplicate = isDuplicate ? 'true' : 'false';
+
+        // אכלוס רשימת עובדים בשדה המחבר
+        this._populatePermitAuthorSelect();
+
+        // *** עדכן כותרת וכפתור ***
+        const titleEl = document.getElementById('entryPermitModalTitle');
+        const submitBtn = document.getElementById('entryPermitSubmitBtn');
+
+        if (isEditing) {
+            if (titleEl) titleEl.innerHTML = '<i class="fas fa-edit"></i> עריכת אישור כניסה';
+            if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-save"></i> שמור שינויים ושלח מייל';
+        } else if (isDuplicate) {
+            if (titleEl) titleEl.innerHTML = '<i class="fas fa-copy"></i> שכפול אישור כניסה';
+            if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-envelope"></i> צור מייל אישור כניסה';
+        } else {
+            if (titleEl) titleEl.innerHTML = '<i class="fas fa-id-badge"></i> אישור כניסה';
+            if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-envelope"></i> צור מייל אישור כניסה';
+        }
+
+        // איפוס הטופס
+        this._resetEntryPermitForm();
+
+        if (existingMessage) {
+
+            let permitData = null;
+            if (existingMessage.entryPermitData) {
+                permitData = existingMessage.entryPermitData;
+            } else {
+                permitData = this._extractPermitDataFromMessage(existingMessage);
+            }
+
+            if (permitData) {
+                this._fillEntryPermitForm(permitData, isDuplicate);
+            }
+        } else {
+            // הודעה חדשה - הגדר תאריך ברירת מחדל
+            this._setEntryPermitDefaultDate();
+        }
+
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+
+        setTimeout(() => {
+            const firstNameInput = document.querySelector('#permitNamesContainer .permit-name-input');
+            if (firstNameInput) firstNameInput.focus();
+        }, 100);
+    }
+
+    _addPersonRow() {
+        const container = document.getElementById('permitNamesContainer');
+        if (!container) return;
+
+        const rows = container.querySelectorAll('.person-row');
+        const newIndex = rows.length;
+
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = this._buildNameRowHtml(newIndex);
+        const newRow = tempDiv.firstElementChild;
+
+        container.appendChild(newRow);
+        this._updateRemoveButtons(container);
+
+        // ← תיקון: הוסף מאזינים לשדה הרכב החדש
+        const carInput = newRow.querySelector('.permit-car-input');
+        if (carInput) this._attachCarInputListeners(carInput);
+
+        const nameInput = newRow.querySelector('.permit-name-input');
+        if (nameInput) nameInput.focus();
+    }
+
+    // פתיחת מודל היסטוריית אישורי כניסה
+    openEntryPermitHistory() {
+        // איסוף כל הודעות אישורי כניסה
+        const permits = this.allMessages
+            .filter(m => m.category === 'אישורי כניסה')
+            .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        // יצירת מודל אם לא קיים
+        let modal = document.getElementById('entryPermitHistoryModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'entryPermitHistoryModal';
+            modal.className = 'modal-overlay';
+            modal.innerHTML = `
+            <div class="modal-content entry-permit-history-modal">
+                <div class="modal-header">
+                    <h3>
+                        <i class="fas fa-history"></i> היסטוריית אישורי כניסה
+                    </h3>
+                    <button class="close-btn" 
+                            onclick="document.getElementById('entryPermitHistoryModal')
+                                     .style.display='none'">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="history-search-bar">
+                        <input type="text" 
+                               id="historySearchInput" 
+                               class="form-input" 
+                               placeholder="חפש לפי שם, חברה, רכב..."
+                               oninput="messagesManager.filterPermitHistory(this.value)">
+                        <i class="fas fa-search history-search-icon"></i>
+                    </div>
+                    <div id="entryPermitHistoryContent"></div>
+                </div>
+                <div class="modal-footer">
+                    <div class="history-footer-actions">
+                        <button class="btn btn-success"
+                                onclick="messagesManager.exportPermitHistoryToExcel()"
+                                title="ייצא לקובץ Excel/CSV">
+                            <i class="fas fa-file-excel"></i> ייצא לאקסל
+                        </button>
+                        <button class="btn btn-info"
+                                onclick="messagesManager.printPermitHistory()"
+                                title="הדפס היסטוריה">
+                            <i class="fas fa-print"></i> הדפס
+                        </button>
+                    </div>
+                    <button class="btn btn-secondary"
+                            onclick="document.getElementById('entryPermitHistoryModal')
+                                    .style.display='none'">
+                        <i class="fas fa-times"></i> סגור
+                    </button>
+                </div>
+            </div>
+        `;
+            document.body.appendChild(modal);
+            this._addEntryPermitHistoryStyles();
+            this._addEntryPermitStyles();
+        }
+
+        // שמור את הרשימה לשימוש בחיפוש
+        this._allPermitsForHistory = permits;
+
+        // מלא את הטבלה
+        this._renderPermitHistoryTable(permits);
+
+        modal.style.display = 'flex';
+        modal.style.zIndex = '10000';
+    }
+
+    // סינון היסטוריה לפי חיפוש
+    filterPermitHistory(searchText) {
+        if (!this._allPermitsForHistory) return;
+
+        const term = searchText.trim().toLowerCase();
+
+        if (!term) {
+            this._renderPermitHistoryTable(this._allPermitsForHistory);
+            return;
+        }
+
+        const filtered = this._allPermitsForHistory.filter(m => {
+            const data = m.entryPermitData ||
+                this._extractPermitDataFromMessage(m) || {};
+
+            // קבל אנשים
+            const persons = this._getPersonsFromData(data);
+
+            // חיפוש בכל שדות האנשים
+            const personsText = persons.map(p =>
+                [p.name, p.carNumber, p.idNumber, p.phone].filter(Boolean).join(' ')
+            ).join(' ').toLowerCase();
+
+            // אתרים
+            const sitesText = (Array.isArray(data.Sites)
+                ? data.Sites.join(' ')
+                : (data.Site || '')).toLowerCase();
+
+            const checks = [
+                (m.title || '').toLowerCase(),
+                personsText,
+                sitesText,
+                (data.company || '').toLowerCase(),
+                (data.date || '').toLowerCase(),
+                (data.escort || '').toLowerCase(),
+                (m.content || '').toLowerCase(),
+            ];
+
+            return checks.some(field => field.includes(term));
+        });
+
+        this._renderPermitHistoryTable(filtered);
+    }
+
+    // רינדור טבלת ההיסטוריה
+    _renderPermitHistoryTable(permits) {
+        const container = document.getElementById('entryPermitHistoryContent');
+        if (!container) return;
+
+        if (permits.length === 0) {
+            container.innerHTML = `
+            <div class="history-empty">
+                <i class="fas fa-inbox"></i>
+                <p>לא נמצאו אישורי כניסה</p>
+            </div>`;
+            return;
+        }
+
+        // ספור סה"כ אנשים
+        let totalPersons = 0;
+        permits.forEach(m => {
+            const data = m.entryPermitData || this._extractPermitDataFromMessage(m) || {};
+            const persons = this._getPersonsFromData(data);
+            totalPersons += persons.length || 1;
+        });
+
+        let html = `
+    <div class="history-summary">
+        <span><i class="fas fa-list"></i> סה"כ: ${permits.length} בקשות</span>
+        <span><i class="fas fa-users"></i> סה"כ: ${totalPersons} אנשים</span>
+    </div>
+    <div class="history-table-wrapper">
+        <table class="history-table">
+            <thead>
+                <tr>
+                    <th>תאריך בקשה</th>
+                    <th>תאריך כניסה</th>
+                    <th>שעה</th>
+                    <th>אתר</th>
+                    <th>שם</th>
+                    <th>חברה</th>
+                    <th>מס' רכב</th>
+                    <th>ת"ז</th>
+                    <th>טלפון</th>
+                    <th>מלווה</th>
+                </tr>
+            </thead>
+            <tbody>`;
+
+        permits.forEach(message => {
+            const data = message.entryPermitData ||
+                this._extractPermitDataFromMessage(message) || {};
+
+            // אתר
+            const siteDisplay = (Array.isArray(data.Sites) && data.Sites.length > 1)
+                ? data.Sites.join(' + ')
+                : (data.Site || '-');
+
+            const siteClass = siteDisplay.includes('ר"ג') && siteDisplay.includes('פ"ת')
+                ? 'both'
+                : (siteDisplay.includes('ר"ג') ? 'rg' : 'pt');
+
+            // תאריך בקשה
+            const requestDate = this.getTimeAgo(message.date);
+
+            // שעה
+            const timeDisplay = data.Time || '-';
+
+            // מלווה
+            const escortDisplay = data.Escort || '-';
+
+            // קבל רשימת אנשים
+            const persons = this._getPersonsFromData(data);
+
+            if (persons.length === 0) {
+                // אין אנשים - שורה ריקה
+                html += `
+            <tr class="history-row permit-group-first permit-group-last">
+                <td rowspan="1">
+                    <span class="date-badge">${requestDate}</span>
+                </td>
+                <td rowspan="1"><strong>${data.Date || '-'}</strong></td>
+                <td rowspan="1">
+                    ${timeDisplay !== '-'
+                        ? `<span class="time-badge"><i class="fas fa-clock"></i> ${timeDisplay}</span>`
+                        : '<span class="empty-cell">-</span>'}
+                </td>
+                <td rowspan="1">
+                    <span class="site-badge site-${siteClass}">${siteDisplay}</span>
+                </td>
+                <td><span class="empty-cell">-</span></td>
+                <td rowspan="1">${data.Company || '-'}</td>
+                <td><span class="empty-cell">-</span></td>
+                <td><span class="empty-cell">-</span></td>
+                <td><span class="empty-cell">-</span></td>
+                <td rowspan="1">
+                    ${escortDisplay !== '-'
+                        ? `<span class="escort-badge"><i class="fas fa-user-friends"></i> ${escortDisplay}</span>`
+                        : '<span class="empty-cell">-</span>'}
+                </td>
+            </tr>`;
+            } else {
+                // שורה לכל אדם - עם rowspan לשדות המשותפים
+                persons.forEach((person, personIndex) => {
+                    const isFirst = personIndex === 0;
+                    const isLast = personIndex === persons.length - 1;
+                    const rowspan = persons.length;
+
+                    const rowClass = [
+                        'history-row',
+                        isFirst ? 'permit-group-first' : '',
+                        isLast ? 'permit-group-last' : '',
+                        personIndex % 2 === 1 ? 'person-row-alt' : ''
+                    ].filter(Boolean).join(' ');
+
+                    html += `<tr class="${rowClass}">`;
+
+                    // עמודות עם rowspan - רק בשורה הראשונה
+                    if (isFirst) {
+                        html += `
+                    <td rowspan="${rowspan}" class="shared-cell">
+                        <span class="date-badge">${requestDate}</span>
+                    </td>
+                    <td rowspan="${rowspan}" class="shared-cell">
+                        <strong>${data.date || data.Date || '-'}</strong>
+                        ${data.dateLabel && data.dateLabel !== data.date
+                                ? `<br><small class="date-label">${data.dateLabel}</small>`
+                                : ''}
+                    </td>
+                    <td rowspan="${rowspan}" class="shared-cell">
+                        ${timeDisplay !== '-'
+                                ? `<span class="time-badge"><i class="fas fa-clock"></i> ${timeDisplay}</span>`
+                                : '<span class="empty-cell">-</span>'}
+                    </td>
+                    <td rowspan="${rowspan}" class="shared-cell">
+                        <span class="site-badge site-${siteClass}">${siteDisplay}</span>
+                    </td>`;
+                    }
+
+                    // שם האדם
+                    html += `
+                <td class="person-name-cell">
+                    <span class="person-index">${personIndex + 1}</span>
+                    ${person.name || '-'}
+                </td>`;
+
+                    // חברה - rowspan בשורה הראשונה
+                    if (isFirst) {
+                        html += `
+                    <td rowspan="${rowspan}" class="shared-cell">
+                        ${data.company || data.Company || '-'}
+                    </td>`;
+                    }
+
+                    // רכב
+                    const carDisplay = person.carNumber || '-';
+                    html += `
+                <td class="cars-cell" dir="rtl">
+                    ${carDisplay !== '-'
+                            ? `<span class="car-badge">${carDisplay}</span>`
+                            : '<span class="empty-cell">-</span>'}
+                </td>`;
+
+                    // ת"ז
+                    const idDisplay = person.idNumber || '-';
+                    html += `
+                <td class="id-cell" dir="rtl">
+                    ${idDisplay !== '-'
+                            ? `<span class="id-badge">${idDisplay}</span>`
+                            : '<span class="empty-cell">-</span>'}
+                </td>`;
+
+                    // טלפון
+                    const phoneDisplay = person.phone || '-';
+                    html += `
+                <td class="phone-cell" dir="rtl">
+                    ${phoneDisplay !== '-'
+                            ? `<a href="tel:${phoneDisplay}" class="phone-link">${phoneDisplay}</a>`
+                            : '<span class="empty-cell">-</span>'}
+                </td>`;
+
+                    // מלווה - rowspan בשורה הראשונה
+                    if (isFirst) {
+                        html += `
+                    <td rowspan="${rowspan}" class="shared-cell escort-cell">
+                        ${escortDisplay !== '-'
+                                ? `<span class="escort-badge">
+                                <i class="fas fa-user-friends"></i> ${escortDisplay}
+                               </span>`
+                                : '<span class="empty-cell">-</span>'}
+                    </td>`;
+                    }
+
+                    html += `</tr>`;
+                });
+            }
+        });
+
+        html += `</tbody></table></div>`;
+        container.innerHTML = html;
+
+        // עדכן CSS
+        this._updateHistoryTableStyles();
+    }
+
+    _updateHistoryTableStyles() {
+        // וודא שה-CSS קיים
+        if (!document.getElementById('historyTableDynamicStyles')) {
+            const style = document.createElement('style');
+            style.id = 'historyTableDynamicStyles';
+            style.textContent = `
+            .permit-group-first td { border-top: 2px solid #c8d6f5 !important; }
+            .permit-group-last td { border-bottom: 2px solid #c8d6f5 !important; }
+            .person-row-alt td:not(.shared-cell) { background-color: #f8f9ff; }
+            .shared-cell { vertical-align: middle !important; background-color: #fafbff; }
+            .person-name-cell { white-space: nowrap; }
+            .person-index {
+                display: inline-flex; align-items: center; justify-content: center;
+                width: 20px; height: 20px; min-width: 20px;
+                background: linear-gradient(135deg, #667eea, #764ba2);
+                color: white; border-radius: 50%;
+                font-size: 0.72rem; font-weight: bold;
+                margin-left: 6px; flex-shrink: 0;
+            }
+            .car-badge {
+                font-family: monospace; font-size: 0.85rem;
+                padding: 2px 6px; background: #f0fff4; color: #276749;
+                border-radius: 6px; border: 1px solid #c6f6d5;
+            }
+        `;
+            document.head.appendChild(style);
+        }
+    }
+
+    // פונקציית עזר - חילוץ רשימת אנשים מנתוני האישור
+    _getPersonsFromData(data) {
+        // פורמט חדש - persons[]
+        if (data.Persons) {
+            let personsArray = data.Persons;
+
+            // ← תיקון: טיפול בכל סוגי האובייקטים
+            if (!Array.isArray(personsArray)) {
+                // אם זה object עם מפתחות מספריים
+                if (typeof personsArray === 'object') {
+                    personsArray = Object.values(personsArray);
+                } else {
+                    personsArray = [];
+                }
+            }
+
+            // ← תיקון: וודא שכל אלמנט הוא אובייקט תקין
+            const filtered = personsArray.filter(p => {
+                if (!p) return false;
+                // תמיכה גם ב-PascalCase (מ-C#) וגם ב-camelCase
+                const name = p.name || p.Name || '';
+                return name.trim() !== '';
+            }).map(p => ({
+                name: p.name || p.Name || '',
+                carNumber: p.carNumber || p.CarNumber || '',
+                idNumber: p.idNumber || p.IdNumber || '',
+                phone: p.phone || p.Phone || ''
+            }));
+
+            if (filtered.length > 0) return filtered;
+        }
+
+        // פורמט ישן - בנה מהשדות הנפרדים
+        let names = [];
+        if (Array.isArray(data.names)) {
+            names = data.names.filter(n => n && n.trim() !== '');
+        } else if (data.names && typeof data.names === 'object') {
+            names = Object.values(data.names).filter(n => n && n.trim() !== '');
+        } else if (data.fullName) {
+            names = data.fullName.split(',').map(n => n.trim()).filter(n => n !== '');
+        }
+
+        let cars = [];
+        if (Array.isArray(data.carNumbers)) {
+            cars = data.carNumbers.filter(c => c && c.trim() !== '');
+        } else if (data.carNumbers && typeof data.carNumbers === 'object') {
+            cars = Object.values(data.carNumbers).filter(c => c && c.trim() !== '');
+        } else if (data.carNumber) {
+            cars = data.carNumber.split(',').map(c => c.trim()).filter(c => c !== '');
+        }
+
+        return names.map((name, i) => ({
+            name: name,
+            carNumber: cars[i] || '',
+            idNumber: (names.length === 1 && data.idNumber) ? data.idNumber : '',
+            phone: (names.length === 1 && data.phone) ? data.phone : ''
+        }));
+    }
+
+    // CSS לטבלת ההיסטוריה
+    _addEntryPermitHistoryStyles() {
+        if (document.getElementById('entryPermitHistoryStyles')) return;
+
+        const style = document.createElement('style');
+        style.id = 'entryPermitHistoryStyles';
+        style.textContent = `
+        .entry-permit-history-modal {
+            max-width: 1200px;
+            width: 95%;
+            height: 90%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .entry-permit-history-modal .modal-body {
+            overflow-y: auto;
+            flex: 1;
+            padding: 15px 20px;
+        }
+
+        #entryPermitHistoryContent{
+            height: 90%;
+        }
+
+        /* שורת חיפוש */
+        .history-search-bar {
+            position: relative;
+            margin-bottom: 15px;
+        }
+
+        .history-search-bar .form-input {
+            padding-left: 38px;
+            border-radius: 8px;
+        }
+
+        .history-search-icon {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #aaa;
+            pointer-events: none;
+        }
+
+        /* סיכום */
+        .history-summary {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .history-summary i {
+            color: #667eea;
+        }
+
+        /* עטיפת טבלה */
+        .history-table-wrapper {
+            overflow-x: auto;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            height:95%;
+        }
+
+        /* טבלה */
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+        }
+
+        .history-table thead tr {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .history-table th {
+            padding: 10px 12px;
+            text-align: right;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .history-table tbody tr {
+            border-bottom: 1px solid #f0f0f0;
+            transition: background 0.15s;
+        }
+
+        .history-table tbody tr:hover {
+            background: #f8f9ff;
+        }
+
+        .history-table td {
+            padding: 10px 12px;
+            vertical-align: middle;
+        }
+
+        /* תגיות */
+        .date-badge {
+            font-size: 0.8rem;
+            color: #888;
+        }
+
+        .date-label {
+            color: #667eea;
+            font-size: 0.78rem;
+        }
+
+        .site-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.82rem;
+            font-weight: 600;
+        }
+
+        .site-badge.site-rg {
+            background: #e8f4fd;
+            color: #2980b9;
+            border: 1px solid #bee3f8;
+        }
+
+        .site-badge.site-pt {
+            background: #fef3e2;
+            color: #d68910;
+            border: 1px solid #fde8b4;
+        }
+
+        .site-badge.site-both {
+            background: linear-gradient(135deg, #e8f4fd, #fef3e2);
+            color: #555;
+            border: 1px solid #ddd;
+        }
+
+        /* שמות */
+        .names-cell {
+            min-width: 100px;
+            word-break: break-all;
+        }
+
+        .names-main {
+            display: block;
+        }
+
+        .names-more {
+            display: inline-block;
+            margin-top: 2px;
+            padding: 1px 6px;
+            background: #eef2ff;
+            color: #667eea;
+            border-radius: 10px;
+            font-size: 0.78rem;
+            cursor: help;
+        }
+
+        /* רכבים */
+        .cars-cell {
+            font-family: monospace;
+            font-size: 0.85rem;
+            letter-spacing: 0.5px;
+            min-width: 90px;
+            word-break: break-all;
+        }
+
+        /* שעה */
+        .time-cell {
+            white-space: nowrap;
+        }
+
+        .time-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            background: #e8f4fd;
+            color: #2980b9;
+            border-radius: 10px;
+            font-size: 0.82rem;
+            font-weight: 600;
+        }
+
+        /* ת"ז */
+        .id-cell {
+            font-family: monospace;
+            font-size: 0.85rem;
+        }
+
+        .id-badge {
+            padding: 2px 6px;
+            background: #f0fff4;
+            color: #276749;
+            border-radius: 6px;
+            border: 1px solid #c6f6d5;
+            font-size: 0.82rem;
+        }
+
+        /* מלווה */
+        .escort-cell {
+            min-width: 80px;
+        }
+
+        .escort-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 0.85rem;
+            color: #553c9a;
+        }
+
+        .escort-badge i {
+            color: #805ad5;
+            font-size: 0.78rem;
+        }
+
+        /* טלפון */
+        .phone-cell {
+            white-space: nowrap;
+        }
+
+        .phone-link {
+            color: #2b6cb0;
+            text-decoration: none;
+            font-family: monospace;
+            font-size: 0.85rem;
+            padding: 2px 6px;
+            background: #ebf8ff;
+            border-radius: 6px;
+            border: 1px solid #bee3f8;
+            transition: background 0.15s;
+        }
+
+        .phone-link:hover {
+            background: #bee3f8;
+            text-decoration: underline;
+        }
+
+        /* תא ריק */
+        .empty-cell {
+            color: #ccc;
+            font-size: 0.85rem;
+        }
+
+        /* ריק */
+        .history-empty {
+            text-align: center;
+            padding: 50px 20px;
+            color: #aaa;
+        }
+
+        .history-empty i {
+            font-size: 3rem;
+            margin-bottom: 15px;
+            display: block;
+        }
+
+        /* כפתור היסטוריה */
+        .btn-info {
+            background: linear-gradient(135deg, #17a2b8, #138496);
+            color: white;
+            border: none;
+        }
+
+        .btn-info:hover {
+            background: linear-gradient(135deg, #138496, #117a8b);
+            transform: translateY(-1px);
+        }
+
+        @media (max-width: 768px) {
+            .entry-permit-history-modal {
+                width: 100%;
+                max-height: 100vh;
+            }
+
+            .history-table {
+                font-size: 0.78rem;
+            }
+
+            .history-table th,
+            .history-table td {
+                padding: 7px 8px;
+            }
+        }
+    `;
+        document.head.appendChild(style);
+    }
+
+    // הסרת שורה
+    _removeEntryRow(button) {
+        const row = button.closest('.multi-entry-row');
+        const container = row.parentElement;
+
+        // לא מסיר אם זו השורה היחידה
+        if (container.querySelectorAll('.multi-entry-row').length <= 1) return;
+
+        container.removeChild(row);
+        this._updateRemoveButtons(container);
+    }
+
+    // עדכון נראות כפתורי הסרה
+    _updateRemoveButtons(container) {
+        const rows = container.querySelectorAll('.multi-entry-row');
+        rows.forEach(row => {
+            const removeBtn = row.querySelector('.remove-entry-btn');
+            if (removeBtn) {
+                removeBtn.style.display = rows.length > 1 ? 'flex' : 'none';
+            }
+        });
+    }
+
+    // *** פונקציה חדשה לחילוץ נתונים מהודעה ישנה ***
+    _extractPermitDataFromMessage(message) {
+        try {
+            // אם יש entryPermitData - השתמש בו ישירות
+            if (message.entryPermitData) {
+                return message.entryPermitData;
+            }
+
+            // אחרת נסה לחלץ מהתוכן
+            const content = message.content || '';
+            const title = message.title || '';
+
+            // ===== חילוץ אתרים =====
+            let sites = [];
+            if (content.includes('ר"ג') || title.includes('ר"ג')) sites.push('ר"ג');
+            if (content.includes('פ"ת') || title.includes('פ"ת')) sites.push('פ"ת');
+
+            // ===== חילוץ תאריך מהכותרת =====
+            // פורמט: "אישור כניסה - שם - DD/MM/YYYY"
+            let date = null;
+            const titleDateMatch = title.match(/(\d{2}\/\d{2}\/\d{4})/);
+            if (titleDateMatch) {
+                date = titleDateMatch[1];
+            }
+
+            // ===== חילוץ שמות =====
+            // פורמט חדש עם מספור:
+            // "שמות  :\n  1. שם1\n  2. שם2"
+            let names = [];
+
+            // נסה פורמט מספור (מספר שמות)
+            const numberedNamesMatch = content.match(/שמות\s*:\s*\n((?:\s+\d+\.\s*.+\n?)+)/);
+            if (numberedNamesMatch) {
+                const namesBlock = numberedNamesMatch[1];
+                const nameLines = namesBlock.match(/\d+\.\s*(.+)/g);
+                if (nameLines) {
+                    names = nameLines.map(line => line.replace(/^\d+\.\s*/, '').trim())
+                        .filter(n => n !== '');
+                }
+            }
+
+            // נסה פורמט שם בודד: "שם    : שם פרטי ושם משפחה"
+            if (names.length === 0) {
+                const singleNameMatch = content.match(/שם\s*:\s*(.+)/);
+                if (singleNameMatch) {
+                    names = [singleNameMatch[1].trim()];
+                }
+            }
+
+            // ===== חילוץ חברה =====
+            let company = null;
+            const companyMatch = content.match(/חברה\s*:\s*(.+)/);
+            if (companyMatch) {
+                company = companyMatch[1].trim();
+            }
+
+            // ===== חילוץ רכבים =====
+            // פורמט חדש עם מספור:
+            // "מס' רכב:\n  1. 12345678\n  2. 87654321"
+            let carNumbers = [];
+
+            // נסה פורמט מספור (מספר רכבים)
+            const numberedCarsMatch = content.match(/מס['׳]?\s*רכב\s*:\s*\n((?:\s+\d+\.\s*.+\n?)+)/);
+            if (numberedCarsMatch) {
+                const carsBlock = numberedCarsMatch[1];
+                const carLines = carsBlock.match(/\d+\.\s*(.+)/g);
+                if (carLines) {
+                    carNumbers = carLines
+                        .map(line => line.replace(/^\d+\.\s*/, '').trim().replace(/[-\s]/g, ''))
+                        .filter(c => c !== '');
+                }
+            }
+
+            // נסה פורמט רכב בודד: "מס' רכב: 12345678"
+            if (carNumbers.length === 0) {
+                const singleCarMatch = content.match(/מס['׳]?\s*רכב\s*:\s*(\d[\d\s,-]+)/);
+                if (singleCarMatch) {
+                    carNumbers = singleCarMatch[1]
+                        .split(',')
+                        .map(c => c.trim().replace(/[-\s]/g, ''))
+                        .filter(c => c !== '');
+                }
+            }
+
+            // ===== חילוץ שדות אופציונליים =====
+            const idMatch = content.match(/ת\.ז\.\s*:\s*(.+)/);
+            const escortMatch = content.match(/מלווה\s*:\s*(.+)/);
+            const timeMatch = content.match(/בשעה\s+(\d{1,2}:\d{2})/);
+            const phoneMatch = content.match(/טלפון\s*:\s*(.+)/);
+
+            const result = {
+                sites: sites.length > 0 ? sites : null,
+                site: sites.join(' ו'),
+                date: date,
+                names: names.length > 0 ? names : null,
+                fullName: names.join(', '),
+                company: company,
+                carNumbers: carNumbers.length > 0 ? carNumbers : null,
+                carNumber: carNumbers.join(', '),
+                idNumber: idMatch ? idMatch[1].trim() : null,
+                escort: escortMatch ? escortMatch[1].trim() : null,
+                time: timeMatch ? timeMatch[1].trim() : null,
+                phone: phoneMatch ? phoneMatch[1].trim() : null
+            };
+            return result;
+
+        } catch (error) {
+            console.error('Error extracting permit data from message:', error);
+            return null;
+        }
+    }
+
+    _fillEntryPermitForm(data, isDuplicate = false) {
+        // ← תיקון: תמיכה ב-PascalCase מ-C#
+        const sites = data.sites || data.Sites ||
+            (data.site || data.Site ? [data.site || data.Site] : []);
+
+        // ===== אתר =====
+        document.querySelectorAll('input[name="permitSite"]').forEach(cb => {
+            const shouldCheck = sites.some(s => s === cb.value);
+            cb.checked = shouldCheck;
+            cb.nextElementSibling.classList.toggle('selected', shouldCheck);
+        });
+
+        // ===== תאריך =====
+        const dateValue = data.date || data.Date || '';
+        if (!isDuplicate && dateValue) {
+            let dateStr = dateValue;
+            const dateMatch = dateStr.match(/(\d{2}\/\d{2}\/\d{4})/);
+            if (dateMatch) dateStr = dateMatch[1];
+
+            document.getElementById('permitDate').value = dateStr;
+            const parts = dateStr.split('/');
+            if (parts.length === 3) {
+                const isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+                document.getElementById('permitDateHidden').value = isoDate;
+                if (this.entryPermitDatePicker) {
+                    try {
+                        this.entryPermitDatePicker.setDate(
+                            new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0])), false
+                        );
+                    } catch (e) { this._setEntryPermitDefaultDate(); }
+                }
+            } else {
+                this._setEntryPermitDefaultDate();
+            }
+        } else {
+            this._setEntryPermitDefaultDate();
+        }
+
+        // ===== בניית persons =====
+        const personsToFill = this._getPersonsFromData(data);
+
+        // ===== מלא שורות אנשים =====
+        const namesContainer = document.getElementById('permitNamesContainer');
+        if (namesContainer) {
+            namesContainer.innerHTML = '';
+
+            if (personsToFill.length > 0) {
+                personsToFill.forEach((person, index) => {
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = this._buildNameRowHtml(
+                        index,
+                        person.name || '',
+                        person.carNumber || '',
+                        person.idNumber || '',
+                        person.phone || ''
+                    );
+                    const newRow = tempDiv.firstElementChild;
+                    namesContainer.appendChild(newRow);
+
+                    const carInput = newRow.querySelector('.permit-car-input');
+                    if (carInput) this._attachCarInputListeners(carInput);
+                });
+            } else {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = this._buildNameRowHtml(0);
+                const newRow = tempDiv.firstElementChild;
+                namesContainer.appendChild(newRow);
+
+                const carInput = newRow.querySelector('.permit-car-input');
+                if (carInput) this._attachCarInputListeners(carInput);
+            }
+
+            this._updateRemoveButtons(namesContainer);
+        }
+
+        // ===== חברה =====
+        const companyField = document.getElementById('permitCompany');
+        if (companyField) companyField.value = data.company || data.Company || '';
+
+        // ===== מלווה =====
+        const escortField = document.getElementById('permitEscort');
+        if (escortField) escortField.value = data.escort || data.Escort || '';
+
+        // ===== שעה =====
+        const timeValue = data.time || data.Time || '';
+        if (timeValue) {
+            const timeParts = timeValue.split(':');
+            if (timeParts.length === 2) {
+                const hourSel = document.getElementById('permitTimeHour');
+                const minuteSel = document.getElementById('permitTimeMinute');
+                const clearBtn = document.getElementById('permitTimeClearBtn');
+                if (hourSel) hourSel.value = timeParts[0].padStart(2, '0');
+                if (minuteSel) minuteSel.value = timeParts[1].padStart(2, '0');
+                if (clearBtn && (hourSel?.value || minuteSel?.value)) {
+                    clearBtn.style.display = 'inline-block';
+                }
+            }
+        }
+
+        // ===== מחבר =====
+        const authorValue = data.author || data.Author || '';
+        const authorSelect = document.getElementById('permitAuthor');
+        const customContainer = document.getElementById('permitCustomAuthorContainer');
+        const customInput = document.getElementById('permitCustomAuthorInput');
+
+        if (authorSelect && authorValue) {
+            const optionExists = Array.from(authorSelect.options)
+                .some(opt => opt.value === authorValue);
+
+            if (optionExists) {
+                authorSelect.value = authorValue;
+                if (customContainer) customContainer.style.display = 'none';
+            } else {
+                // מחבר לא ברשימה - הצג שדה חופשי
+                authorSelect.value = 'other';
+                if (customContainer) customContainer.style.display = 'block';
+                if (customInput) customInput.value = authorValue;
+            }
+        }
+    }
+
+    // ========== פונקציות עזר פנימיות ==========
+    _attachCarInputListeners(carInput) {
+        carInput.addEventListener('input', (e) => {
+            const cleaned = e.target.value.replace(/[-\s]/g, '');
+            if (e.target.value !== cleaned) e.target.value = cleaned;
+        });
+
+        carInput.addEventListener('paste', (e) => {
+            e.preventDefault();
+            const pastedText = (e.clipboardData || window.clipboardData).getData('text');
+            const cleaned = pastedText.replace(/[-\s]/g, '');
+            const start = e.target.selectionStart;
+            const end = e.target.selectionEnd;
+            const currentValue = e.target.value;
+            e.target.value = currentValue.substring(0, start) + cleaned + currentValue.substring(end);
+            e.target.setSelectionRange(start + cleaned.length, start + cleaned.length);
+        });
+    }
+
+    // הצגת כפתור היסטוריה כשנמצאים בטאב אישורי כניסה
+    showEntryPermitHistoryButton() {
+        const noticesGrid = document.querySelector('.notices-grid');
+        if (!noticesGrid) return;
+
+        // הסר כפתור קיים אם יש
+        const existingBtn = document.getElementById('entryPermitHistoryGridBtn');
+        if (existingBtn) existingBtn.remove();
+
+        // בדוק אם הטאב הפעיל הוא אישורי כניסה
+        if (this.currentCategoryFilter !== 'אישורי כניסה') return;
+
+        // ספור כמה אישורים יש
+        const permitsCount = this.allMessages.filter(
+            m => m.category === 'אישורי כניסה'
+        ).length;
+
+        // צור את הכפתור
+        const btnWrapper = document.createElement('div');
+        btnWrapper.id = 'entryPermitHistoryGridBtn';
+        btnWrapper.className = 'entry-permit-history-grid-btn-wrapper';
+        btnWrapper.innerHTML = `
+        <button class="entry-permit-new-grid-btn"
+                onclick="messagesManager.openEntryPermitModal()">
+            <i class="fas fa-plus"></i>
+            <span>אישור כניסה חדש</span>
+        </button>
+        <button class="entry-permit-history-grid-btn"
+                onclick="messagesManager.openEntryPermitHistory()">
+            <i class="fas fa-history"></i>
+            <span>היסטוריית אישורי כניסה</span>
+            ${permitsCount > 0
+                ? `<span class="permits-count-badge">${permitsCount}</span>`
+                : ''}
+        </button>
+    `;
+
+        // הוסף לפני הכרטיסים
+        noticesGrid.insertBefore(btnWrapper, noticesGrid.firstChild);
+
+        // הוסף CSS אם לא קיים
+        this._addEntryPermitGridBtnStyles();
+    }
+
+    _addEntryPermitGridBtnStyles() {
+        if (document.getElementById('entryPermitGridBtnStyles')) return;
+
+        const style = document.createElement('style');
+        style.id = 'entryPermitGridBtnStyles';
+        style.textContent = `
+        .entry-permit-history-grid-btn-wrapper {
+            grid-column: 1 / -1;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            padding: 14px 18px;
+            background: linear-gradient(135deg, #f0f4ff 0%, #faf5ff 100%);
+            border: 1.5px solid #c3d0f7;
+            border-radius: 12px;
+            margin-bottom: 4px;
+            flex-wrap: wrap;
+        }
+
+        .entry-permit-history-grid-btn,
+        .entry-permit-new-grid-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 9px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.22s ease;
+            font-family: inherit;
+        }
+
+        .entry-permit-history-grid-btn {
+            right: 100%;
+            position: sticky;
+        }
+
+        .entry-permit-history-grid-btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            box-shadow: 0 3px 10px rgba(102, 126, 234, 0.3);
+        }
+
+        .entry-permit-history-grid-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 18px rgba(102, 126, 234, 0.45);
+        }
+
+        .entry-permit-history-grid-btn:active {
+            transform: translateY(0);
+        }
+
+        .entry-permit-new-grid-btn {
+            background: linear-gradient(135deg, #38a169, #276749);
+            color: white;
+            box-shadow: 0 3px 10px rgba(56, 161, 105, 0.3);
+        }
+
+        .entry-permit-new-grid-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 18px rgba(56, 161, 105, 0.45);
+        }
+
+        .entry-permit-new-grid-btn:active {
+            transform: translateY(0);
+        }
+
+        .permits-count-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 22px;
+            height: 22px;
+            padding: 0 6px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 11px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            border: 1.5px solid rgba(255, 255, 255, 0.5);
+        }
+
+        @media (max-width: 600px) {
+            .entry-permit-history-grid-btn-wrapper {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .entry-permit-history-grid-btn,
+            .entry-permit-new-grid-btn {
+                justify-content: center;
+                width: 100%;
+            }
+        }
+    `;
+        document.head.appendChild(style);
+    }
+
+    _initEntryPermitDatePicker() {
+        if (typeof FlatpickrHelper !== 'undefined') {
+            this.entryPermitDatePicker = FlatpickrHelper.initHebrewDatePicker(
+                '#permitDateHidden',
+                (selectedDates, dateStr) => {
+                    if (dateStr) {
+                        const formatted = FlatpickrHelper.formatDateToDisplay(dateStr);
+                        document.getElementById('permitDate').value = formatted;
+                        document.getElementById('permitDateHidden').value = dateStr;
+
+                        // נקה שגיאת תאריך
+                        const dateErrorEl = document.getElementById('dateError');
+                        dateErrorEl.style.display = 'none';
+                        dateErrorEl.innerHTML =
+                            `<i class="fas fa-exclamation-circle"></i> יש לבחור תאריך`;
+                        document.getElementById('permitDate')
+                            .classList.remove('input-error');
+                    }
+                },
+                {
+                    // חסום תאריכים שעברו
+                    minDate: 'today'
+                }
+            );
+
+            // לחיצה על שדה התאריך פותחת את ה-datepicker
+            document.getElementById('permitDate').addEventListener('click', () => {
+                if (this.entryPermitDatePicker) {
+                    this.entryPermitDatePicker.open();
+                }
+            });
+        } else {
+            // fallback
+            const dateInput = document.getElementById('permitDate');
+            dateInput.removeAttribute('readonly');
+            dateInput.type = 'date';
+
+            // הגדר מינימום לתאריך היום
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const dd = String(today.getDate()).padStart(2, '0');
+            dateInput.min = `${yyyy}-${mm}-${dd}`;
+
+            dateInput.addEventListener('change', (e) => {
+                document.getElementById('permitDateHidden').value = e.target.value;
+            });
+        }
+    }
+
+    _setEntryPermitDefaultDate() {
+        const today = new Date();
+        const dd = String(today.getDate()).padStart(2, '0');
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const yyyy = today.getFullYear();
+
+        document.getElementById('permitDate').value = `${dd}/${mm}/${yyyy}`;
+        document.getElementById('permitDateHidden').value =
+            `${yyyy}-${mm}-${dd}`;
+
+        if (this.entryPermitDatePicker) {
+            this.entryPermitDatePicker.setDate(today, false);
+        }
+    }
+
+    _resetEntryPermitForm() {
+        // איפוס checkboxes של אתר
+        document.querySelectorAll('input[name="permitSite"]').forEach(cb => {
+            cb.checked = false;
+        });
+        document.querySelectorAll('.site-btn').forEach(btn =>
+            btn.classList.remove('selected')
+        );
+
+        // איפוס שגיאות
+        ['siteError', 'dateError', 'nameError', 'companyError', 'carError']
+            .forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+
+        document.getElementById('permitCompany')?.classList.remove('input-error');
+
+        // איפוס תאריך
+        document.getElementById('permitDate').value = '';
+        document.getElementById('permitDateHidden').value = '';
+        if (this.entryPermitDatePicker) this.entryPermitDatePicker.clear();
+
+        // איפוס שמות - שורה אחת ריקה
+        const namesContainer = document.getElementById('permitNamesContainer');
+        if (namesContainer) {
+            namesContainer.innerHTML = '';
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = this._buildNameRowHtml(0);
+            const newRow = tempDiv.firstElementChild;
+            namesContainer.appendChild(newRow);
+
+            const carInput = newRow.querySelector('.permit-car-input');
+            if (carInput) this._attachCarInputListeners(carInput);
+        }
+
+        // איפוס שדות אחרים
+        const companyField = document.getElementById('permitCompany');
+        if (companyField) companyField.value = '';
+
+        const escortField = document.getElementById('permitEscort');
+        if (escortField) escortField.value = '';
+
+        // איפוס שעה
+        const hourSel = document.getElementById('permitTimeHour');
+        const minuteSel = document.getElementById('permitTimeMinute');
+
+        // איפוס מחבר - הגדר ברירת מחדל
+        const authorSelect = document.getElementById('permitAuthor');
+        const customContainer = document.getElementById('permitCustomAuthorContainer');
+        const customInput = document.getElementById('permitCustomAuthorInput');
+        const authorError = document.getElementById('authorError');
+
+        if (authorSelect) {
+            const lastAuthor = this.getLastSelectedAuthor();
+            if (lastAuthor) {
+                const optionExists = Array.from(authorSelect.options)
+                    .some(opt => opt.value === lastAuthor);
+                authorSelect.value = optionExists ? lastAuthor : '';
+            } else {
+                authorSelect.value = '';
+            }
+        }
+        if (customContainer) customContainer.style.display = 'none';
+        if (customInput) customInput.value = '';
+        if (authorError) authorError.style.display = 'none';
+    }
+
+    _clearFieldError(errorId, inputId) {
+        const errorEl = document.getElementById(errorId);
+        const inputEl = document.getElementById(inputId);
+        if (errorEl) errorEl.style.display = 'none';
+        if (inputEl) inputEl.classList.remove('input-error');
+    }
+
+    closeEntryPermitModal() {
+        const modal = document.getElementById('entryPermitModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+        document.body.style.overflow = 'auto';
+    }
+
+    // ========== ולידציה ושליחה ==========
+    async _saveEntryPermitAsMessage(data, editingMessageId = null) {
+        try {
+            const isEditing = editingMessageId !== null && editingMessageId !== '';
+
+            let titleName = data.fullName;
+            if (data.names && data.names.length > 1) {
+                titleName = `${data.names[0]} ואחרים`;
+            }
+
+            const titleSite = data.sites && data.sites.length > 1
+                ? data.sites.join(' ו')
+                : data.site;
+
+            // וודא שמערכים נשמרים כמערכים אמיתיים
+            const personsArray = Array.isArray(data.persons)
+                ? data.persons.filter(p => p && p.name && p.name.trim() !== '')
+                : [];
+
+            // אם אין persons, בנה מהשדות הישנים
+            if (personsArray.length === 0 && data.names) {
+                const namesArr = Array.isArray(data.names) ? data.names : [data.names];
+                const carsArr = Array.isArray(data.carNumbers) ? data.carNumbers :
+                    (data.carNumber ? [data.carNumber] : []);
+
+                namesArr.forEach((name, i) => {
+                    if (name && name.trim()) {
+                        personsArray.push({
+                            name: name.trim(),
+                            carNumber: (carsArr[i] || '').replace(/[-\s]/g, ''),
+                            idNumber: '',
+                            phone: ''
+                        });
+                    }
+                });
+            }
+
+            const namesArray = personsArray.map(p => p.name);
+            const carsArray = personsArray.map(p => p.carNumber).filter(c => c !== '');
+
+            const messageData = {
+                id: isEditing ? editingMessageId : '',
+                title: `אישור כניסה - ${titleName} - ${data.date}`,
+                category: 'אישורי כניסה',
+                priority: 'רגיל',
+                author: data.author || this.getLastSelectedAuthor() || 'NOC',
+                content: this._buildEntryPermitEmailBody(data),
+                entryPermitData: {
+                    sites: Array.isArray(data.sites) ? [...data.sites] : [data.site],
+                    site: titleSite,
+                    date: data.date,
+                    dateLabel: data.dateLabel || data.date,
+                    // ← שמור persons[] המלא - זה הכי חשוב!
+                    persons: personsArray.map(p => ({
+                        name: p.name || '',
+                        carNumber: p.carNumber || '',
+                        idNumber: p.idNumber || '',
+                        phone: p.phone || ''
+                    })),
+                    names: namesArray,
+                    fullName: namesArray.join(', '),
+                    company: data.company,
+                    carNumbers: carsArray,
+                    carNumber: carsArray.join(', '),
+                    idNumber: personsArray.length === 1 ? (personsArray[0].idNumber || null) : null,
+                    escort: data.escort || null,
+                    time: data.time || '',
+                    phone: personsArray.length === 1 ? (personsArray[0].phone || '') : ''
+                },
+                isEntryPermit: true
+            };
+
+            const url = isEditing ? '/Messages/EditMessage' : '/Messages/AddMessage';
+            const method = isEditing ? 'PUT' : 'POST';
+
+            const response = await fetch(url, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(messageData)
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                const msg = isEditing
+                    ? 'אישור הכניסה עודכן בהצלחה'
+                    : 'אישור הכניסה נשמר בהצלחה';
+                NotificationManager.show(msg, 'success');
+                await this.loadMessages();
+                return result;
+            } else {
+                NotificationManager.show(result.error || 'שגיאה בשמירה', 'error');
+                return null;
+            }
+        } catch (error) {
+            console.error('Error saving entry permit as message:', error);
+            NotificationManager.show('שגיאה בשמירת אישור הכניסה', 'error');
+            return null;
+        }
+    }
+
+    submitEntryPermit() {
+        if (!this._validateEntryPermitForm()) {
+            return;
+        }
+
+        const data = this._collectEntryPermitData();
+
+        // *** קבל את ה-ID של ההודעה הנערכת מהמודל ***
+        const modal = document.getElementById('entryPermitModal');
+        const editingMessageId = modal ? modal.dataset.editingMessageId : '';
+        const isDuplicate = modal ? modal.dataset.isDuplicate === 'true' : false;
+        const isEditing = !!(editingMessageId && editingMessageId !== '' && !isDuplicate);
+
+        // שמור מחבר שנבחר
+        if (data.author && data.author !== 'other') {
+            this.saveLastSelectedAuthor(data.author);
+        }
+
+        // שמור את האישור כהודעה
+        this._saveEntryPermitAsMessage(data, isEditing ? editingMessageId : null)
+            .then(savedMessage => {
+                this._openEntryPermitEmail(data);
+                this.closeEntryPermitModal();
+            });
+    }
+
+    // ========== ולידציה מורחבת ==========
+
+    _validateEntryPermitForm() {
+        let isValid = true;
+
+        // נקה שגיאות קודמות
+        this._clearAllPermitErrors();
+
+        // ===== אתר =====
+        const sitesSelected = document.querySelectorAll(
+            'input[name="permitSite"]:checked'
+        );
+        if (sitesSelected.length === 0) {
+            document.getElementById('siteError').style.display = 'flex';
+            isValid = false;
+        }
+
+        // ===== תאריך =====
+        const dateValue = document.getElementById('permitDateHidden').value;
+        if (!dateValue || dateValue.trim() === '') {
+            document.getElementById('dateError').style.display = 'flex';
+            document.getElementById('permitDate').classList.add('input-error');
+            isValid = false;
+        }
+
+        // ===== חברה =====
+        const company = document.getElementById('permitCompany').value.trim();
+        if (!company) {
+            document.getElementById('companyError').style.display = 'flex';
+            document.getElementById('permitCompany').classList.add('input-error');
+            isValid = false;
+        }
+
+        // ===== אנשים =====
+        const personValidation = this._validatePersonRows();
+        if (!personValidation.isValid) {
+            isValid = false;
+        }
+
+        // ===== מחבר =====
+        const authorSelect = document.getElementById('permitAuthor');
+        const customAuthorInput = document.getElementById('permitCustomAuthorInput');
+        const authorError = document.getElementById('authorError');
+
+        if (authorSelect) {
+            if (!authorSelect.value || authorSelect.value === '') {
+                if (authorError) authorError.style.display = 'flex';
+                authorSelect.classList.add('input-error');
+                isValid = false;
+            } else if (authorSelect.value === 'other') {
+                const customVal = customAuthorInput?.value.trim() || '';
+                if (!customVal) {
+                    if (authorError) {
+                        authorError.style.display = 'flex';
+                        authorError.innerHTML =
+                            '<i class="fas fa-exclamation-circle"></i> יש להזין שם מחבר';
+                    }
+                    if (customAuthorInput) customAuthorInput.classList.add('input-error');
+                    isValid = false;
+                }
+            }
+        }
+
+        // גלול לשגיאה הראשונה
+        if (!isValid) {
+            const firstError = document.querySelector(
+                '.field-error[style*="flex"], .input-error'
+            );
+            if (firstError) {
+                firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+
+        return isValid;
+    }
+
+    _validatePersonRows() {
+        const personRows = document.querySelectorAll(
+            '#permitNamesContainer .person-row'
+        );
+
+        const carRegex = /^\d{5,8}$/;
+        const idRegex = /^\d{9}$/;
+        const phoneRegex = /^0\d{1,2}[-]?\d{3}[-]?\d{4}$/;
+
+        let isValid = true;
+        let hasValidName = false;
+
+        // מפות לזיהוי כפילויות
+        const seenIds = new Map(); // idNumber  → rowIndex
+        const seenPhones = new Map(); // phone     → rowIndex
+
+        // --- מעבר ראשון: ניקוי + איסוף ערכים ---
+        const persons = [];
+        personRows.forEach((row, idx) => {
+            const nameInput = row.querySelector('.permit-name-input');
+            const carInput = row.querySelector('.permit-car-input');
+            const idInput = row.querySelector('.permit-id-input');
+            const phoneInput = row.querySelector('.permit-phone-input');
+
+            // נקה שגיאות שדה
+            [nameInput, carInput, idInput, phoneInput].forEach(inp => {
+                if (inp) {
+                    inp.classList.remove('input-error');
+                    this._removeInlineError(inp);
+                }
+            });
+
+            // נרמל רכב (הסר מקפים/רווחים)
+            if (carInput) {
+                carInput.value = carInput.value.replace(/[-\s]/g, '');
+            }
+
+            persons.push({
+                idx,
+                row,
+                nameInput,
+                carInput,
+                idInput,
+                phoneInput,
+                name: nameInput?.value.trim() || '',
+                car: carInput?.value.trim() || '',
+                id: idInput?.value.trim() || '',
+                phone: phoneInput?.value.trim() || ''
+            });
+        });
+
+        // --- מעבר שני: ולידציה ---
+        persons.forEach(p => {
+
+            // שם - חובה
+            if (p.name !== '') {
+                hasValidName = true;
+            }
+
+            // רכב - אם הוזן, חייב להיות תקין
+            if (p.car !== '' && !carRegex.test(p.car)) {
+                this._markFieldError(
+                    p.carInput,
+                    'מספר רכב חייב להכיל 5-8 ספרות בלבד'
+                );
+                isValid = false;
+            }
+
+            // ת"ז - אם הוזנה, חייבת להיות 9 ספרות
+            if (p.id !== '') {
+                if (!idRegex.test(p.id)) {
+                    this._markFieldError(
+                        p.idInput,
+                        'תעודת זהות חייבת להכיל בדיוק 9 ספרות'
+                    );
+                    isValid = false;
+                } else {
+                    // בדיקת כפילות ת"ז
+                    if (seenIds.has(p.id)) {
+                        const firstIdx = seenIds.get(p.id) + 1;
+                        this._markFieldError(
+                            p.idInput,
+                            `ת"ז זו כבר הוזנה עבור אדם מספר ${firstIdx}`
+                        );
+                        // סמן גם את השורה הראשונה שהכילה את הת"ז
+                        const firstRow = persons[seenIds.get(p.id)];
+                        if (firstRow?.idInput) {
+                            this._markFieldError(
+                                firstRow.idInput,
+                                `ת"ז זו מופיעה גם עבור אדם מספר ${p.idx + 1}`
+                            );
+                        }
+                        isValid = false;
+                    } else {
+                        seenIds.set(p.id, p.idx);
+                    }
+                }
+            }
+
+            // טלפון - אם הוזן, חייב להיות תקין
+            if (p.phone !== '') {
+                if (!phoneRegex.test(p.phone)) {
+                    this._markFieldError(
+                        p.phoneInput,
+                        'מספר טלפון חייב להתחיל ב-0 ולהכיל 9-10 ספרות'
+                    );
+                    isValid = false;
+                } else {
+                    // בדיקת כפילות טלפון
+                    if (seenPhones.has(p.phone)) {
+                        const firstIdx = seenPhones.get(p.phone) + 1;
+                        this._markFieldError(
+                            p.phoneInput,
+                            `מספר טלפון זה כבר הוזן עבור אדם מספר ${firstIdx}`
+                        );
+                        // סמן גם את השורה הראשונה
+                        const firstRow = persons[seenPhones.get(p.phone)];
+                        if (firstRow?.phoneInput) {
+                            this._markFieldError(
+                                firstRow.phoneInput,
+                                `מספר טלפון זה מופיע גם עבור אדם מספר ${p.idx + 1}`
+                            );
+                        }
+                        isValid = false;
+                    } else {
+                        seenPhones.set(p.phone, p.idx);
+                    }
+                }
+            }
+        });
+
+        // לפחות שם אחד חובה
+        if (!hasValidName) {
+            document.getElementById('nameError').style.display = 'flex';
+            const firstNameInput = document.querySelector('.permit-name-input');
+            if (firstNameInput) {
+                firstNameInput.classList.add('input-error');
+            }
+            isValid = false;
+        }
+
+        return { isValid };
+    }
+
+    // ===== פונקציות עזר לשגיאות =====
+
+    _markFieldError(inputEl, message) {
+        if (!inputEl) return;
+
+        inputEl.classList.add('input-error');
+
+        // הסר שגיאה קיימת אם יש
+        this._removeInlineError(inputEl);
+
+        // צור אלמנט שגיאה inline מתחת לשדה
+        const errorEl = document.createElement('div');
+        errorEl.className = 'inline-field-error';
+        errorEl.innerHTML =
+            `<i class="fas fa-exclamation-circle"></i> ${message}`;
+
+        inputEl.parentNode.insertBefore(errorEl, inputEl.nextSibling);
+    }
+
+    _removeInlineError(inputEl) {
+        if (!inputEl) return;
+        const next = inputEl.nextSibling;
+        if (next && next.classList &&
+            next.classList.contains('inline-field-error')) {
+            next.remove();
+        }
+    }
+
+    _clearAllPermitErrors() {
+        // שגיאות כלליות
+        ['siteError', 'dateError', 'nameError', 'companyError', 'carError', 'authorError']
+            .forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+
+        // שגיאות שדות
+        document.querySelectorAll(
+            '#entryPermitModal .input-error'
+        ).forEach(el => el.classList.remove('input-error'));
+
+        // שגיאות inline
+        document.querySelectorAll('.inline-field-error')
+            .forEach(el => el.remove());
+    }
+
+    // HTML של שורת שם - עם שדות נוספים
+    _buildNameRowHtml(index, name = '', carNumber = '', idNumber = '', phone = '') {
+        return `
+    <div class="multi-entry-row person-row" data-index="${index}">
+        <div class="person-inline-fields">
+            <input type="text" 
+                   class="form-input permit-name-input" 
+                   placeholder="שם פרטי ושם משפחה" 
+                   maxlength="100"
+                   value="${this.escapeHtml(name)}">
+
+            <input type="text" 
+                   class="form-input permit-car-input" 
+                   placeholder="מס' רכב (רשות)"
+                   maxlength="8" 
+                   dir="rtl"
+                   value="${this.escapeHtml(carNumber)}">
+
+            <input type="text" 
+                   class="form-input permit-id-input" 
+                   placeholder="ת.ז. (רשות)" 
+                   maxlength="9" 
+                   dir="rtl"
+                   value="${this.escapeHtml(idNumber)}">
+
+            <input type="tel" 
+                   class="form-input permit-phone-input" 
+                   placeholder="טלפון (רשות)" 
+                   maxlength="11" 
+                   dir="rtl"
+                   value="${this.escapeHtml(phone)}">
+        </div>
+        <button type="button" class="remove-entry-btn" 
+                onclick="messagesManager._removeEntryRow(this)" 
+                style="display:none;" title="הסר">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>`;
+    }
+
+    _collectEntryPermitData() {
+        const selectedSites = Array.from(
+            document.querySelectorAll('input[name="permitSite"]:checked')
+        ).map(cb => cb.value);
+
+        const dateDisplay = document.getElementById('permitDate').value;
+        const hourVal = document.getElementById('permitTimeHour')?.value;
+        const minuteVal = document.getElementById('permitTimeMinute')?.value;
+        const time = (hourVal && minuteVal) ? `${hourVal}:${minuteVal}` : null;
+        const escort = document.getElementById('permitEscort')?.value.trim() || null;
+
+        const persons = Array.from(
+            document.querySelectorAll('#permitNamesContainer .person-row')
+        ).map(row => ({
+            name: row.querySelector('.permit-name-input')?.value.trim() || '',
+            carNumber: (row.querySelector('.permit-car-input')?.value.trim() || '')
+                .replace(/[-\s]/g, ''),
+            idNumber: row.querySelector('.permit-id-input')?.value.trim() || '',
+            phone: row.querySelector('.permit-phone-input')?.value.trim() || ''
+        })).filter(p => p.name !== '');
+
+        // תאריך לתצוגה
+        let dateLabel = dateDisplay;
+        const today = new Date();
+        const todayStr = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowStr = `${String(tomorrow.getDate()).padStart(2, '0')}/${String(tomorrow.getMonth() + 1).padStart(2, '0')}/${tomorrow.getFullYear()}`;
+
+        if (dateDisplay === todayStr) dateLabel = `היום (${dateDisplay})`;
+        else if (dateDisplay === tomorrowStr) dateLabel = `מחר (${dateDisplay})`;
+
+        // איסוף מחבר
+        const authorSelect = document.getElementById('permitAuthor');
+        const customAuthorInput = document.getElementById('permitCustomAuthorInput');
+        let author = '';
+
+        if (authorSelect) {
+            if (authorSelect.value === 'other') {
+                author = customAuthorInput?.value.trim() || '';
+            } else {
+                author = authorSelect.value;
+            }
+        }
+
+        return {
+            sites: selectedSites,
+            site: selectedSites.join(' ו'),
+            date: dateDisplay,
+            dateLabel: dateLabel,
+            persons: persons,
+            names: persons.map(p => p.name),
+            fullName: persons.map(p => p.name).join(', '),
+            company: document.getElementById('permitCompany').value.trim(),
+            carNumbers: persons.map(p => p.carNumber).filter(c => c !== ''),
+            carNumber: persons.map(p => p.carNumber).filter(c => c !== '').join(', '),
+            escort: escort,
+            time: time || null,
+            author: author
+        };
+    }
+
+    // ========== בניית המייל ==========
+
+    _openEntryPermitEmail(data) {
+        // קבל נמענים לפי האתרים שנבחרו
+        const sites = data.sites && data.sites.length > 0
+            ? data.sites
+            : [data.site];
+
+        // איסוף כל הנמענים מכל האתרים
+        let allToAddresses = new Set();
+        let allCcAddresses = new Set();
+
+        sites.forEach(site => {
+            const recipients = this._getEntryPermitRecipients(site);
+
+            // הוסף נמענים TO
+            recipients.to.split(';').forEach(email => {
+                const trimmed = email.trim();
+                if (trimmed) allToAddresses.add(trimmed);
+            });
+
+            // הוסף נמענים CC
+            recipients.cc.split(';').forEach(email => {
+                const trimmed = email.trim();
+                if (trimmed) allCcAddresses.add(trimmed);
+            });
+        });
+
+        // בנה כותרת עם כל האתרים
+        let siteDisplay = '';
+        if (sites.length > 1) {
+            siteDisplay = sites.map(s => s === 'פ"ת' ? `אתר ${s}` : s).join(' ו');
+        } else {
+            const site = sites[0];
+            siteDisplay = site === 'פ"ת' ? `אתר ${site}` : site;
+        }
+
+        var subject;
+
+        // בדוק אם dateLabel מתחיל ב"היום" או "מחר"
+        const isRelativeDate = data.dateLabel && (
+            data.dateLabel.startsWith('היום') ||
+            data.dateLabel.startsWith('מחר')
+        );
+
+        // שורת פתיחה - "בתאריך" רק אם זה תאריך מספרי בלבד
+        if (isRelativeDate) {
+            subject = `אישור כניסה ל${data.dateLabel} ב${siteDisplay}`;
+        } else {
+            subject = `אישור כניסה בתאריך ${data.dateLabel} ב${siteDisplay}`;
+        }
+        // בנה נתונים עם כל האתרים לגוף המייל
+        const emailData = {
+            ...data,
+            site: siteDisplay
+        };
+
+        const body = this._buildEntryPermitEmailBody(emailData);
+
+        const toStr = Array.from(allToAddresses).join(';');
+        const ccStr = Array.from(allCcAddresses).join(';');
+
+        this._openEntryPermitOutlookEmail(subject, body, toStr, ccStr);
+    }
+
+    _getEntryPermitRecipients(site) {
+        // נמענים בהתאם לאתר - מבוסס על המיילים לדוגמה
+        const recipientsBySite = {
+            'ר"ג': {
+                to: 'lobbymenora@menoramivt.co.il;binyaminra@menoramivt.co.il;securityroomusr@menoramivt.co.il',
+                cc: 'noc@menoramivt.co.il'
+            },
+            'פ"ת': {
+                to: 'BAKARA@il.ibm.com;HananBD1@kyndryl.com',
+                cc: 'noc@menoramivt.co.il'
+            }
+        };
+
+        return recipientsBySite[site] || { to: '', cc: '' };
+    }
+
+    _buildEntryPermitEmailBody(data) {
+        let body = 'שלום רב,\n\n';
+
+        // בדוק אם dateLabel מתחיל ב"היום" או "מחר"
+        const isRelativeDate = data.dateLabel && (
+            data.dateLabel.startsWith('היום') ||
+            data.dateLabel.startsWith('מחר')
+        );
+
+        // שורת פתיחה - "בתאריך" רק אם זה תאריך מספרי בלבד
+        if (isRelativeDate) {
+            body += `נא לאשר כניסה ל${data.dateLabel}`;
+        } else {
+            body += `נא לאשר כניסה בתאריך ${data.dateLabel}`;
+        }
+
+        if (data.time) body += ` בשעה ${data.time}`;
+        body += ` ל${data.site}:\n\n`;
+
+        // חברה
+        body += `חברה    : ${data.company}\n\n`;
+
+        // אנשים
+        if (data.persons && data.persons.length > 0) {
+
+            if (data.persons.length === 1) {
+                const p = data.persons[0];
+                body += `שם      : ${p.name}\n`;
+
+                if (p.idNumber && p.idNumber.trim() !== '')
+                    body += `ת.ז.    : ${p.idNumber}\n`;
+
+                if (p.carNumber && p.carNumber.trim() !== '')
+                    body += `מס' רכב : ${p.carNumber}\n`;
+
+                if (p.phone && p.phone.trim() !== '')
+                    body += `טלפון   : ${p.phone}\n`;
+
+                body += '\n';
+
+            } else {
+                body += `שמות    :\n\n`;
+
+                data.persons.forEach((p, i) => {
+                    body += `  ${i + 1}.\tשם      : ${p.name}\n`;
+
+                    if (p.idNumber && p.idNumber.trim() !== '')
+                        body += `\t\tת.ז.    : ${p.idNumber}\n`;
+
+                    if (p.carNumber && p.carNumber.trim() !== '')
+                        body += `\t\tמס' רכב : ${p.carNumber}\n`;
+
+                    if (p.phone && p.phone.trim() !== '')
+                        body += `\t\tטלפון   : ${p.phone}\n`;
+
+                    body += '\n';
+                });
+            }
+        }
+
+        if (data.escort) {
+            body += `מלווה   : ${data.escort}\n\n`;
+        }
+
+        body += 'נא לאשר כניסה וחניה.\n\nתודה.';
+
+        return body;
+    }
+
+    _openEntryPermitOutlookEmail(subject, body, to, cc) {
+        try {
+            const boundary = `----=_EntryPermit_${Date.now()}`;
+            const htmlBody = this._buildEntryPermitHtmlEmail(body);
+
+            let emlContent = `X-Unsent: 1
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="${boundary}"
+To: ${to}`;
+
+            if (cc) {
+                emlContent += `\nCc: ${cc}`;
+            }
+
+            emlContent += `
+Subject: =?UTF-8?B?${btoa(unescape(encodeURIComponent(subject)))}?=
+
+--${boundary}
+Content-Type: text/plain; charset=UTF-8
+
+${body}
+
+--${boundary}
+Content-Type: text/html; charset=UTF-8
+
+${htmlBody}
+
+--${boundary}--`;
+
+            const blob = new Blob([emlContent], { type: 'message/rfc822' });
+            const url = URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `אישור_כניסה_${subject.replace(/[^א-תa-zA-Z0-9]/g, '_')}.eml`;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 2000);
+
+            // הצג הנחיות
+            setTimeout(() => {
+                this.showEmailInstructionsModal();
+            }, 1500);
+
+            NotificationManager.show('קובץ המייל הורד - פתח אותו לשליחה ב-Outlook', 'success');
+
+        } catch (error) {
+            console.error('Error creating entry permit email:', error);
+            NotificationManager.show('שגיאה ביצירת המייל', 'error');
+        }
+    }
+
+    _buildEntryPermitHtmlEmail(plainBody) {
+        const lines = plainBody.split('\n');
+        let htmlLines = '';
+
+        lines.forEach((line, index) => {
+            // שורה ריקה לחלוטין - רווח גדול
+            if (line.trim() === '') {
+                htmlLines += `<div style="height:12px; line-height:12px;">&nbsp;</div>`;
+                return;
+            }
+
+            // זיהוי רמת הכניסה לפי tabs
+            const tabCount = (line.match(/^\t+/) || [''])[0].length;
+            const trimmed = line.replace(/^\t+/, '').trim();
+            const paddingRight = tabCount * 25;
+
+            // שורת מספור (1. 2. וכו')
+            if (/^\s*\d+\.\s/.test(line)) {
+                htmlLines += `
+                <div style="
+                    padding: 4px 0 4px ${paddingRight}px;
+                    font-weight: bold;
+                    color: #222;
+                    line-height: 1.6;
+                ">
+                    ${trimmed}
+                </div>`;
+                return;
+            }
+
+            // שורות עם נקודותיים - שדות נתונים
+            if (trimmed.includes(':')) {
+                const colonIdx = trimmed.indexOf(':');
+                const label = trimmed.substring(0, colonIdx).trim();
+                const value = trimmed.substring(colonIdx + 1).trim();
+
+                const knownLabels = [
+                    'שם', 'שמות', 'חברה', "מס' רכב",
+                    'ת.ז.', 'מלווה', 'טלפון'
+                ];
+                const isKnownLabel = knownLabels.some(l => label.trim() === l);
+
+                if (isKnownLabel) {
+                    htmlLines += `
+                    <div style="
+                        padding: 4px 0 4px ${paddingRight}px;
+                        line-height: 1.6;
+                    ">
+                        <span style="
+                            font-weight: bold;
+                            color: #444;
+                            display: inline-block;
+                            min-width: 90px;
+                        ">${label}:</span>
+                        <span style="
+                            color: #222;
+                            margin-right: 8px;
+                        ">${value}</span>
+                    </div>`;
+                    return;
+                }
+            }
+
+            // שורה רגילה (שלום רב, נא לאשר וכו')
+            htmlLines += `
+            <div style="
+                padding: 4px 0 4px ${paddingRight}px;
+                color: #333;
+                line-height: 1.6;
+            ">
+                ${trimmed}
+            </div>`;
+        });
+
+        return `<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+</head>
+<body style="
+    margin: 0;
+    padding: 25px 30px;
+    font-family: Arial, sans-serif;
+    direction: rtl;
+    font-size: 14px;
+    color: #333;
+    line-height: 1.8;
+    background: #ffffff;
+">
+    <div style="max-width: 600px;">
+        ${htmlLines}
+    </div>
+</body>
+</html>`;
+    }
+
+    // ========== ייצוא היסטוריית אישורי כניסה ==========
+
+    exportPermitHistoryToExcel() {
+        const permits = this._allPermitsForHistory;
+        if (!permits || permits.length === 0) {
+            NotificationManager.show('אין נתונים לייצוא', 'warning');
+            return;
+        }
+
+        try {
+            // בניית נתוני הטבלה
+            const headers = [
+                'תאריך בקשה',
+                'תאריך כניסה',
+                'שעה',
+                'אתר',
+                'שם',
+                'חברה',
+                "מס' רכב",
+                'ת"ז',
+                'טלפון',
+                'מלווה'
+            ];
+
+            const dataRows = [];
+
+            permits.forEach(message => {
+                const data = message.entryPermitData ||
+                    this._extractPermitDataFromMessage(message) || {};
+
+                const siteDisplay = (Array.isArray(data.Sites) && data.Sites.length > 1)
+                    ? data.Sites.join(' + ')
+                    : (data.Site || data.site || '-');
+
+                const requestDate = new Date(message.date)
+                    .toLocaleDateString('he-IL');
+                const timeDisplay = data.Time || data.time || '';
+                const escortDisplay = data.Escort || data.escort || '';
+                const companyDisplay = data.Company || data.company || '';
+                const dateDisplay = data.Date || data.date || '';
+
+                const persons = this._getPersonsFromData(data);
+
+                if (persons.length === 0) {
+                    dataRows.push([
+                        requestDate, dateDisplay, timeDisplay,
+                        siteDisplay, '', companyDisplay,
+                        '', '', '', escortDisplay
+                    ]);
+                } else {
+                    persons.forEach(person => {
+                        dataRows.push([
+                            requestDate, dateDisplay, timeDisplay,
+                            siteDisplay,
+                            person.name || '',
+                            companyDisplay,
+                            person.carNumber || '',
+                            person.idNumber || '',
+                            person.phone || '',
+                            escortDisplay
+                        ]);
+                    });
+                }
+            });
+
+            // ========== בניית XLSX ידני ==========
+            const xlsxBlob = this._buildXlsxBlob(headers, dataRows);
+
+            // הורדה
+            const url = URL.createObjectURL(xlsxBlob);
+            const a = document.createElement('a');
+            a.href = url;
+
+            const now = new Date();
+            const dateStr = `${now.getDate()}-${now.getMonth() + 1}-${now.getFullYear()}`;
+            a.download = `היסטוריית_אישורי_כניסה_${dateStr}.xlsx`;
+            a.style.display = 'none';
+
+            document.body.appendChild(a);
+            a.click();
+
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 2000);
+
+            NotificationManager.show(
+                `הקובץ יוצא בהצלחה (${permits.length} בקשות)`,
+                'success'
+            );
+
+        } catch (error) {
+            console.error('Error exporting permit history to Excel:', error);
+            NotificationManager.show('שגיאה בייצוא הקובץ', 'error');
+        }
+    }
+
+    // ========== בניית קובץ XLSX ללא ספריות חיצוניות ==========
+    _buildXlsxBlob(headers, dataRows) {
+
+        // --- עזר: המרת מחרוזת ל-ArrayBuffer של UTF-16LE ---
+        const strToAB = str => {
+            const buf = new ArrayBuffer(str.length * 2);
+            const view = new Uint16Array(buf);
+            for (let i = 0; i < str.length; i++) view[i] = str.charCodeAt(i);
+            return buf;
+        };
+
+        // --- עזר: escape XML ---
+        const esc = v => String(v ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&apos;');
+
+        // --- בניית shared strings ---
+        const sharedStrings = [];
+        const ssIndex = {};
+
+        const getSS = val => {
+            const s = String(val ?? '');
+            if (ssIndex[s] === undefined) {
+                ssIndex[s] = sharedStrings.length;
+                sharedStrings.push(s);
+            }
+            return ssIndex[s];
+        };
+
+        // --- בניית תאי הגיליון ---
+        const colLetter = idx => {
+            let s = '';
+            let n = idx + 1;
+            while (n > 0) {
+                const r = (n - 1) % 26;
+                s = String.fromCharCode(65 + r) + s;
+                n = Math.floor((n - 1) / 26);
+            }
+            return s;
+        };
+
+        const allRows = [headers, ...dataRows];
+        const colCount = headers.length;
+        const rowCount = allRows.length;
+
+        let sheetRows = '';
+
+        allRows.forEach((row, rIdx) => {
+            const rowNum = rIdx + 1;
+            const isHeader = rIdx === 0;
+            let cells = '';
+
+            row.forEach((cell, cIdx) => {
+                const col = colLetter(cIdx);
+                const cellRef = `${col}${rowNum}`;
+                const ssIdx = getSS(cell);
+
+                // סגנון: 1 = כותרת, 0 = רגיל
+                const styleId = isHeader ? 1 : 0;
+
+                cells += `<c r="${cellRef}" t="s" s="${styleId}">` +
+                    `<v>${ssIdx}</v></c>`;
+            });
+
+            sheetRows += `<row r="${rowNum}">${cells}</row>`;
+        });
+
+        // רוחב עמודות (בתווים)
+        const colWidths = [14, 14, 8, 10, 22, 18, 12, 12, 14, 18];
+        let colDefs = '';
+        colWidths.forEach((w, i) => {
+            colDefs += `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`;
+        });
+
+        // ========== קבצי ה-XLSX ==========
+
+        // [Content_Types].xml
+        const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml"  ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml"
+    ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml"
+    ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/sharedStrings.xml"
+    ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
+  <Override PartName="/xl/styles.xml"
+    ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>`;
+
+        // _rels/.rels
+        const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"
+    Target="xl/workbook.xml"/>
+</Relationships>`;
+
+        // xl/_rels/workbook.xml.rels
+        const wbRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"
+    Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings"
+    Target="sharedStrings.xml"/>
+  <Relationship Id="rId3"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"
+    Target="styles.xml"/>
+</Relationships>`;
+
+        // xl/workbook.xml
+        const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+          xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="אישורי כניסה" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>`;
+
+        // xl/sharedStrings.xml
+        const ssItems = sharedStrings
+            .map(s => `<si><t xml:space="preserve">${esc(s)}</t></si>`)
+            .join('');
+
+        const sharedStringsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+     count="${sharedStrings.length}" uniqueCount="${sharedStrings.length}">
+  ${ssItems}
+</sst>`;
+
+        // xl/styles.xml  (סגנון 0=רגיל, 1=כותרת מודגשת עם רקע)
+        const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="2">
+    <font>
+      <sz val="11"/>
+      <name val="Arial"/>
+    </font>
+    <font>
+      <b/>
+      <sz val="11"/>
+      <color rgb="FFFFFFFF"/>
+      <name val="Arial"/>
+    </font>
+  </fonts>
+  <fills count="3">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+    <fill>
+      <patternFill patternType="solid">
+        <fgColor rgb="FF667EEA"/>
+      </patternFill>
+    </fill>
+  </fills>
+  <borders count="2">
+    <border>
+      <left/><right/><top/><bottom/><diagonal/>
+    </border>
+    <border>
+      <left  style="thin"><color rgb="FFCCCCCC"/></left>
+      <right style="thin"><color rgb="FFCCCCCC"/></right>
+      <top   style="thin"><color rgb="FFCCCCCC"/></top>
+      <bottom style="thin"><color rgb="FFCCCCCC"/></bottom>
+      <diagonal/>
+    </border>
+  </borders>
+  <cellStyleXfs count="1">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
+  </cellStyleXfs>
+  <cellXfs count="2">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="1"
+        xfId="0" applyFont="1" applyFill="1" applyBorder="1">
+      <alignment horizontal="right" vertical="center" readingOrder="2"/>
+    </xf>
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="1"
+        xfId="0" applyFont="1" applyFill="1" applyBorder="1">
+      <alignment horizontal="center" vertical="center" readingOrder="2"/>
+    </xf>
+  </cellXfs>
+</styleSheet>`;
+
+        // xl/worksheets/sheet1.xml
+        const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetView workbookViewId="0" rightToLeft="1"/>
+  <sheetFormatPr defaultRowHeight="18"/>
+  <cols>${colDefs}</cols>
+  <sheetData>${sheetRows}</sheetData>
+  <autoFilter ref="A1:${colLetter(colCount - 1)}1"/>
+</worksheet>`;
+
+        // ========== אריזה ל-ZIP (XLSX) ידנית ==========
+        return this._packZip({
+            '[Content_Types].xml': contentTypes,
+            '_rels/.rels': rels,
+            'xl/_rels/workbook.xml.rels': wbRels,
+            'xl/workbook.xml': workbook,
+            'xl/sharedStrings.xml': sharedStringsXml,
+            'xl/styles.xml': styles,
+            'xl/worksheets/sheet1.xml': sheet
+        });
+    }
+
+    // ========== ZIP packer מינימלי (Deflate-store) ==========
+    _packZip(files) {
+
+        // CRC-32 table
+        const crcTable = (() => {
+            const t = new Uint32Array(256);
+            for (let i = 0; i < 256; i++) {
+                let c = i;
+                for (let j = 0; j < 8; j++)
+                    c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+                t[i] = c;
+            }
+            return t;
+        })();
+
+        const crc32 = bytes => {
+            let crc = 0xFFFFFFFF;
+            for (let i = 0; i < bytes.length; i++)
+                crc = crcTable[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+            return (crc ^ 0xFFFFFFFF) >>> 0;
+        };
+
+        const enc = new TextEncoder();
+        const parts = [];
+        const central = [];
+        let offset = 0;
+
+        const u32 = n => {
+            const b = new Uint8Array(4);
+            new DataView(b.buffer).setUint32(0, n, true);
+            return b;
+        };
+        const u16 = n => {
+            const b = new Uint8Array(2);
+            new DataView(b.buffer).setUint16(0, n, true);
+            return b;
+        };
+
+        for (const [name, content] of Object.entries(files)) {
+            const nameBytes = enc.encode(name);
+            const dataBytes = enc.encode(content);
+            const crc = crc32(dataBytes);
+            const size = dataBytes.length;
+
+            // Local file header
+            const local = new Uint8Array([
+                0x50, 0x4B, 0x03, 0x04,   // signature
+                0x14, 0x00,             // version needed
+                0x00, 0x00,             // flags
+                0x00, 0x00,             // compression (store)
+                0x00, 0x00,             // mod time
+                0x00, 0x00,             // mod date
+                ...u32(crc),
+                ...u32(size),
+                ...u32(size),
+                ...u16(nameBytes.length),
+                0x00, 0x00,             // extra length
+                ...nameBytes
+            ]);
+
+            parts.push(local, dataBytes);
+
+            // Central directory entry
+            central.push({
+                nameBytes,
+                crc,
+                size,
+                offset
+            });
+
+            offset += local.length + size;
+        }
+
+        // Central directory
+        const cdParts = central.map(e => new Uint8Array([
+            0x50, 0x4B, 0x01, 0x02,   // signature
+            0x14, 0x00,             // version made by
+            0x14, 0x00,             // version needed
+            0x00, 0x00,             // flags
+            0x00, 0x00,             // compression
+            0x00, 0x00,             // mod time
+            0x00, 0x00,             // mod date
+            ...u32(e.crc),
+            ...u32(e.size),
+            ...u32(e.size),
+            ...u16(e.nameBytes.length),
+            0x00, 0x00,             // extra
+            0x00, 0x00,             // comment
+            0x00, 0x00,             // disk start
+            0x00, 0x00,             // int attr
+            0x00, 0x00, 0x00, 0x00,   // ext attr
+            ...u32(e.offset),
+            ...e.nameBytes
+        ]));
+
+        const cdSize = cdParts.reduce((s, p) => s + p.length, 0);
+        const cdOffset = offset;
+
+        // End of central directory
+        const eocd = new Uint8Array([
+            0x50, 0x4B, 0x05, 0x06,
+            0x00, 0x00,
+            0x00, 0x00,
+            ...u16(central.length),
+            ...u16(central.length),
+            ...u32(cdSize),
+            ...u32(cdOffset),
+            0x00, 0x00
+        ]);
+
+        // חיבור הכל
+        const all = [...parts, ...cdParts, eocd];
+        const total = all.reduce((s, p) => s + p.length, 0);
+        const buf = new Uint8Array(total);
+        let pos = 0;
+
+        for (const p of all) {
+            buf.set(p, pos);
+            pos += p.length;
+        }
+
+        return new Blob(
+            [buf],
+            { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+        );
+    }
+
+    printPermitHistory() {
+        const permits = this._allPermitsForHistory;
+        if (!permits || permits.length === 0) {
+            NotificationManager.show('אין נתונים להדפסה', 'warning');
+            return;
+        }
+
+        try {
+            // חישוב סה"כ אנשים
+            let totalPersons = 0;
+            permits.forEach(m => {
+                const data = m.entryPermitData ||
+                    this._extractPermitDataFromMessage(m) || {};
+                const persons = this._getPersonsFromData(data);
+                totalPersons += persons.length || 1;
+            });
+
+            // בניית תוכן HTML להדפסה
+            let tableRows = '';
+
+            permits.forEach(message => {
+                const data = message.entryPermitData ||
+                    this._extractPermitDataFromMessage(message) || {};
+
+                const siteDisplay = (Array.isArray(data.Sites) && data.Sites.length > 1)
+                    ? data.Sites.join(' + ')
+                    : (data.Site || '-');
+
+                const requestDate = new Date(message.date)
+                    .toLocaleDateString('he-IL');
+                const timeDisplay = data.Time || data.time || '-';
+                const escortDisplay = data.Escort || data.escort || '-';
+                const companyDisplay = data.Company || data.company || '-';
+                const dateDisplay = data.Date || data.date || '-';
+
+                const persons = this._getPersonsFromData(data);
+
+                if (persons.length === 0) {
+                    tableRows += `
+                <tr>
+                    <td>${requestDate}</td>
+                    <td><strong>${dateDisplay}</strong></td>
+                    <td>${timeDisplay}</td>
+                    <td>${siteDisplay}</td>
+                    <td>-</td>
+                    <td>${companyDisplay}</td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td>${escortDisplay}</td>
+                </tr>`;
+                } else {
+                    persons.forEach((person, personIndex) => {
+                        const isFirst = personIndex === 0;
+                        const rowspan = persons.length;
+
+                        tableRows += `<tr>`;
+
+                        if (isFirst) {
+                            tableRows += `
+                        <td rowspan="${rowspan}"
+                            style="vertical-align:middle; background:#fafbff;">
+                            ${requestDate}
+                        </td>
+                        <td rowspan="${rowspan}"
+                            style="vertical-align:middle; background:#fafbff;">
+                            <strong>${dateDisplay}</strong>
+                        </td>
+                        <td rowspan="${rowspan}"
+                            style="vertical-align:middle; background:#fafbff;">
+                            ${timeDisplay}
+                        </td>
+                        <td rowspan="${rowspan}"
+                            style="vertical-align:middle; background:#fafbff;">
+                            ${siteDisplay}
+                        </td>`;
+                        }
+
+                        tableRows += `
+                    <td>${personIndex + 1}. ${person.name || '-'}</td>`;
+
+                        if (isFirst) {
+                            tableRows += `
+                        <td rowspan="${rowspan}"
+                            style="vertical-align:middle; background:#fafbff;">
+                            ${companyDisplay}
+                        </td>`;
+                        }
+
+                        tableRows += `
+                    <td dir="rtl">${person.carNumber || '-'}</td>
+                    <td dir="rtl">${person.idNumber || '-'}</td>
+                    <td dir="rtl">${person.phone || '-'}</td>`;
+
+                        if (isFirst) {
+                            tableRows += `
+                        <td rowspan="${rowspan}"
+                            style="vertical-align:middle; background:#fafbff;">
+                            ${escortDisplay}
+                        </td>`;
+                        }
+
+                        tableRows += `</tr>`;
+                    });
+                }
+            });
+
+            const now = new Date();
+            const printDateStr = now.toLocaleDateString('he-IL') +
+                ' ' + now.toLocaleTimeString('he-IL');
+
+            const printContent = `
+        <!DOCTYPE html>
+        <html dir="rtl" lang="he">
+        <head>
+            <meta charset="UTF-8">
+            <title>היסטוריית אישורי כניסה</title>
+            <style>
+                @page {
+                    size: A4 landscape;
+                    margin: 1.5cm;
+                }
+
+                * {
+                    box-sizing: border-box;
+                }
+
+                body {
+                    font-family: Arial, sans-serif;
+                    direction: rtl;
+                    font-size: 11px;
+                    color: #222;
+                    margin: 0;
+                    padding: 0;
+                }
+
+                .print-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: flex-start;
+                    margin-bottom: 15px;
+                    padding-bottom: 10px;
+                    border-bottom: 2px solid #667eea;
+                }
+
+                .print-title {
+                    font-size: 18px;
+                    font-weight: bold;
+                    color: #333;
+                }
+
+                .print-subtitle {
+                    font-size: 12px;
+                    color: #666;
+                    margin-top: 4px;
+                }
+
+                .print-meta {
+                    text-align: left;
+                    font-size: 10px;
+                    color: #888;
+                }
+
+                .summary-bar {
+                    display: flex;
+                    gap: 20px;
+                    margin-bottom: 12px;
+                    padding: 8px 12px;
+                    background: #f0f4ff;
+                    border-radius: 6px;
+                    font-size: 11px;
+                    font-weight: 600;
+                    color: #444;
+                }
+
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 10.5px;
+                    page-break-inside: auto;
+                }
+
+                thead {
+                    display: table-header-group;
+                }
+
+                thead tr {
+                    background: linear-gradient(135deg, #667eea, #764ba2);
+                    color: white;
+                    -webkit-print-color-adjust: exact;
+                    print-color-adjust: exact;
+                }
+
+                th {
+                    padding: 8px 6px;
+                    text-align: right;
+                    font-weight: 600;
+                    white-space: nowrap;
+                    border: 1px solid #5a6fd6;
+                }
+
+                td {
+                    padding: 6px;
+                    border: 1px solid #ddd;
+                    vertical-align: top;
+                }
+
+                tr {
+                    page-break-inside: avoid;
+                }
+
+                tbody tr:nth-child(even) td:not([rowspan]) {
+                    background-color: #f9f9ff;
+                }
+
+                tbody tr:hover td {
+                    background-color: #f0f4ff;
+                }
+
+                .group-border-top td {
+                    border-top: 2px solid #c8d6f5 !important;
+                }
+
+                .print-footer {
+                    margin-top: 15px;
+                    padding-top: 8px;
+                    border-top: 1px solid #ddd;
+                    font-size: 9px;
+                    color: #999;
+                    display: flex;
+                    justify-content: space-between;
+                }
+
+                @media print {
+                    body { margin: 0; }
+                    .no-print { display: none !important; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="print-header">
+                <div>
+                    <div class="print-title">
+                        📋 היסטוריית אישורי כניסה
+                    </div>
+                    <div class="print-subtitle">
+                        NOC Portal - מערכת ניהול הודעות
+                    </div>
+                </div>
+                <div class="print-meta">
+                    <div>הופק: ${printDateStr}</div>
+                </div>
+            </div>
+
+            <div class="summary-bar">
+                <span>📊 סה"כ בקשות: ${permits.length}</span>
+                <span>👥 סה"כ אנשים: ${totalPersons}</span>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>תאריך בקשה</th>
+                        <th>תאריך כניסה</th>
+                        <th>שעה</th>
+                        <th>אתר</th>
+                        <th>שם</th>
+                        <th>חברה</th>
+                        <th>מס' רכב</th>
+                        <th>ת"ז</th>
+                        <th>טלפון</th>
+                        <th>מלווה</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${tableRows}
+                </tbody>
+            </table>
+
+            <div class="print-footer">
+                <span>NOC Portal - מערכת ניהול הודעות</span>
+                <span>הופק בתאריך: ${printDateStr}</span>
+                <span>סה"כ ${permits.length} בקשות | ${totalPersons} אנשים</span>
+            </div>
+
+            <script>
+                window.onload = function() {
+                    window.print();
+                };
+            </script>
+        </body>
+        </html>`;
+
+            // פתח חלון הדפסה
+            const printWindow = window.open('', '_blank', 'width=1200,height=800');
+            if (!printWindow) {
+                NotificationManager.show(
+                    'אנא אפשר חלונות קופצים בדפדפן',
+                    'warning'
+                );
+                return;
+            }
+
+            printWindow.document.open();
+            printWindow.document.write(printContent);
+            printWindow.document.close();
+
+            NotificationManager.show('מכין להדפסה...', 'info');
+
+        } catch (error) {
+            console.error('Error printing permit history:', error);
+            NotificationManager.show('שגיאה בהדפסה', 'error');
+        }
+    }
+
+    // ========== CSS ==========
+
+    _addEntryPermitStyles() {
+        if (document.getElementById('entryPermitStyles')) return;
+
+        const style = document.createElement('style');
+        style.id = 'entryPermitStyles';
+        style.textContent = `
+        /* מודל אישור כניסה */
+        .entry-permit-modal {
+            max-width: 1200px;
+            width: 95%;
+            max-height: 90vh;
+            overflow-y: auto;
+            border-radius: 12px;
+        }
+
+        .entry-permit-modal .modal-header {
+            padding-bottom: 5px;
+        }
+
+        .entry-permit-modal .modal-body {
+            padding: 2px 25px;
+        }
+
+        .entry-permit-modal .form-group {
+            margin-bottom: 18px;
+        }
+
+        .entry-permit-modal .form-label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: #333;
+            font-size: 0.95rem;
+        }
+
+        .entry-permit-modal .form-label i {
+            color: #667eea;
+            width: 16px;
+        }
+
+        .required-field::after {
+            content: ' *';
+            color: #e53e3e;
+            font-weight: bold;
+        }
+
+        .optional-label {
+            font-weight: normal;
+            color: #888;
+            font-size: 0.85rem;
+        }
+
+        .entry-permit-modal .form-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1.5px solid #ddd;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            box-sizing: border-box;
+            font-family: inherit;
+        }
+
+        .entry-permit-modal .form-input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+        }
+
+        .entry-permit-modal .form-input.input-error {
+            border-color: #e53e3e;
+            box-shadow: 0 0 0 3px rgba(229, 62, 62, 0.15);
+        }
+
+        .entry-permit-modal .form-help {
+            display: block;
+            color: #888;
+            font-size: 0.8rem;
+            margin-top: 4px;
+        }
+
+        /* בחירת אתר */
+        .site-selector {
+            display: flex;
+            gap: 12px;
+        }
+
+        .site-option {
+            cursor: pointer;
+        }
+
+        .site-option input[type="radio"] {
+            display: none;
+        }
+
+        .site-btn {
+            display: inline-block;
+            padding: 10px 28px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #f8f9fa;
+            color: #555;
+            user-select: none;
+        }
+
+        .site-btn:hover {
+            border-color: #667eea;
+            color: #667eea;
+            background: #f0f2ff;
+        }
+
+        .site-option input[type="radio"]:checked + .site-btn,
+        .site-btn.selected {
+            border-color: #667eea;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            box-shadow: 0 3px 10px rgba(102, 126, 234, 0.35);
+        }
+
+        /* שגיאות */
+        .field-error {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: #e53e3e;
+            font-size: 0.82rem;
+            margin-top: 5px;
+            padding: 4px 8px;
+            background: #fff5f5;
+            border-radius: 4px;
+            border-right: 3px solid #e53e3e;
+        }
+
+        /* שגיאת שדה inline */
+        .inline-field-error {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            color: #e53e3e;
+            font-size: 0.78rem;
+            margin-top: 3px;
+            padding: 3px 8px;
+            background: #fff5f5;
+            border-radius: 4px;
+            border-right: 3px solid #e53e3e;
+            animation: fadeInError 0.2s ease;
+        }
+
+        .inline-field-error i {
+            flex-shrink: 0;
+            font-size: 0.75rem;
+        }
+
+        @keyframes fadeInError {
+            from { opacity: 0; transform: translateY(-4px); }
+            to   { opacity: 1; transform: translateY(0);    }
+        }
+
+        /* הדגשת שדה עם שגיאה */
+        .entry-permit-modal .form-input.input-error {
+            border-color: #e53e3e !important;
+            box-shadow: 0 0 0 3px rgba(229, 62, 62, 0.15) !important;
+            background-color: #fff8f8;
+        }
+
+        /* אנימציית רעידה לשגיאה */
+        .entry-permit-modal .form-input.input-error {
+            animation: shakeField 0.35s ease;
+        }
+
+        @keyframes shakeField {
+            0%,100% { transform: translateX(0);  }
+            20%     { transform: translateX(-5px); }
+            40%     { transform: translateX(5px);  }
+            60%     { transform: translateX(-3px); }
+            80%     { transform: translateX(3px);  }
+        }
+        .field-error i {
+            flex-shrink: 0;
+        }
+
+        /* date input wrapper */
+        .date-input-wrapper {
+            position: relative;
+        }
+
+        .date-input-wrapper .form-input {
+            cursor: pointer;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23667eea' stroke-width='2'%3E%3Crect x='3' y='4' width='18' height='18' rx='2' ry='2'%3E%3C/rect%3E%3Cline x1='16' y1='2' x2='16' y2='6'%3E%3C/line%3E%3Cline x1='8' y1='2' x2='8' y2='6'%3E%3C/line%3E%3Cline x1='3' y1='10' x2='21' y2='10'%3E%3C/line%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: left 12px center;
+            padding-left: 38px;
+        }
+
+        /* footer */
+        .entry-permit-modal .modal-footer {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            padding: 15px 25px;
+            border-top: 1px solid #eee;
+            background: #f8f9fa;
+            border-radius: 0 0 12px 12px;
+        }
+
+        /* שורת אדם - כל השדות בשורה אחת */
+        .person-row {
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .person-inline-fields {
+            display: flex;
+            flex: 1;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: nowrap;  /* שמור הכל בשורה אחת */
+        }
+
+        /* רוחב כל שדה בשורה */
+        .person-inline-fields .permit-name-input {
+            flex: 2.5;          /* שם - הכי רחב */
+            min-width: 130px;
+        }
+
+        .person-inline-fields .permit-car-input {
+            flex: 1.2;          /* רכב */
+            min-width: 90px;
+        }
+
+        .person-inline-fields .permit-id-input {
+            flex: 1;            /* ת"ז */
+            min-width: 80px;
+        }
+
+        .person-inline-fields .permit-phone-input {
+            flex: 1.3;          /* טלפון */
+            min-width: 95px;
+        }
+
+        /* כותרות עמודות מעל השורה הראשונה */
+        .person-columns-header {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 4px;
+            padding-right: 0;
+        }
+
+        .person-col-label {
+            font-size: 0.78rem;
+            color: #888;
+            font-weight: 600;
+        }
+
+        .person-col-label.col-name    { flex: 1.7; width: 95px;}
+        .person-col-label.col-car     { flex: 1.7; width: 95px;  }
+        .person-col-label.col-id      { flex: 1.7;   width: 95px;  }
+        .person-col-label.col-phone   { flex: 1.7; width: 95px;  }
+
+        /* מסך קטן - עבור לעמודות */
+        @media (max-width: 560px) {
+            .person-inline-fields {
+                flex-wrap: wrap;  /* במסך קטן - ירד לשורה */
+            }
+
+            .person-inline-fields .permit-name-input {
+                flex: 1 1 100%;   /* שם - שורה שלמה */
+            }
+
+            .person-inline-fields .permit-car-input,
+            .person-inline-fields .permit-id-input,
+            .person-inline-fields .permit-phone-input {
+                flex: 1 1 calc(33% - 8px);  /* שלושה בשורה */
+            }
+
+            .person-columns-header {
+                display: none;  /* הסתר כותרות במסך קטן */
+            }
+        }
+
+        /* responsive */
+        @media (max-width: 480px) {
+            .entry-permit-modal {
+                width: 100%;
+                max-height: 100vh;
+                border-radius: 12px 12px 0 0;
+                margin-top: auto;
+            }
+
+            .site-selector {
+                flex-direction: row;
+            }
+
+            .site-btn {
+                padding: 10px 20px;
+            }
+        }
+
+        #permitDateHidden{
+            visibility: hidden;
+        }
+
+        /* תצוגת כרטיס אישור כניסה */
+        .entry-permit-preview {
+            padding: 8px 0;
+        }
+
+        .permit-field {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+            font-size: 0.9rem;
+            color: #444;
+        }
+
+        .permit-field i {
+            color: #667eea;
+            width: 14px;
+            flex-shrink: 0;
+        }
+        /* שורות דינמיות */
+        .multi-entry-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .multi-entry-row .form-input {
+            flex: 1;
+            margin-bottom: 0;
+        }
+
+        .remove-entry-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            min-width: 32px;
+            background: #fff5f5;
+            border: 1.5px solid #feb2b2;
+            border-radius: 6px;
+            color: #e53e3e;
+            cursor: pointer;
+            transition: all 0.2s;
+            padding: 0;
+            flex-shrink: 0;
+        }
+
+        .remove-entry-btn:hover {
+            background: #fed7d7;
+            border-color: #e53e3e;
+        }
+
+        .add-entry-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 14px;
+            background: #f0f4ff;
+            border: 1.5px dashed #667eea;
+            border-radius: 7px;
+            color: #667eea;
+            font-size: 0.88rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 4px;
+            font-family: inherit;
+        }
+
+        .add-entry-btn:hover {
+            background: #e8edff;
+            border-style: solid;
+        }
+
+        /* checkbox אתר */
+        .site-option input[type="checkbox"] {
+            display: none;
+        }
+
+        .site-option input[type="checkbox"]:checked + .site-btn,
+        .site-btn.selected {
+            border-color: #667eea;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            box-shadow: 0 3px 10px rgba(102, 126, 234, 0.35);
+        }
+
+        /* כפתורי footer */
+        .history-footer-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #38a169, #276749);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .btn-success:hover {
+            background: linear-gradient(135deg, #276749, #1e4d35);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(56, 161, 105, 0.35);
+        }
+
+        .btn-info {
+            background: linear-gradient(135deg, #3182ce, #2b6cb0);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .btn-info:hover {
+            background: linear-gradient(135deg, #2b6cb0, #1a4a8a);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(49, 130, 206, 0.35);
+        }
+
+        /* footer עם כפתורים */
+        .entry-permit-history-modal .modal-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 20px;
+            border-top: 1px solid #eee;
+            background: #f8f9fa;
+            border-radius: 0 0 12px 12px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+    `;
+        document.head.appendChild(style);
     }
 }
 

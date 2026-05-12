@@ -7,8 +7,8 @@ using System.Text.Json;
 
 public class EmployeeTasksController : Controller
 {
-    
     private readonly EmployeeService _employeeService;
+    private readonly UserTasksService _userTasksService; 
     private readonly string _employeeTasksFilePath;
     private static readonly object _fileLock = new object();
     private const int MaxRetries = 3;
@@ -17,9 +17,10 @@ public class EmployeeTasksController : Controller
     public EmployeeTasksController()
     {
         _employeeService = new EmployeeService();
-         _employeeTasksFilePath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\employee_tasks.txt";
+        _userTasksService = new UserTasksService();
+        _employeeTasksFilePath = 
+            @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\employee_tasks.txt";
     }
-
 
     [HttpGet]
     public IActionResult GetEmployees()
@@ -674,6 +675,423 @@ public class EmployeeTasksController : Controller
         }
     }
 
+    // ─── endpoint קבלת משימות אישיות ───
+    [HttpGet]
+    public IActionResult GetMyTasks(string date)
+    {
+        try
+        {
+            var username = GetCurrentUsername();
+            if (string.IsNullOrEmpty(username))
+                return Json(new { error = "Unauthorized" });
+
+            var employeeId = GetCurrentEmployeeId();
+            var tasks = _userTasksService.GetTasksByUsername(username);
+
+            // עדכן Completed לפי תאריך (כמו בקוד הקיים)
+            foreach (var task in tasks)
+            {
+                task.Completed = task.LastCompletedDate == date;
+                if (task.LastSkippedDate == date)
+                    task.Completed = false;
+                else if (task.LastCompletedDate != date)
+                {
+                    task.Completed = false;
+                    task.CompletedTime = null;
+                    task.SkipReason = null;
+                }
+                if (string.IsNullOrEmpty(task.CreatedAt))
+                    task.CreatedAt = DateTime.Now.ToString("yyyy-MM-dd");
+            }
+
+            return Json(new { tasks });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { error = ex.Message });
+        }
+    }
+
+    // ─── הוסף endpoint: הוספת משימה אישית ───
+    [HttpPost]
+    public IActionResult AddMyTask([FromBody] AddTaskRequest request)
+    {
+        try
+        {
+            var username = GetCurrentUsername();
+            if (string.IsNullOrEmpty(username))
+                return Json(new { success = false, error = "Unauthorized" });
+
+            if (string.IsNullOrEmpty(request.Title))
+                return Json(new { success = false, error = "Title is required" });
+
+            var employeeId = GetCurrentEmployeeId();
+
+            var newTask = new UserPersonalTask
+            {
+                Id = $"utask_{username}_{DateTime.Now.Ticks}",
+                OwnerUsername = username,
+                OwnerEmployeeId = employeeId,
+                Title = request.Title,
+                Description = request.Description,
+                Priority = request.Priority ?? "medium",
+                DueDate = request.DueDate,
+                EstimatedTime = request.EstimatedTime,
+                Completed = false,
+                Status = "חדש",
+                Progress = 0,
+                CreatedAt = DateTime.Now.ToString("yyyy-MM-dd")
+            };
+
+            var success = _userTasksService.AddTask(newTask);
+            return Json(new { success, taskId = newTask.Id });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    // ─── הוסף endpoint: עדכון משימה אישית ───
+    [HttpPost]
+    public IActionResult UpdateMyTask([FromBody] UpdateTaskRequest request)
+    {
+        try
+        {
+            var username = GetCurrentUsername();
+            if (string.IsNullOrEmpty(username))
+                return Json(new { success = false, error = "Unauthorized" });
+
+            var success = _userTasksService.UpdateTask(
+                request.TaskId, username, task =>
+                {
+                    task.Title = request.Title;
+                    task.Description = request.Description;
+                    task.Priority = request.Priority ?? task.Priority;
+                    task.DueDate = request.DueDate;
+                    task.EstimatedTime = request.EstimatedTime;
+                });
+
+            return Json(new { success });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    // ─── הוסף endpoint: עדכון סטטוס משימה אישית ───
+    [HttpPost]
+    public IActionResult UpdateMyTaskStatus(
+        [FromBody] UpdateTaskStatusRequest request)
+    {
+        try
+        {
+            var username = GetCurrentUsername();
+            if (string.IsNullOrEmpty(username))
+                return Json(new { success = false, error = "Unauthorized" });
+
+            var success = _userTasksService.UpdateTask(
+                request.TaskId, username, task =>
+                {
+                    if (!string.IsNullOrEmpty(request.Status))
+                    {
+                        task.Status = request.Status;
+                        task.StatusDate = request.Date;
+
+                        if (request.Status == "בוצע")
+                        {
+                            task.Completed = true;
+                            task.CompletedTime = request.CompletedTime
+                                ?? DateTime.Now.ToString("HH:mm");
+                            task.LastCompletedDate = request.Date;
+                            task.SkipReason = null;
+                        }
+                        else if (request.Status == "מבוטלת")
+                        {
+                            task.Completed = false;
+                            task.CompletedTime = null;
+                            task.SkipReason = request.SkipReason ?? "מבוטלת";
+                            task.LastSkippedDate = request.Date;
+                        }
+                        else
+                        {
+                            task.Completed = request.Completed;
+                            task.CompletedTime = request.CompletedTime;
+                            task.SkipReason = request.SkipReason;
+                        }
+                    }
+                });
+
+            return Json(new { success });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    // ─── הוסף endpoint: עדכון התקדמות משימה אישית ───
+    [HttpPost]
+    public IActionResult UpdateMyTaskProgress(
+        [FromBody] UpdateTaskProgressRequest request)
+    {
+        try
+        {
+            var username = GetCurrentUsername();
+            if (string.IsNullOrEmpty(username))
+                return Json(new { success = false, error = "Unauthorized" });
+
+            if (request.Progress < 0 || request.Progress > 100)
+                return Json(new { success = false, 
+                    error = "Progress must be between 0 and 100" });
+
+            var success = _userTasksService.UpdateTask(
+                request.TaskId, username, task =>
+                {
+                    task.Progress = request.Progress;
+                    if (request.Progress == 100)
+                    {
+                        task.Status = "בוצע";
+                        task.Completed = true;
+                        task.CompletedTime = DateTime.Now.ToString("HH:mm");
+                        task.LastCompletedDate = request.Date;
+                    }
+                    else if (request.Progress > 0 && task.Status == "חדש")
+                    {
+                        task.Status = "בביצוע";
+                    }
+                });
+
+            return Json(new { success });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    // ─── הוסף endpoint: מחיקת משימה אישית ───
+    [HttpPost]
+    public IActionResult DeleteMyTask([FromBody] DeleteTaskRequest request)
+    {
+        try
+        {
+            var username = GetCurrentUsername();
+            if (string.IsNullOrEmpty(username))
+                return Json(new { success = false, error = "Unauthorized" });
+
+            var success = _userTasksService.DeleteTask(
+                request.TaskId, username);
+            return Json(new { success });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    // ─── הוסף endpoint: בדיקת הרשאות ───
+    [HttpGet]
+    public IActionResult GetMyPermissions()
+    {
+        try
+        {
+            var username = GetCurrentUsername();
+            var role = GetCurrentRole();
+            var employeeId = GetCurrentEmployeeId();
+
+            bool isPrivileged = role == "Admin" || role == "NOC";
+
+            return Json(new
+            {
+                username,
+                role,
+                employeeId,
+                isPrivileged,   // ← NOC/Admin רואים הכל
+                canManageAll = isPrivileged
+            });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { error = ex.Message });
+        }
+    }
+
+    // ─── Helper methods לשליפת פרטי משתמש ───
+    // *** שנה לפי המימוש שלך ב-Auth ***
+    private string GetCurrentUsername()
+    {
+        // לפי המימוש שלך - User.Identity.Name או Claims
+        return User?.Identity?.Name ?? 
+               User?.FindFirst("username")?.Value ?? "";
+    }
+
+    private string GetCurrentRole()
+    {
+        return User?.FindFirst("role")?.Value ?? 
+               User?.FindFirst(
+                   System.Security.Claims.ClaimTypes.Role)?.Value ?? "";
+    }
+
+    private string GetCurrentEmployeeId()
+    {
+        // אם יש Claim של employeeId - השתמש בו
+        // אחרת - חפש לפי username ב-EmployeeService
+        var empIdClaim = User?.FindFirst("UserId")?.Value;
+        if (!string.IsNullOrEmpty(empIdClaim)) return empIdClaim;
+
+        var username = GetCurrentUsername();
+        // נסה למצוא עובד לפי שם משתמש
+        var employees = _employeeService.GetAllEmployees();
+        var emp = employees.FirstOrDefault(e =>
+            e.Name.Equals(username, 
+                StringComparison.OrdinalIgnoreCase) ||
+            e.Id.Equals(username, 
+                StringComparison.OrdinalIgnoreCase));
+        return emp?.Id ?? username;
+    }
+    
+    [HttpPost]
+    public IActionResult ImportTasksFromExcel([FromBody] ImportTasksFromExcelRequest request)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(request.EmployeeId))
+                return Json(new { success = false, error = "Employee ID is required" });
+
+            // בדוק שהעובד הוא דני בירון
+            var employee = _employeeService.GetEmployeeById(request.EmployeeId);
+            if (employee == null)
+                return Json(new { success = false, error = "Employee not found" });
+
+            // קרא משימות קיימות
+            var existingTasks = ReadEmployeeTasksFromFile(request.EmployeeId, 
+                DateTime.Now.ToString("yyyy-MM-dd"));
+            var existingTitles = existingTasks
+                .Select(t => t.Title?.Trim().ToLower())
+                .ToHashSet();
+
+            int added = 0;
+            int skipped = 0;
+            var errors = new List<string>();
+
+            foreach (var row in request.Tasks ?? new List<ExcelTaskRow>())
+            {
+                if (string.IsNullOrWhiteSpace(row.Title))
+                {
+                    skipped++;
+                    continue;
+                }
+
+                // בדוק אם המשימה כבר קיימת
+                if (existingTitles.Contains(row.Title.Trim().ToLower()))
+                {
+                    skipped++;
+                    continue;
+                }
+
+                // קבע עדיפות
+                string priority = "medium";
+                if (!string.IsNullOrEmpty(row.Priority))
+                {
+                    var p = row.Priority.ToLower();
+                    if (p.Contains("גבוה") || p.Contains("high")) priority = "high";
+                    else if (p.Contains("נמוך") || p.Contains("low")) priority = "low";
+                }
+
+                // קבע סטטוס
+                string status = "חדש";
+                bool completed = false;
+                string completedTime = null;
+                string completedDate = null;
+
+                if (!string.IsNullOrEmpty(row.Status))
+                {
+                    var s = row.Status.Trim();
+                    if (s == "בוצע" || s.Contains("בוצע"))
+                    {
+                        status = "בוצע";
+                        completed = true;
+                        completedTime = "00:00";
+                        completedDate = !string.IsNullOrEmpty(row.CompletedDate)
+                            ? row.CompletedDate
+                            : DateTime.Now.ToString("yyyy-MM-dd");
+                    }
+                    else if (s.Contains("ביצוע") || s.Contains("המשך"))
+                        status = "בביצוע";
+                    else if (s.Contains("בוטל"))
+                        status = "מבוטלת";
+                    else if (s.Contains("ממתין"))
+                        status = "ממתין";
+                }
+
+                // קבע התקדמות
+                int progress = 0;
+                if (row.Progress.HasValue)
+                {
+                    // הJS כבר המיר את הערך לאחוזים (0-100)
+                    // אין צורך לכפול שוב ב-100
+                    progress = (int)Math.Round(row.Progress.Value);
+                    progress = Math.Min(100, Math.Max(0, progress)); // הגבל לטווח 0-100
+                }
+                if (status == "בוצע") progress = 100;
+
+                // בנה תיאור מלא
+                string description = row.Description ?? "";
+                if (!string.IsNullOrEmpty(row.Notes) && row.Notes != "NaN")
+                    description += (string.IsNullOrEmpty(description) ? "" : "\n") 
+                        + "הערות: " + row.Notes;
+
+                // קבע תאריך יעד מתאריך הביצוע אם קיים
+                string dueDate = null;
+                if (!string.IsNullOrEmpty(row.CompletedDate))
+                {
+                    dueDate = row.CompletedDate; // ← תאריך ביצוע מהאקסל → תאריך יעד במשימה
+                }
+
+                var newTask = new EmployeeTask
+                {
+                    Id = $"task_{request.EmployeeId}_{DateTime.Now.Ticks}_{added}",
+                    EmployeeId = request.EmployeeId,
+                    Title = row.Title.Trim(),
+                    Description = description,
+                    Priority = priority,
+                    Status = status,
+                    Progress = progress,
+                    Completed = completed,
+                    CompletedTime = completedTime,
+                    DueDate = dueDate,           // ← שורה חדשה!
+                    LastCompletedDate = completedDate,
+                    CreatedAt = DateTime.Now.ToString("yyyy-MM-dd")
+                };
+
+                try
+                {
+                    AddTaskToFile(newTask);
+                    existingTitles.Add(row.Title.Trim().ToLower());
+                    added++;
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"שגיאה בהוספת '{row.Title}': {ex.Message}");
+                }
+            }
+
+            return Json(new
+            {
+                success = true,
+                added,
+                skipped,
+                errors,
+                message = $"נוספו {added} משימות, דולגו {skipped} (כבר קיימות או ריקות)"
+            });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
 }
 
 
@@ -750,4 +1168,21 @@ public class UpdateTaskProgressRequest
     public string TaskId { get; set; }
     public string Date { get; set; }
     public int Progress { get; set; }
+}
+
+public class ImportTasksFromExcelRequest
+{
+    public string EmployeeId { get; set; }
+    public List<ExcelTaskRow> Tasks { get; set; }
+}
+
+public class ExcelTaskRow
+{
+    public string Title { get; set; }
+    public string Description { get; set; }
+    public string Status { get; set; }
+    public string Priority { get; set; }
+    public string Notes { get; set; }
+    public string CompletedDate { get; set; }
+    public double? Progress { get; set; }
 }

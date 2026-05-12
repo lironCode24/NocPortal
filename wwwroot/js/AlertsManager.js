@@ -3,6 +3,7 @@ class AlertsManager {
         this.alerts = [];
         this.filteredAlerts = [];
         this.searchTerm = "";
+        this.colorMode = this.loadFromLocalStorage('alertsColorMode') || 'background'; // ערכים אפשריים: 'background' | 'text-light' | 'text-dark'
 
         // טעינת הסינונים מה-localStorage אם קיימים
         this.severityFilters = this.loadFromLocalStorage('alertsSeverityFilters') || ['CRITICAL', 'MAJOR', 'UNKNOWN'];
@@ -12,6 +13,30 @@ class AlertsManager {
         this.isCtrlPressed = false; // מעקב אחר מצב מקש CTRL
         this.isShiftPressed = false; // מעקב אחר מצב מקש SHIFT
         this.lastSelectedAlertId = null; // שמירת ההתראה האחרונה שנבחרה
+        this.isFullscreenMode = false;
+        this.sortColumn = this.isFullscreenMode ? null : (this.loadFromLocalStorage('alertsSortColumn') || null); // עמודה נוכחית למיון
+        this.sortDirection = this.isFullscreenMode ? 'asc' : (this.loadFromLocalStorage('alertsSortDirection') || 'asc'); // כיוון מיון: 'asc' או 'desc'
+
+        this.columnOrder = this.loadFromLocalStorage('alertsColumnOrder') || [
+            'hostAddress', 'modified', 'notes', 'message', 'host',
+            'email', 'contacts', 'timestamp', 'priority', 'severity', 'status', 'actions', 'checkbox'
+        ];
+
+        this.visibleColumns = this.loadFromLocalStorage('alertsVisibleColumns') || {
+            hostAddress: true,
+            modified: true,
+            notes: true,
+            message: true,
+            host: true,
+            email: true,
+            contacts: true,
+            timestamp: true,
+            priority: true,
+            severity: true,
+            status: true,
+            actions: true,
+            checkbox: true
+        };
     }
 
     // פונקציה לטעינת נתונים מ-localStorage
@@ -35,10 +60,15 @@ class AlertsManager {
     }
 
     // הוספת פונקציות חדשות לניהול תצוגת המסך
-    initialize() {
+    async initialize() {
         try {
-            // מציג את סקשן ההתראות
-            this.showAlertsSection();
+            if (!this.isFullscreenMode) {
+                // מציג את סקשן ההתראות רק אם לא במצב מסך מלא
+                this.showAlertsSection();
+                this.colorMode = this.loadFromLocalStorage('alertsColorMode') || 'background';
+            } else {
+                this.colorMode = this.loadFromLocalStorage('dashboardColorMode') || 'background';
+            }
             this.updateBulkActionsBar();
             // הוסף מאזינים לאירועים רק אם האלמנטים קיימים
             const searchInput = document.getElementById('alertSearchInput');
@@ -55,6 +85,9 @@ class AlertsManager {
                     if (clearSearchBtn) {
                         clearSearchBtn.style.display = e.target.value ? 'flex' : 'none';
                     }
+
+                    // בדוק אם הסינון הפעיל השתנה
+                    this.savedFiltersManager?.checkAndClearIfModified();
                 });
             }
 
@@ -70,6 +103,8 @@ class AlertsManager {
                         // התמקד בשדה החיפוש אחרי הניקוי
                         searchInput.focus();
                     }
+                    // בדוק אם הסינון הפעיל השתנה
+                    this.savedFiltersManager?.checkAndClearIfModified();
                 });
             }
 
@@ -107,6 +142,9 @@ class AlertsManager {
                         // שמור את הפילטרים המעודכנים ב-localStorage
                         this.saveToLocalStorage('alertsSeverityFilters', this.severityFilters);
                         this.applyFilters();
+
+                        // בדוק אם הסינון הפעיל השתנה
+                        this.savedFiltersManager?.checkAndClearIfModified();
                     });
                 });
             }
@@ -145,6 +183,9 @@ class AlertsManager {
                         // שמור את הפילטרים המעודכנים ב-localStorage
                         this.saveToLocalStorage('alertsStatusFilters', this.statusFilters);
                         this.applyFilters();
+
+                        // בדוק אם הסינון הפעיל השתנה
+                        this.savedFiltersManager?.checkAndClearIfModified();
                     });
                 });
             }
@@ -168,35 +209,125 @@ class AlertsManager {
                 }
             });
 
-            // הוספת כפתור צילום מסך לאזור הפילטרים
+            // ==========================================
+            // אתחול מנהל הסינונים השמורים
+            // ==========================================
+            try {
+                if (typeof SavedFiltersManager === 'undefined') {
+                    await new Promise((resolve) => {
+                        const script = document.createElement('script');
+                        script.src = '/js/SavedFiltersManager.js';
+                        script.onload = resolve;
+                        script.onerror = resolve; // המשך גם אם נכשל
+                        document.head.appendChild(script);
+                    });
+                }
+
+                if (typeof SavedFiltersManager !== 'undefined') {
+                    this.savedFiltersManager = new SavedFiltersManager(this);
+                    this.savedFiltersManager.injectStyles();
+                    await this.savedFiltersManager.initialize();
+                }
+            } catch (sfError) {
+                console.warn('SavedFiltersManager failed to load:', sfError);
+            }
+
+            // ==========================================
+            // הוספת כפתורים ב-2 שורות ל-alerts-controls
+            // ==========================================
             const alertsControls = document.querySelector('.alerts-controls');
-            if (alertsControls) {
-                // הוספת כפתור לסגירת סינונים
+            if (alertsControls && !this.isFullscreenMode) {
+
+                // יצירת מיכל הכפתורים עם 2 שורות
+                const btnGrid = document.createElement('div');
+                btnGrid.className = 'alerts-btn-grid';
+
+                // -----------------------------------------------
+                // שורה ראשונה (משמאל לימין):
+                // toggleFiltersBtn | savedFiltersBtn | clearActiveFilterBtn
+                // -----------------------------------------------
+                const btnRow1 = document.createElement('div');
+                btnRow1.className = 'alerts-btn-row';
+
+                // 1. כפתור הסתרת/הצגת סינונים
                 const toggleFiltersBtn = document.createElement('button');
                 toggleFiltersBtn.id = 'toggleFiltersBtn';
                 toggleFiltersBtn.className = 'toggle-filters-btn';
-                toggleFiltersBtn.innerHTML = '<i class="fas fa-filter"></i>';
+                toggleFiltersBtn.innerHTML = '<i class="fas fa-angle-up"></i>';
                 toggleFiltersBtn.title = 'הסתר סינונים';
                 toggleFiltersBtn.addEventListener('click', () => this.toggleFiltersVisibility());
-                alertsControls.appendChild(toggleFiltersBtn);
 
-                // הוספת כפתור להגדלת מסך
+                btnRow1.appendChild(toggleFiltersBtn);
+
+                // 2 + 3. savedFiltersBtn ו-clearActiveFilterBtn
+                // נוספים על ידי savedFiltersManager.renderSavedFiltersButton
+                // הפונקציה מוסיפה את שני הכפתורים לשורה 1
+                this.savedFiltersManager.renderSavedFiltersButton(btnRow1, null);
+
+                // -----------------------------------------------
+                // שורה שנייה (משמאל לימין):
+                // columnManagerBtn | alertsColorModeBtn | expandAlertsBtn
+                // -----------------------------------------------
+                const btnRow2 = document.createElement('div');
+                btnRow2.className = 'alerts-btn-row';
+
+                // 1. כפתור ניהול עמודות
+                const columnManagerBtn = document.createElement('button');
+                columnManagerBtn.id = 'columnManagerBtn';
+                columnManagerBtn.className = 'column-manager-btn';
+                columnManagerBtn.innerHTML = '<i class="fas fa-columns"></i>';
+                columnManagerBtn.title = 'ניהול עמודות';
+                columnManagerBtn.addEventListener('click', () => this.openColumnManagerModal());
+
+                // 2. כפתור מצב צבע
+                const colorModeBtn = document.createElement('button');
+                colorModeBtn.id = 'alertsColorModeBtn';
+                colorModeBtn.className = 'alerts-color-mode-btn';
+                colorModeBtn.innerHTML = this.colorMode === 'background'
+                    ? '<i class="fas fa-fill-drip"></i>'
+                    : '<i class="fas fa-font"></i>';
+                colorModeBtn.title = this.colorMode === 'background'
+                    ? 'עבור לצבע טקסט'
+                    : 'עבור לצבע רקע';
+                colorModeBtn.addEventListener('click', () => this.toggleColorMode());
+
+                // 3. כפתור הגדלת מסך
                 const expandBtn = document.createElement('button');
                 expandBtn.id = 'expandAlertsBtn';
                 expandBtn.className = 'expand-alerts-btn';
                 expandBtn.innerHTML = '<i class="fas fa-expand"></i>';
                 expandBtn.title = 'הגדל מסך';
                 expandBtn.addEventListener('click', () => this.toggleExpandAlerts());
-                alertsControls.appendChild(expandBtn);
 
+                btnRow2.appendChild(columnManagerBtn);
+                btnRow2.appendChild(colorModeBtn);
+                btnRow2.appendChild(expandBtn);
+
+                // הוספת השורות למיכל
+                btnGrid.appendChild(btnRow1);
+                btnGrid.appendChild(btnRow2);
+
+                // הוספת המיכל ל-alerts-controls
+                alertsControls.appendChild(btnGrid);
+            }
+            if (this.isFullscreenMode && this.savedFiltersManager) {
+                // הפעל שחזור סינון שמור פעיל אם קיים
+                const activeFilterName = this.savedFiltersManager.getActiveSavedFilterName?.();
+                if (activeFilterName) {
+                    this.savedFiltersManager.applyActiveFilterIndicator?.();
+                }
             }
 
-            const clearFiltersBtn = document.getElementById('alerts-clear-filters-btn');
-            if (clearFiltersBtn) {
-                clearFiltersBtn.addEventListener('click', () => {
+            // מאזין לכפתור ניקוי פילטרים אם קיים ב-HTML
+            const existingClearFiltersBtn = document.getElementById('alerts-clear-filters-btn');
+            if (existingClearFiltersBtn) {
+                existingClearFiltersBtn.addEventListener('click', () => {
                     this.clearFilters();
                 });
             }
+
+            // הוספת מאזיני מיון לכותרות הטבלה
+            this.initializeSortableHeaders();
 
             // טען התראות בפעם הראשונה
             this.loadAlerts();
@@ -209,10 +340,63 @@ class AlertsManager {
 
             // עדכן את המטמון בפעם הראשונה אחרי טעינת ההתראות הקיימות
             setTimeout(() => this.updateAlertsCache(), 1000);
+
         } catch (error) {
             console.error('Error initializing alerts manager:', error);
             this.showError('שגיאה באתחול מנהל ההתראות');
         }
+    }
+
+    initializeSortableHeaders() {
+        // מיפוי בין טקסט הכותרת לשם השדה במערך הנתונים
+        const columnMapping = {
+            'IP Address': 'hostAddress',
+            'Last Update': 'modified',
+            'Notes': 'notes',
+            'Message': 'message',
+            'Host': 'host',
+            'Responsible Team': 'contacts',
+            'Date & Time': 'timestamp',
+            'Priority': 'priority',
+            'Severity': 'severity',
+            'Status': 'status'
+        };
+
+        const headers = document.querySelectorAll('.alerts-table thead th');
+        headers.forEach(th => {
+            const headerText = th.textContent.trim() || th.title.trim();
+            const sortField = columnMapping[headerText];
+            // רק אם יש מיפוי לעמודה זו
+            if (sortField) {
+                // הוסף attribute לזיהוי
+                th.setAttribute('data-sort', sortField);
+                th.classList.add('sortable');
+
+                // סגנון - הצג שהעמודה ניתנת למיון
+                th.style.cursor = 'pointer';
+                th.style.userSelect = 'none';
+                th.style.position = 'relative';
+
+                // הוסף אייקון מיון ניטרלי
+                const neutralIcon = document.createElement('span');
+                neutralIcon.className = 'sort-icon-neutral';
+                neutralIcon.innerHTML = ' <i class="fas fa-sort" style="opacity: 0.3;"></i>';
+                th.appendChild(neutralIcon);
+
+                // מאזין לחיצה
+                th.addEventListener('click', () => {
+                    this.sortAlerts(sortField);
+                });
+
+                // אפקט hover
+                th.addEventListener('mouseenter', () => {
+                    th.style.backgroundColor = 'rgba(0,0,0,0.05)';
+                });
+                th.addEventListener('mouseleave', () => {
+                    th.style.backgroundColor = '';
+                });
+            }
+        });
     }
 
     // פונקציה לטיפול בבחירת שורה
@@ -288,8 +472,6 @@ class AlertsManager {
                 const checkbox = row.querySelector('.alert-checkbox');
                 if (checkbox) checkbox.checked = true;
 
-                this.selectedAlerts.push(alertId);
-
                 if (!this.selectedAlerts.includes(alertId)) {
                     this.selectedAlerts.push(alertId);
                 }
@@ -326,7 +508,6 @@ class AlertsManager {
     toggleExpandAlerts() {
         const alertsTableContainer = document.querySelector('.alerts-table-container');
         const expandBtn = document.getElementById('expandAlertsBtn');
-
         if (alertsTableContainer) {
             if (alertsTableContainer.classList.contains('expanded')) {
                 // הקטן את המסך
@@ -351,7 +532,9 @@ class AlertsManager {
     // פונקציה חדשה להסתרת/הצגת סינונים
     toggleFiltersVisibility() {
         const filtersGroup = document.querySelectorAll('.alerts-filter-group');
+        const buttons = document.querySelectorAll('.alerts-btn-row button:not(.toggle-filters-btn)');
         const toggleFiltersBtn = document.getElementById('toggleFiltersBtn');
+        const btnGrid = document.querySelector('.alerts-btn-grid');
 
         if (filtersGroup.length > 0) {
             const isVisible = filtersGroup[0].style.display !== 'none';
@@ -361,15 +544,70 @@ class AlertsManager {
                 filtersGroup.forEach(group => {
                     group.style.display = 'none';
                 });
-                toggleFiltersBtn.innerHTML = '<i class="fas fa-filter"></i>';
+                toggleFiltersBtn.innerHTML = '<i class="fas fa-angle-down"></i>';
                 toggleFiltersBtn.title = 'הצג סינונים';
+
+                // *** כל הכפתורים בשורה אחת ***
+                if (btnGrid) {
+
+                    // נקה את ה-grid הקיים
+                    btnGrid.innerHTML = '';
+
+                    // צור שורה אחת עם כל הכפתורים
+                    const singleRow = document.createElement('div');
+                    singleRow.className = 'alerts-btn-row alerts-btn-row-single';
+                    singleRow.style.flexWrap = 'nowrap';
+
+                    [...buttons].forEach(btn => {
+                        singleRow.appendChild(btn);
+                    });
+                    singleRow.appendChild(toggleFiltersBtn);
+
+                    btnGrid.appendChild(singleRow);
+                    btnGrid.setAttribute('data-collapsed', 'true');
+                }
+
             } else {
                 // הצג את הסינונים
                 filtersGroup.forEach(group => {
                     group.style.display = 'block';
                 });
-                toggleFiltersBtn.innerHTML = '<i class="fas fa-filter"></i>';
+                toggleFiltersBtn.innerHTML = '<i class="fas fa-angle-up"></i>';
                 toggleFiltersBtn.title = 'הסתר סינונים';
+
+                // *** חזור לשתי שורות ***
+                if (btnGrid && btnGrid.getAttribute('data-collapsed') === 'true') {
+                    // נקה את ה-grid
+                    btnGrid.innerHTML = '';
+
+                    // שורה ראשונה - expandBtn + toggleFiltersBtn + savedFilters
+                    const btnRow1 = document.createElement('div');
+                    btnRow1.className = 'alerts-btn-row';
+
+                    // שורה שנייה - colorMode + columnManager + savedFilters
+                    const btnRow2 = document.createElement('div');
+                    btnRow2.className = 'alerts-btn-row';
+
+                    // חלק את הכפתורים לפי ה-id שלהם
+                    [...buttons].forEach(btn => {
+                        const id = btn.id;
+                        if (
+                            id === 'clearActiveFilterBtn' ||
+                            id === 'toggleFiltersBtn' ||
+                            btn.classList.contains('saved-filters-btn') ||
+                            btn.classList.contains('clear-active-filter-btn')
+                        ) {
+                            btnRow1.appendChild(btn);
+                        } else {
+                            btnRow2.appendChild(btn);
+                        }
+                    });
+
+                    btnRow1.appendChild(toggleFiltersBtn);
+                    btnGrid.appendChild(btnRow1);
+                    btnGrid.appendChild(btnRow2);
+                    btnGrid.removeAttribute('data-collapsed');
+                }
             }
         }
     }
@@ -407,7 +645,9 @@ class AlertsManager {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+                this.showError('שגיאה בהבאת נתונים מהשרת. אנא נסה שוב מאוחר יותר.');
+                console.error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+                return;
             }
 
             // קבל את ההתראות מהקובץ המקומי
@@ -441,7 +681,9 @@ class AlertsManager {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+                this.showError('שגיאה בהבאת נתונים מהשרת. אנא נסה שוב מאוחר יותר.');
+                console.error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+                return;
             }
 
             const result = await response.json();
@@ -504,6 +746,108 @@ class AlertsManager {
         }, 5000);
     }
 
+    sortAlerts(column) {
+        // אם לוחצים על אותה עמודה - הפוך את הכיוון
+        if (this.sortColumn === column) {
+            this.sortDirection = this.sortDirection === 'asc' ? 'desc' : 'asc';
+        } else {
+            // עמודה חדשה - התחל עם עלייה
+            this.sortColumn = column;
+            this.sortDirection = 'asc';
+        }
+
+        // *** הוסף: שמור מיון ב-localStorage (רק אם לא במצב fullscreen) ***
+        if (!this.isFullscreenMode) {
+            this.saveToLocalStorage('alertsSortColumn', this.sortColumn);
+            this.saveToLocalStorage('alertsSortDirection', this.sortDirection);
+        }
+
+
+        // עדכן אייקוני מיון בכותרות
+        this.updateSortIcons();
+
+        this.applySortToFilteredAlerts();
+
+        // רנדר מחדש את הטבלה עם הנתונים הממוינים
+        this.renderAlerts();
+    }
+
+    applySortToFilteredAlerts() {
+        if (!this.sortColumn) return;
+
+        this.filteredAlerts.sort((a, b) => {
+            let valA = a[this.sortColumn];
+            let valB = b[this.sortColumn];
+
+            if (valA === null || valA === undefined || valA === '') return 1;
+            if (valB === null || valB === undefined || valB === '') return -1;
+
+            switch (this.sortColumn) {
+                case 'timestamp':
+                case 'modified':
+                    valA = new Date(valA).getTime();
+                    valB = new Date(valB).getTime();
+                    break;
+                case 'priority':
+                    valA = Number(valA) || 0;
+                    valB = Number(valB) || 0;
+                    break;
+                case 'severity':
+                    const severityOrder = { 'CRITICAL': 1, 'MAJOR': 2, 'UNKNOWN': 3 };
+                    valA = severityOrder[valA] || 99;
+                    valB = severityOrder[valB] || 99;
+                    break;
+                case 'status':
+                    const statusOrder = { 'OPEN': 1, 'ACK': 2, 'ASSIGN': 3, 'CLOSED': 4 };
+                    valA = statusOrder[valA] || 99;
+                    valB = statusOrder[valB] || 99;
+                    break;
+                case 'notes':
+                    valA = Array.isArray(valA) ? valA.length : (valA ? 1 : 0);
+                    valB = Array.isArray(valB) ? valB.length : (valB ? 1 : 0);
+                    break;
+                default:
+                    valA = String(valA).toLowerCase();
+                    valB = String(valB).toLowerCase();
+            }
+
+            if (valA < valB) return this.sortDirection === 'asc' ? -1 : 1;
+            if (valA > valB) return this.sortDirection === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }
+
+    updateSortIcons() {
+        // הסר אייקוני מיון קיימים מכל הכותרות
+        document.querySelectorAll('.alerts-table th .sort-icon').forEach(icon => {
+            icon.remove();
+        });
+
+        // הסר קלאסים של מיון מכל הכותרות
+        document.querySelectorAll('.alerts-table th.sortable').forEach(th => {
+            th.classList.remove('sort-asc', 'sort-desc');
+        });
+
+        // הוסף אייקון לעמודה הממוינת הנוכחית
+        if (this.sortColumn) {
+
+            const activeHeader = document.querySelector(
+                `.alerts-table th[data-sort="${this.sortColumn}"]`
+            );
+            if (activeHeader) {
+                activeHeader.classList.add(
+                    this.sortDirection === 'asc' ? 'sort-asc' : 'sort-desc'
+                );
+
+                const sortIcon = document.createElement('span');
+                sortIcon.className = 'sort-icon';
+                sortIcon.innerHTML = this.sortDirection === 'asc'
+                    ? ' <i class="fas fa-sort-up"></i>'
+                    : ' <i class="fas fa-sort-down"></i>';
+                activeHeader.appendChild(sortIcon);
+            }
+        }
+    }
 
     applyFilters() {
         // בדיקה: אם לא נבחר אף סטטוס או לא נבחר אף חומרה (Severity) - אל תציג כלום
@@ -512,9 +856,8 @@ class AlertsManager {
 
             // ניקוי בחירות קיימות - תוספת חדשה
             this.clearSelection();
-
-            this.renderAlerts();      // רינדור הטבלה הריקה
-            return;                   // יציאה מהפונקציה
+            this.renderAlerts();  // רינדור הטבלה הריקה
+            return;// יציאה מהפונקציה
         }
 
         // סנן לפי חומרה וסטטוס
@@ -618,18 +961,28 @@ class AlertsManager {
             this.clearSelection();
         }
 
+        if (this.sortColumn) {
+            this.applySortToFilteredAlerts();
+        }
+
         this.renderAlerts();
         // Add/remove search-active class based on search term
         const alertsTable = document.querySelector('.alerts-table');
+        if (alertsTable) {
+            alertsTable.classList.remove('dark-mode-active');
+            if (this.colorMode === 'text-dark') {
+                alertsTable.classList.add('dark-mode-active');
+            }
+        }
         const alertsSearch = document.querySelector('.alerts-search');
-        if (this.searchTerm && this.searchTerm.trim() !== '') {
+        if (this.searchTerm && this.searchTerm.trim() !== '' && !this._suppressSearchHighlight) {
             if (alertsTable) alertsTable.classList.add('search-active');
             if (alertsSearch) alertsSearch.classList.add('has-search-text');
 
             // Mark matching rows
             this.filteredAlerts.forEach(alert => {
                 const row = document.querySelector(`.alerts-table tr[data-alert-id="${alert.id}"]`);
-                row.classList.add('search-match');
+                if (row) row.classList.add('search-match');
             });
         } else {
             if (alertsTable) alertsTable.classList.remove('search-active');
@@ -640,6 +993,19 @@ class AlertsManager {
                 row.classList.remove('search-match');
             });
         }
+        this.saveActiveFilterState();
+    }
+
+    saveActiveFilterState() {
+        const activeState = {
+            severityFilters: this.severityFilters,
+            statusFilters: this.statusFilters,
+            searchTerm: this.searchTerm,
+            sortColumn: this.sortColumn,
+            sortDirection: this.sortDirection,
+            timestamp: new Date().toISOString()
+        };
+        this.saveToLocalStorage('alertsActiveFilterState', activeState);
     }
 
     clearFilters() {
@@ -792,6 +1158,17 @@ class AlertsManager {
 
     // פונקציה חדשה לעדכון סרגל הפעולות על התראות מרובות
     updateBulkActionsBar() {
+        // אם במצב מסך מלא, אל תציג את סרגל הפעולות
+        if (this.isFullscreenMode) {
+            const existingBar = document.getElementById('bulkActionsBar');
+            if (existingBar && existingBar.parentNode) {
+                existingBar.parentNode.removeChild(existingBar);
+            }
+            this.sortColumn = null;
+            this.sortDirection = 'asc';
+            return;
+        }
+
         // בדוק אם קיים אלמנט לסרגל פעולות
         let bulkActionsBar = document.getElementById('bulkActionsBar');
 
@@ -845,6 +1222,10 @@ class AlertsManager {
         <button id="screenshotBtn" class="bulk-action-btn screenshot-btn" title="Screenshot Selected - צילום מסך" ${!hasSelectedAlerts ? 'disabled' : ''}>
             <i class="fas fa-camera"></i>
         </button>
+        <button id="exportExcelBtn" class="bulk-action-btn export-excel-btn"
+                title="Export to Excel - ייצוא לאקסל" ${!hasSelectedAlerts ? 'disabled' : ''}>
+            <i class="fas fa-file-excel"></i>
+        </button>
     </div>
     `;
 
@@ -865,6 +1246,8 @@ class AlertsManager {
             bulkActionsBar.querySelector('.bulk-note-btn').addEventListener('click', () => this.bulkAddNote());
             bulkActionsBar.querySelector('.bulk-clear-btn').addEventListener('click', () => this.clearSelection());
             bulkActionsBar.querySelector('.screenshot-btn').addEventListener('click', () => this.captureScreenshot());
+            bulkActionsBar.querySelector('.export-excel-btn')
+                .addEventListener('click', () => this.exportToExcel());
         }
 
         // הצג את הסרגל תמיד
@@ -1167,7 +1550,10 @@ class AlertsManager {
             this.showLoading(true);
             this.closeBulkActionModal();
 
-            // מצא את מזהי ההתראות המקומיים המתאימים למזהי ה-Helix
+            // *** הוסף דגל לסימון פעולה מרובה ***
+            this._isBulkOperation = true;
+
+            // מיפוי helixId → alertId
             const alertsMap = {};
             this.selectedAlerts.forEach(alertId => {
                 const alert = this.alerts.find(a => a.id === alertId);
@@ -1181,15 +1567,53 @@ class AlertsManager {
             let errors = [];
 
             // עבור על כל התראה בנפרד
+            const newStatus = this.getNewStatusFromAction(action);
+
             for (const helixId of helixIds) {
                 const alertId = alertsMap[helixId];
                 if (!alertId) continue;
 
                 try {
                     // קריאה לפונקציה עם הפרמטרים הנכונים ובדיקת הערך המוחזר
-                    const success = await this.submitStatusUpdate(alertId, helixId, action, userName, note);
+                    const success = await this.submitStatusUpdate(
+                        alertId, helixId, action, userName, note
+                    );
+
                     if (success) {
                         successCount++;
+
+                        // *** תיקון: עדכן סטטוס מקומי מיד אחרי הצלחה ***
+                        if (newStatus) {
+                            const alertIndex = this.alerts.findIndex(a => a.id === alertId);
+                            if (alertIndex !== -1) {
+                                this.alerts[alertIndex].status = newStatus;
+                                this.alerts[alertIndex].modified = new Date().toISOString();
+
+                                // *** תיקון: עדכן הערה מקומית מיד ***
+                                if (note) {
+                                    const newNoteObj = {
+                                        text: note,
+                                        date: new Date().toISOString(),
+                                        userName: userName
+                                    };
+                                    const currentNotes = this.alerts[alertIndex].notes;
+                                    if (Array.isArray(currentNotes)) {
+                                        this.alerts[alertIndex].notes = [newNoteObj, ...currentNotes];
+                                    } else if (currentNotes) {
+                                        this.alerts[alertIndex].notes = [
+                                            {
+                                                text: currentNotes,
+                                                date: this.alerts[alertIndex].timestamp,
+                                                userName: "משתמש"
+                                            },
+                                            newNoteObj
+                                        ];
+                                    } else {
+                                        this.alerts[alertIndex].notes = [newNoteObj];
+                                    }
+                                }
+                            }
+                        }
                     } else {
                         failCount++;
                         errors.push(`התראה ${helixId}: פעולה נכשלה`);
@@ -1199,32 +1623,28 @@ class AlertsManager {
                     errors.push(`התראה ${helixId}: ${error.message}`);
                     console.error(`Error processing alert ${helixId}:`, error);
                 }
+                finally {
+                    // *** הסר דגל בסיום ***
+                    this._isBulkOperation = false;
+                }
             }
 
             // עדכון התצוגה
             this.applyFilters();
-
             // ניקוי הבחירה
             this.clearSelection();
 
             // הצגת הודעת סיכום
             let actionText;
             switch (action) {
-                case 'ACK':
-                    actionText = 'אושרו';
-                    break;
-                case 'ASSIGN':
-                    actionText = 'שויכו';
-                    break;
-                case 'CLOSE':
-                    actionText = 'נסגרו';
-                    break;
-                case 'NOTE':
-                    actionText = 'נוספה הערה ל';
-                    break;
+                case 'ACK': actionText = 'אושרו'; break;
+                case 'ASSIGN': actionText = 'שויכו'; break;
+                case 'CLOSE': actionText = 'נסגרו'; break;
+                case 'NOTE': actionText = 'נוספה הערה ל'; break;
             }
 
             const successMessage = `${successCount} התראות ${actionText} בהצלחה על ידי ${userName}`;
+
             if (failCount > 0) {
                 const errorMessage = `${failCount} התראות נכשלו: ${errors.join(', ')}`;
                 if (typeof NotificationManager !== 'undefined') {
@@ -1243,10 +1663,23 @@ class AlertsManager {
             }
 
             this.showLoading(false);
+
         } catch (error) {
             console.error(`Error in bulk action (${action}):`, error);
             this.showLoading(false);
             this.showError('שגיאה בביצוע פעולה מרובה: ' + error.message);
+        }
+    }
+
+    // *** פונקציה חדשה - ממפה action לסטטוס החדש ***
+    getNewStatusFromAction(action) {
+        switch (action) {
+            case 'ACK': return 'ACK';
+            case 'ASSIGN': return 'ASSIGN';
+            case 'CLOSE': return 'CLOSED';
+            case 'OPEN': return 'OPEN';
+            case 'NOTE': return null; // הערה לא משנה סטטוס
+            default: return null;
         }
     }
 
@@ -1662,11 +2095,294 @@ class AlertsManager {
         });
     }
 
+    // הגדרת מטא-דאטה של עמודות
+    getColumnDefinitions() {
+        return {
+            hostAddress: { label: 'IP Address', alwaysVisible: false, canReorder: true },
+            modified: { label: 'Last Update', alwaysVisible: false, canReorder: true },
+            notes: { label: 'Notes', alwaysVisible: false, canReorder: true },
+            message: { label: 'Message', alwaysVisible: false, canReorder: true },
+            host: { label: 'Host', alwaysVisible: false, canReorder: true },
+            email: { label: 'Mail', alwaysVisible: false, canReorder: true },
+            contacts: { label: 'Responsible Team', alwaysVisible: false, canReorder: true },
+            timestamp: { label: 'Date & Time', alwaysVisible: false, canReorder: true },
+            priority: { label: 'Priority', alwaysVisible: false, canReorder: true },
+            severity: { label: 'Severity', alwaysVisible: false, canReorder: true },
+            status: { label: 'Status', alwaysVisible: false, canReorder: true },
+            actions: { label: 'Actions', alwaysVisible: true, canReorder: false },
+            checkbox: { label: 'Select', alwaysVisible: true, canReorder: false }
+        };
+    }
+
+    toggleColorMode() {
+        // מחזור בין 3 מצבים
+        const modes = ['background', 'text-light', 'text-dark'];
+        const currentIndex = modes.indexOf(this.colorMode);
+        this.colorMode = modes[(currentIndex + 1) % modes.length];
+
+        if (this.isFullscreenMode) {
+            this.saveToLocalStorage('dashboardColorMode', this.colorMode);
+        } else {
+            this.saveToLocalStorage('alertsColorMode', this.colorMode);
+        }
+
+        // עדכון כפתור
+        const iconMap = {
+            'background': '<i class="fas fa-fill-drip"></i>',
+            'text-light': '<i class="fas fa-font"></i>',
+            'text-dark': '<i class="fas fa-moon"></i>'
+        };
+        const titleMap = {
+            'background': 'מצב: צבע רקע',
+            'text-light': 'מצב: טקסט על רקע בהיר',
+            'text-dark': 'מצב: טקסט על רקע כהה'
+        };
+
+        [
+            document.getElementById('alertsColorModeBtn'),
+            document.getElementById('dashboardColorModeBtn')
+        ].forEach(btn => {
+            if (btn) {
+                btn.innerHTML = iconMap[this.colorMode];
+                btn.title = titleMap[this.colorMode];
+            }
+        });
+
+        this.renderAlerts();
+
+        if (typeof NotificationManager !== 'undefined') {
+            NotificationManager.show(titleMap[this.colorMode], 'success');
+        }
+    }
+
+    openColumnManagerModal() {
+        // סגור מודל קיים אם פתוח
+        const existing = document.getElementById('columnManagerModal');
+        if (existing) existing.remove();
+
+        const defs = this.getColumnDefinitions();
+
+        const modal = document.createElement('div');
+        modal.id = 'columnManagerModal';
+        modal.style.cssText = `
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.5); z-index: 10000;
+        display: flex; justify-content: center; align-items: center; direction: rtl;
+    `;
+
+        // בנה רשימת עמודות לפי הסדר הנוכחי (רק עמודות שניתן לסדר מחדש)
+        const reorderableColumns = this.columnOrder.filter(col => defs[col] && defs[col].canReorder);
+
+        const itemsHTML = [...reorderableColumns].reverse().map(col => `
+        <div class="col-manager-item" data-col="${col}" 
+             draggable="true"
+             style="display:flex; align-items:center; gap:10px; padding:10px 12px;
+                    background:#f8f9fa; border:1px solid #dee2e6; border-radius:6px;
+                    margin-bottom:6px; cursor:grab; user-select:none;
+                    transition: background 0.15s, box-shadow 0.15s;">
+            <i class="fas fa-grip-vertical" style="color:#adb5bd; cursor:grab;"></i>
+            <input type="checkbox" 
+                   id="alertCol-${col}" 
+                   ${this.visibleColumns[col] ? 'checked' : ''}
+                   style="width:16px; height:16px; cursor:pointer;"
+                   onchange="alertsManager.toggleColumnVisibility('${col}', this.checked)">
+            <label for="alertCol-${col}" 
+                   style="flex:1; cursor:pointer; font-size:0.95rem; margin:0;">
+                ${defs[col].label}
+            </label>
+        </div>
+    `).join('');
+
+        modal.innerHTML = `
+        <div style="background:white; border-radius:10px; width:420px; max-width:95%;
+                    max-height:90vh; overflow:hidden; display:flex; flex-direction:column;
+                    box-shadow: 0 8px 30px rgba(0,0,0,0.2);">
+            
+            <!-- כותרת -->
+            <div style="display:flex; justify-content:space-between; align-items:center;
+                        padding:16px 20px; border-bottom:1px solid #eee; background:#320F5B;">
+                <h3 style="margin:0; color:white; font-size:1.1rem;">
+                    <i class="fas fa-columns" style="margin-left:8px;"></i>
+                    ניהול עמודות
+                </h3>
+                <button onclick="document.getElementById('columnManagerModal').remove()"
+                        style="background:none; border:none; color:white; font-size:22px; 
+                               cursor:pointer; line-height:1;">&times;</button>
+            </div>
+
+            <!-- הוראות -->
+            <div style="padding:10px 20px; background:#f0f4ff; border-bottom:1px solid #e0e7ff;
+                        font-size:0.85rem; color:#555; display:flex; align-items:center; gap:8px;">
+                <i class="fas fa-info-circle" style="color:#667eea;"></i>
+                <span>גרור לשינוי סדר • סמן/בטל לחשיפה/הסתרה</span>
+            </div>
+
+            <!-- רשימת עמודות -->
+            <div id="colManagerList" style="padding:16px 20px; overflow-y:auto; flex:1;">
+                ${itemsHTML}
+            </div>
+
+            <!-- כפתורים -->
+            <div style="padding:14px 20px; border-top:1px solid #eee; 
+                        display:flex; justify-content:space-between; gap:10px; background:#fafafa;">
+                <button onclick="alertsManager.resetColumnSettings()"
+                        style="padding:8px 16px; background:#6c757d; color:white; border:none;
+                               border-radius:6px; cursor:pointer; font-size:0.9rem; display:flex;
+                               align-items:center; gap:6px;">
+                    <i class="fas fa-undo"></i> איפוס
+                </button>
+                <div style="display:flex; gap:8px;">
+                    <button onclick="document.getElementById('columnManagerModal').remove()"
+                            style="padding:8px 16px; background:#e9ecef; color:#333; border:none;
+                                   border-radius:6px; cursor:pointer; font-size:0.9rem;">
+                        סגור
+                    </button>
+                    <button onclick="alertsManager.applyColumnSettings()"
+                            style="padding:8px 16px; background:#320F5B; color:white; border:none;
+                                   border-radius:6px; cursor:pointer; font-size:0.9rem; display:flex;
+                                   align-items:center; gap:6px;">
+                        <i class="fas fa-check"></i> החל
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+        document.body.appendChild(modal);
+
+        // אתחול Drag & Drop
+        this.initColumnDragDrop();
+
+        // סגירה בלחיצה על הרקע
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.remove();
+        });
+    }
+
+    initColumnDragDrop() {
+        const list = document.getElementById('colManagerList');
+        if (!list) return;
+
+        let draggedItem = null;
+
+        list.querySelectorAll('.col-manager-item').forEach(item => {
+            item.addEventListener('dragstart', (e) => {
+                draggedItem = item;
+                item.style.opacity = '0.5';
+                item.style.boxShadow = '0 4px 12px rgba(0,0,0,0.2)';
+                e.dataTransfer.effectAllowed = 'move';
+            });
+
+            item.addEventListener('dragend', () => {
+                item.style.opacity = '1';
+                item.style.boxShadow = 'none';
+                item.style.background = '#f8f9fa';
+                draggedItem = null;
+                // הסר הדגשות
+                list.querySelectorAll('.col-manager-item').forEach(i => {
+                    i.style.borderColor = '#dee2e6';
+                    i.style.background = '#f8f9fa';
+                });
+            });
+
+            item.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                if (item !== draggedItem) {
+                    item.style.borderColor = '#667eea';
+                    item.style.background = '#f0f4ff';
+                }
+            });
+
+            item.addEventListener('dragleave', () => {
+                item.style.borderColor = '#dee2e6';
+                item.style.background = '#f8f9fa';
+            });
+
+            item.addEventListener('drop', (e) => {
+                e.preventDefault();
+                if (draggedItem && item !== draggedItem) {
+                    const allItems = [...list.querySelectorAll('.col-manager-item')];
+                    const draggedIndex = allItems.indexOf(draggedItem);
+                    const targetIndex = allItems.indexOf(item);
+
+                    if (draggedIndex < targetIndex) {
+                        list.insertBefore(draggedItem, item.nextSibling);
+                    } else {
+                        list.insertBefore(draggedItem, item);
+                    }
+                }
+                item.style.borderColor = '#dee2e6';
+                item.style.background = '#f8f9fa';
+            });
+        });
+    }
+
+    toggleColumnVisibility(colName, isVisible) {
+        this.visibleColumns[colName] = isVisible;
+    }
+
+    applyColumnSettings() {
+        const list = document.getElementById('colManagerList');
+        if (!list) return;
+
+        // קרא את הסדר החדש מה-DOM והפוך אותו חזרה
+        const newReorderableOrder = [...list.querySelectorAll('.col-manager-item')]
+            .map(item => item.getAttribute('data-col'))
+            .reverse(); // ← הוסף reverse כאן
+
+        const defs = this.getColumnDefinitions();
+        const fixedColumns = this.columnOrder.filter(col => defs[col] && !defs[col].canReorder);
+
+        this.columnOrder = [...newReorderableOrder, ...fixedColumns];
+
+        // שמור ב-localStorage
+        this.saveToLocalStorage('alertsColumnOrder', this.columnOrder);
+        this.saveToLocalStorage('alertsVisibleColumns', this.visibleColumns);
+
+        // סגור מודל ורנדר מחדש
+        document.getElementById('columnManagerModal')?.remove();
+        this.renderAlerts();
+
+        if (typeof NotificationManager !== 'undefined') {
+            NotificationManager.show('הגדרות עמודות נשמרו', 'success');
+        }
+    }
+
+    resetColumnSettings() {
+        this.columnOrder = [
+            'hostAddress', 'modified', 'notes', 'message', 'host',
+            'email', 'contacts', 'timestamp', 'priority', 'severity', 'status', 'actions', 'checkbox'
+        ];
+        this.visibleColumns = {
+            hostAddress: true, modified: true, notes: true, message: true,
+            host: true, email: true, contacts: true, timestamp: true,
+            priority: true, severity: true, status: true, actions: true, checkbox: true
+        };
+        this.saveToLocalStorage('alertsColumnOrder', this.columnOrder);
+        this.saveToLocalStorage('alertsVisibleColumns', this.visibleColumns);
+
+        document.getElementById('columnManagerModal')?.remove();
+        this.renderAlerts();
+
+        if (typeof NotificationManager !== 'undefined') {
+            NotificationManager.show('הגדרות עמודות אופסו', 'success');
+        }
+    }
+
     renderAlerts() {
         const tableBody = document.getElementById('alertsTableBody');
         if (!tableBody) {
             console.error('Table body element not found');
             return;
+        }
+
+        const alertsTable = document.querySelector('.alerts-table');
+        if (alertsTable) {
+            alertsTable.classList.remove('dark-mode-active');
+            if (this.colorMode === 'text-dark') {
+                alertsTable.classList.add('dark-mode-active');
+            }
         }
 
         // נקה את הטבלה
@@ -1680,7 +2396,8 @@ class AlertsManager {
         if (this.filteredAlerts.length === 0) {
             const emptyRow = document.createElement('tr');
             const emptyCell = document.createElement('td');
-            emptyCell.colSpan = 13; // עדכון מספר העמודות
+            // התאם את מספר העמודות בהתאם למצב מסך מלא
+            emptyCell.colSpan = this.isFullscreenMode ? 11 : 13;
             emptyCell.textContent = 'אין התראות להצגה';
             emptyCell.className = 'empty-alerts-message';
             emptyRow.appendChild(emptyCell);
@@ -1688,433 +2405,580 @@ class AlertsManager {
             return;
         }
 
-        // הוסף כותרת לעמודת הצ'קבוקס אם לא קיימת
+        // הוסף כותרת לעמודת הצ'קבוקס אם לא קיימת ואם לא במצב מסך מלא
+
+        // בנה כותרות לפי הסדר
         const headerRow = document.querySelector('.alerts-table thead tr');
-        if (headerRow && !headerRow.querySelector('.checkbox-header')) {
-            const checkboxHeader = document.createElement('th');
-            checkboxHeader.className = 'checkbox-header';
-            checkboxHeader.style.width = '40px';
+        if (headerRow) {
+            headerRow.innerHTML = ''; // נקה כותרות קיימות
 
-            // צ'קבוקס ראשי לבחירת כל ההתראות
-            const masterCheckbox = document.createElement('input');
-            masterCheckbox.type = 'checkbox';
-            masterCheckbox.className = 'master-checkbox';
-            masterCheckbox.title = 'בחר הכל';
-            masterCheckbox.style.left = '5px';
+            this.columnOrder.forEach(col => {
+                if (!this.visibleColumns[col]) return;
+                if (col === 'checkbox' && this.isFullscreenMode) return;
+                if (col === 'actions' && this.isFullscreenMode) return;
 
-            // הוסף אירוע לחיצה לצ'קבוקס הראשי
-            masterCheckbox.addEventListener('change', (e) => {
-                const isChecked = e.target.checked;
+                const th = document.createElement('th');
 
-                // בחר או בטל בחירה של כל ההתראות המוצגות
-                document.querySelectorAll('.alerts-table tbody tr').forEach(row => {
-                    const checkbox = row.querySelector('.alert-checkbox');
-                    if (checkbox) {
-                        checkbox.checked = isChecked;
+                if (col === 'actions') {
+                    th.title = 'Bulk Actions';
+                    th.style.position = 'relative';
 
-                        // עדכן את מצב הבחירה של השורה
-                        const alertId = row.getAttribute('data-alert-id');
-                        if (alertId) {
-                            if (isChecked) {
-                                row.classList.add('selected');
-                                if (!this.selectedAlerts.includes(alertId)) {
-                                    this.selectedAlerts.push(alertId);
+                    const bulkMenuBtn = document.createElement('button');
+                    bulkMenuBtn.className = 'actions-btn header-bulk-actions-btn';
+                    bulkMenuBtn.title = 'פעולות מרובות';
+
+                    bulkMenuBtn.innerHTML = '<i class="fas fa-ellipsis-v"></i>';
+
+                    bulkMenuBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this.showBulkActionsPopup(bulkMenuBtn);
+                    });
+
+                    th.appendChild(bulkMenuBtn);
+                }
+                if (col === 'checkbox') {
+                    th.className = 'checkbox-header';
+                    th.style.width = '40px';
+                    const masterCheckbox = document.createElement('input');
+                    masterCheckbox.type = 'checkbox';
+                    masterCheckbox.className = 'master-checkbox';
+                    masterCheckbox.title = 'בחר הכל';
+                    masterCheckbox.addEventListener('change', (e) => {
+                        const isChecked = e.target.checked;
+                        document.querySelectorAll('.alerts-table tbody tr').forEach(row => {
+                            const checkbox = row.querySelector('.alert-checkbox');
+                            if (checkbox) {
+                                checkbox.checked = isChecked;
+                                const alertId = row.getAttribute('data-alert-id');
+                                if (alertId) {
+                                    if (isChecked) {
+                                        row.classList.add('selected');
+                                        if (!this.selectedAlerts.includes(alertId)) {
+                                            this.selectedAlerts.push(alertId);
+                                        }
+                                    } else {
+                                        row.classList.remove('selected');
+                                        this.selectedAlerts = this.selectedAlerts.filter(id => id !== alertId);
+                                    }
                                 }
-                            } else {
-                                row.classList.remove('selected');
-                                this.selectedAlerts = this.selectedAlerts.filter(id => id !== alertId);
                             }
+                        });
+                        masterCheckbox.indeterminate = false;
+                        this.updateBulkActionsBar();
+                        const screenshotBtn = document.getElementById('screenshotBtn');
+                        if (screenshotBtn) screenshotBtn.disabled = this.selectedAlerts.length === 0;
+                    });
+                    th.appendChild(masterCheckbox);
+                } else {
+                    // כותרות רגילות עם מיון
+                    const columnMapping = {
+                        hostAddress: { text: 'IP Address', icon: null },
+                        modified: { text: 'Last Update', icon: null },
+                        notes: { text: 'Notes', icon: null },
+                        message: { text: 'Message', icon: null },
+                        host: { text: 'Host', icon: null },
+                        email: { text: null, title: 'Send Email', icon: 'fas fa-envelope' },
+                        contacts: { text: 'Responsible Team', icon: null },
+                        timestamp: { text: 'Date & Time', icon: null },
+                        priority: { text: null, title: 'Priority', icon: 'fas fa-flag' },
+                        severity: { text: null, title: 'Severity', icon: 'fas fa-triangle-exclamation' },
+                        status: { text: null, title: 'Status', icon: 'fas fa-info-circle' }
+                    };
+
+                    const colDef = columnMapping[col];
+                    if (colDef) {
+                        if (colDef.title) th.title = colDef.title;
+                        if (colDef.icon) {
+                            const i = document.createElement('i');
+                            i.className = colDef.icon;
+                            th.appendChild(i);
+                        } else if (colDef.text) {
+                            th.textContent = colDef.text;
                         }
                     }
-                });
 
-                // עדכן את מצב ה-indeterminate
-                masterCheckbox.indeterminate = false;
+                    const sortableColumns = ['hostAddress', 'modified', 'notes', 'message', 'host', 'contacts', 'timestamp', 'priority', 'severity', 'status'];
+                    if (sortableColumns.includes(col)) {
+                        th.setAttribute('data-sort', col);
+                        th.classList.add('sortable');
+                        th.style.cursor = 'pointer';
+                        th.style.userSelect = 'none';
+                        th.style.position = 'relative';
 
-                // עדכן את סרגל הפעולות
-                this.updateBulkActionsBar();
+                        const neutralIcon = document.createElement('span');
+                        neutralIcon.className = 'sort-icon-neutral';
+                        neutralIcon.innerHTML = ' <i class="fas fa-sort" style="opacity: 0.3;"></i>';
+                        th.appendChild(neutralIcon);
 
-                // עדכן את מצב כפתור צילום המסך
-                const screenshotBtn = document.getElementById('screenshotBtn');
-                if (screenshotBtn) {
-                    screenshotBtn.disabled = this.selectedAlerts.length === 0;
+                        th.addEventListener('click', () => this.sortAlerts(col));
+                        th.addEventListener('mouseenter', () => { th.style.backgroundColor = 'rgba(0,0,0,0.05)'; });
+                        th.addEventListener('mouseleave', () => { th.style.backgroundColor = ''; });
+
+                        // הוסף אייקון מיון אם זו העמודה הממוינת
+                        if (this.sortColumn === col) {
+                            th.classList.add(this.sortDirection === 'asc' ? 'sort-asc' : 'sort-desc');
+                            const sortIcon = document.createElement('span');
+                            sortIcon.className = 'sort-icon';
+                            sortIcon.innerHTML = this.sortDirection === 'asc'
+                                ? ' <i class="fas fa-sort-up"></i>'
+                                : ' <i class="fas fa-sort-down"></i>';
+                            th.appendChild(sortIcon);
+                        }
+                    }
                 }
+                headerRow.appendChild(th);
             });
-
-            checkboxHeader.appendChild(masterCheckbox);
-            // הוסף את עמודת הצ'קבוקס בסוף הכותרת במקום בתחילתה
-            headerRow.appendChild(checkboxHeader);
         }
 
         // הצג את ההתראות
         this.filteredAlerts.forEach(alert => {
             const row = document.createElement('tr');
-            row.className = `severity-${alert.severity.toLowerCase()}`;
 
-            // הוספת קלאס לשורות בסטטוס CLOSED
-            if (alert.status === 'CLOSED') {
-                row.classList.add('status-closed');
+            // הוסף class בסיסי תמיד
+            row.setAttribute('data-severity', alert.severity.toLowerCase());
+
+            // הוסף class לפי מצב הצבע
+            switch (this.colorMode) {
+                case 'background':
+                    row.className = `severity-${alert.severity.toLowerCase()}`;
+                    break;
+                case 'text-light':
+                    row.className = `severity-text-light-${alert.severity.toLowerCase()}`;
+                    break;
+                case 'text-dark':
+                    row.className = `severity-text-dark-${alert.severity.toLowerCase()}`;
+                    break;
+                default:
+                    row.className = `severity-${alert.severity.toLowerCase()}`;
             }
 
-            // הוסף מזהה לשורה
+            switch (alert.status) {
+                case 'OPEN': row.classList.add('status-open-row'); break;
+                case 'ACK': row.classList.add('status-ack-row'); break;
+                case 'ASSIGN': row.classList.add('status-assign-row'); break;
+                case 'CLOSED': row.classList.add('status-closed'); break;
+                default: row.classList.add('status-open-row');
+            }
+
             row.setAttribute('data-alert-id', alert.id);
 
-            // בדוק אם ההתראה נבחרה כבר
             if (this.selectedAlerts.includes(alert.id)) {
                 row.classList.add('selected');
             }
 
-            // הוספת אירוע לחיצה לשורה
-            row.addEventListener('click', (e) => {
-                // אם לחצו על צ'קבוקס, נטפל בזה בנפרד
-                if (e.target.type === 'checkbox') {
-                    return;
-                }
-
-                // אם לא לחצו על כפתור או קישור בתוך השורה
-                if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'A' && e.target.tagName !== 'I') {
-                    // בדיקה אם המשתמש מנסה לסמן טקסט (יש טקסט מסומן)
-                    const selection = window.getSelection();
-                    if (selection && selection.toString().length > 0) {
-                        // אם יש טקסט מסומן, אל תבחר את השורה
-                        return;
-                    }
-
-                    this.toggleRowSelection(row, alert.id);
-
-                    // עדכן את מצב הצ'קבוקס בהתאם למצב הבחירה
-                    const checkbox = row.querySelector('.alert-checkbox');
-                    if (checkbox) {
-                        checkbox.checked = row.classList.contains('selected');
-                    }
-                }
-            });
-
-            // הוספת מאזין לאירוע mouseup כדי לבדוק אם המשתמש סימן טקסט
-            document.addEventListener('mouseup', () => {
-                // קצת השהיה כדי לתת לדפדפן זמן לעדכן את הבחירה
-                setTimeout(() => {
-                    const selection = window.getSelection();
-                    if (selection && selection.toString().length > 0) {
-                        // אם יש טקסט מסומן, אל תעשה כלום
-                        // זה ימנע מהשורה להיבחר אם המשתמש סימן טקסט
-                    }
-                }, 10);
-            });
-
-            // כתובת IP
-            const ipCell = document.createElement('td');
-            ipCell.textContent = alert.hostAddress;
-
-            // הוספת יכולת העתקה בדאבל קליק
-            addCopyOnClickToCell(ipCell, alert.hostAddress);
-
-            row.appendChild(ipCell);
-
-            // עדכון אחרון
-            const modifiedCell = document.createElement('td');
-            modifiedCell.textContent = alert.modified ? this.formatDate(alert.modified) : '-';
-            modifiedCell.style.minWidth = '120px';
-            row.appendChild(modifiedCell);
-
-            // הערות
-            const notesCell = document.createElement('td');
-            if (alert.notes) {
-                // פיצול ההערות במקרה שיש כמה הערות מופרדות בסימן מיוחד
-                // אם אין מערך הערות, נניח שיש הערה אחת
-                const notesArray = Array.isArray(alert.notes) ? alert.notes : [{ text: alert.notes, date: alert.modified || alert.timestamp, userName: "משתמש" }];
-                const notesCount = notesArray.length;
-
-                notesCell.innerHTML = `
-<span class="alert-notes-badge has-notes" 
-      title="יש ${notesCount} הערות">
-    <i class="fas fa-comment-dots"></i> 
-    <span class="notes-count">${notesCount}</span>
-    
-    <!-- Notes Popup -->
-    <div class="alert-notes-popup">
-        <div class="notes-popup-list">
-            ${notesArray.map((note, index) => `
-                <div class="note-popup-item">
-                    <div class="note-popup-header">
-                        <div class="note-popup-meta">
-                            <div class="note-popup-user">${note.userName || 'משתמש'}</div>
-                            <div class="note-popup-datetime">
-                                <span>
-                                    <i class="fas fa-calendar"></i>
-                                    ${this.formatDate(note.date)}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="note-popup-text">${note.text || note}</div>
-                </div>
-            `).join('')}
-        </div>
-    </div>
-</span>
-`;
-            } else {
-                notesCell.innerHTML = '';
-            }
-            row.appendChild(notesCell);
-
-            // הודעה
-            const messageCell = document.createElement('td');
-            messageCell.textContent = alert.message;
-            messageCell.style.maxWidth = '500px';
-            messageCell.style.minWidth = '200px';
-            messageCell.style.overflow = 'hidden';
-            messageCell.style.textOverflow = 'ellipsis';
-            messageCell.style.whiteSpace = 'nowrap';
-            messageCell.title = alert.message;  // יציג tooltip בעת hover
-
-            // הוספת יכולת העתקה בדאבל קליק
-            addCopyOnClickToCell(messageCell, alert.message);
-
-            row.appendChild(messageCell);
-
-            // מארח
-            const hostCell = document.createElement('td');
-            hostCell.textContent = alert.host;
-            hostCell.style.maxWidth = '150px';
-            hostCell.style.overflow = 'hidden';
-            hostCell.style.textOverflow = 'ellipsis';
-            hostCell.style.whiteSpace = 'nowrap';
-            hostCell.title = alert.host;
-
-            // הוספת יכולת העתקה בדאבל קליק
-            addCopyOnClickToCell(hostCell, alert.host);
-
-            row.appendChild(hostCell);
-
-            // שלח מייל - עם אייקון דינמי לפי סטטוס
-            const emailCell = document.createElement('td');
-            let emailIcon = 'fa-envelope'; // ברירת מחדל - מעטפה סגורה
-
-            // בחירת אייקון לפי סטטוס
-            if (alert.status === 'ACK') {
-                emailIcon = 'fa-envelope-open'; // מעטפה פתוחה
-            } else if (alert.status === 'ASSIGN') {
-                emailIcon = 'fa-user-circle'; // טלפון
-            }
-
-            emailCell.innerHTML = `<button class="send-mail-btn" onclick="alertsManager.sendMail('${alert.id}'); return false;"><i class="fas ${emailIcon}"></i></button>`;
-            row.appendChild(emailCell);
-
-            // אנשי קשר
-            const contactsCell = document.createElement('td');
-            contactsCell.textContent = alert.contacts || '-';
-            contactsCell.style.maxWidth = '230px';
-            contactsCell.style.minWidth = '100px';
-            contactsCell.style.overflow = 'hidden';
-            contactsCell.style.textOverflow = 'ellipsis';
-            contactsCell.style.whiteSpace = 'nowrap';
-            contactsCell.title = alert.contacts || '-'; // זה יציג tooltip בעת hover
-
-            // הוספת יכולת העתקה בדאבל קליק
-            addCopyOnClickToCell(contactsCell, alert.contacts);
-
-            row.appendChild(contactsCell);
-
-            // תאריך ושעה
-            const dateCell = document.createElement('td');
-            dateCell.textContent = this.formatDate(alert.timestamp);
-            dateCell.style.minWidth = '120px';
-            row.appendChild(dateCell);
-
-            // הוספת עמודת PRIORITY
-            const priorityCell = document.createElement('td');
-            if (alert.priority === 1) {
-                priorityCell.innerHTML = '<i class="fas fa-flag" style="color: white;"></i>';
-                priorityCell.title = "Highest";
-            } else {
-                priorityCell.title = "Lowest";
-            }
-            row.appendChild(priorityCell);
-
-            // חומרה - הצגה באמצעות אייקונים
-            const severityCell = document.createElement('td');
-            const severityIcon = document.createElement('div');
-            severityIcon.className = `severity-icon ${alert.severity.toLowerCase()}`;
-            severityIcon.title = alert.severity;
-
-            // הוספת האייקון המתאים לפי החומרה
-            let icon = document.createElement('i');
-            switch (alert.severity) {
-                case 'CRITICAL':
-                    icon.className = 'fas fa-bolt'; // אייקון ברק לקריטי
-                    break;
-                case 'MAJOR':
-                    icon.className = 'far fa-exclamation'; // אייקון סוללה מלאה לחמור
-                    break;
-                case 'UNKNOWN':
-                    icon.className = 'fas fa-question'; // אייקון סימן שאלה ללא ידוע
-                    break;
-                default:
-                    icon.className = 'fas fa-info-circle'; // אייקון ברירת מחדל
-            }
-
-            severityIcon.appendChild(icon);
-            severityCell.appendChild(severityIcon);
-            row.appendChild(severityCell);
-
-            // סטטוס
-            const statusCell = document.createElement('td');
-
-            // יצירת אייקון סטטוס עם tooltip מתאים
-            const statusIcon = document.createElement('i');
-            statusIcon.className = this.getStatusIconClass(alert.status);
-
-            // הוסף tooltip למשתמש מוקצה אם קיים
-            if (alert.status === 'ASSIGN' && alert.assignee) {
-                statusIcon.title = `Assigned to: ${alert.assignee}`;
-                statusIcon.setAttribute('data-assignee', alert.assignee);
-            } else {
-                statusIcon.title = this.getStatusText(alert.status);
-            }
-
-            statusCell.appendChild(statusIcon);
-            row.appendChild(statusCell);
-
-            // פעולות
-            const actionsCell = document.createElement('td');
-            actionsCell.className = 'actions-cell';
-
-            // בניית תפריט פעולות דינמי בהתאם לסטטוס הנוכחי
-            let actionsMenu = '';
-
-            // פעולת Acknowledge בהתאם לסטטוס
-            if (alert.status != 'ACK') {
-                actionsMenu += `<a href="#" onclick="alertsManager.acknowledgeAlert('${alert.id}','${alert.idHelix}'); return false;">Acknowledge Event</a>`;
-            }
-
-            // פעולת Assign רק אם ההתראה לא במצב ASSIGN
-            if (alert.status !== 'ASSIGN') {
-                actionsMenu += `<a href="#" onclick="alertsManager.assignAlert('${alert.id}'); return false;">Assign Event</a>`;
-            }
-
-            // הוספת הערה תמיד אפשרית
-            actionsMenu += `<a href="#" onclick="alertsManager.addNoteToAlert('${alert.id}'); return false;">Add Note</a>`;
-
-            // פעולת Close רק אם ההתראה לא במצב CLOSED
-            if (alert.status !== 'CLOSED') {
-                actionsMenu += `<a href="#" onclick="alertsManager.closeAlert('${alert.id}','${alert.idHelix}'); return false;">Close Event</a>`;
-            }
-
-            // פעולת UnAcknowledge בהתאם לסטטוס
-            if (alert.status == 'ACK') {
-                actionsMenu += `<a href="#" onclick="alertsManager.setAlertToOpen('${alert.id}','${alert.idHelix}'); return false;">UnAcknowledge Event</a>`;
-            }
-
-            // פעולת UnAssign בהתאם לסטטוס
-            if (alert.status == 'ASSIGN') {
-                actionsMenu += `<a href="#" onclick="alertsManager.setAlertToOpen('${alert.id}','${alert.idHelix}'); return false;">UnAssign Event</a>`;
-            }
-
-            actionsCell.innerHTML = `
-<div class="actions-dropdown">
-    <button class="actions-btn" title="פעולות"><i class="fas fa-ellipsis-v"></i></button>
-    <div class="actions-dropdown-content">
-        ${actionsMenu}
-    </div>
-</div>
-`;
-
-            const actionsBtn = actionsCell.querySelector('.actions-btn');
-            if (actionsBtn) {
-                actionsBtn.addEventListener('click', (e) => {
-                    e.stopPropagation(); // מנע התפשטות האירוע לשורה
-
-                    // בטל בחירת כל השורות הנוכחיות
-                    if (this.selectedAlerts.length > 0) {
-                        this.clearSelection();
-                    }
-
-                    // בחר את השורה הנוכחית
-                    this.toggleRowSelection(row, alert.id);
-
-                    // עדכן את מצב הצ'קבוקס בשורה
-                    const checkbox = row.querySelector('.alert-checkbox');
-                    if (checkbox) {
-                        checkbox.checked = true;
+            if (!this.isFullscreenMode) {
+                row.addEventListener('click', (e) => {
+                    if (e.target.type === 'checkbox') return;
+                    if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'A' && e.target.tagName !== 'I') {
+                        const selection = window.getSelection();
+                        if (selection && selection.toString().length > 0) return;
+                        this.toggleRowSelection(row, alert.id);
+                        const checkbox = row.querySelector('.alert-checkbox');
+                        if (checkbox) checkbox.checked = row.classList.contains('selected');
                     }
                 });
             }
-            row.appendChild(actionsCell);
 
-            // עמודת צ'קבוקס - עכשיו בסוף השורה
-            const checkboxCell = document.createElement('td');
-            checkboxCell.className = 'checkbox-cell';
-            checkboxCell.style.width = '40px';
-            checkboxCell.style.textAlign = 'center';
+            // בנה תאים לפי הסדר
+            this.columnOrder.forEach(col => {
+                if (!this.visibleColumns[col]) return;
+                if (col === 'checkbox' && this.isFullscreenMode) return;
+                if (col === 'actions' && this.isFullscreenMode) return;
 
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.className = 'alert-checkbox';
-            checkbox.checked = this.selectedAlerts.includes(alert.id);
+                const td = document.createElement('td');
+                switch (col) {
+                    case 'hostAddress':
+                        td.textContent = alert.hostAddress;
+                        td.style.maxWidth = '110px';
+                        td.style.minWidth = '70px';
+                        td.style.overflow = 'hidden';
+                        td.style.textOverflow = 'ellipsis';
+                        td.style.whiteSpace = 'nowrap';
+                        td.title = alert.hostAddress;
+                        addCopyOnClickToCell(td, alert.hostAddress);
+                        break;
 
-            // הוסף אירוע לחיצה לצ'קבוקס
-            checkbox.addEventListener('change', (e) => {
-                e.stopPropagation(); // מנע התפשטות האירוע לשורה
+                    case 'modified':
+                        td.textContent = alert.modified ? this.formatDate(alert.modified) : '-';
+                        td.style.minWidth = '120px';
+                        break;
 
-                if (e.target.checked) {
-                    // בחירת השורה
-                    row.classList.add('selected');
-                    if (!this.selectedAlerts.includes(alert.id)) {
-                        this.selectedAlerts.push(alert.id);
+                    case 'notes':
+                        if (alert.notes) {
+                            const notesArray = Array.isArray(alert.notes)
+                                ? alert.notes
+                                : [{ text: alert.notes, date: alert.modified || alert.timestamp, userName: "משתמש" }];
+                            const notesCount = notesArray.length;
+                            td.innerHTML = `
+                        <span class="alert-notes-badge has-notes" title="יש ${notesCount} הערות">
+                            <i class="fas fa-comment-dots"></i>
+                            <span class="notes-count">${notesCount}</span>
+                            <div class="alert-notes-popup">
+                                <div class="notes-popup-list">
+                                    ${notesArray.map(note => `
+                                        <div class="note-popup-item">
+                                            <div class="note-popup-header">
+                                                <div class="note-popup-meta">
+                                                    <div class="note-popup-user">${note.userName || 'משתמש'}</div>
+                                                    <div class="note-popup-datetime">
+                                                        <span><i class="fas fa-calendar"></i> ${this.formatDate(note.date)}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="note-popup-text">${note.text || note}</div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </span>`;
+                        }
+                        break;
+
+                    case 'message':
+                        td.textContent = alert.message;
+                        td.style.maxWidth = '500px';
+                        td.style.minWidth = '200px';
+                        td.style.overflow = 'hidden';
+                        td.style.textOverflow = 'ellipsis';
+                        td.style.whiteSpace = 'nowrap';
+                        td.title = alert.message;
+                        addCopyOnClickToCell(td, alert.message);
+                        break;
+
+                    case 'host':
+                        td.textContent = alert.host;
+                        td.style.maxWidth = '150px';
+                        td.style.overflow = 'hidden';
+                        td.style.textOverflow = 'ellipsis';
+                        td.style.whiteSpace = 'nowrap';
+                        td.title = alert.host;
+                        addCopyOnClickToCell(td, alert.host);
+                        break;
+
+                    case 'email': {
+                        let emailIcon = 'fa-envelope';
+                        if (alert.status === 'ACK') emailIcon = 'fa-envelope-open';
+                        else if (alert.status === 'ASSIGN') emailIcon = 'fa-user-circle';
+                        if (this.isFullscreenMode) {
+                            td.innerHTML = `<i class="fas ${emailIcon}"></i>`;
+                        } else {
+                            td.innerHTML = `<button class="send-mail-btn" onclick="alertsManager.sendMail('${alert.id}'); return false;"><i class="fas ${emailIcon}"></i></button>`;
+                        }
+                        break;
                     }
-                } else {
-                    // ביטול בחירת השורה
-                    row.classList.remove('selected');
-                    this.selectedAlerts = this.selectedAlerts.filter(id => id !== alert.id);
+
+                    case 'contacts':
+                        td.textContent = alert.contacts || '-';
+                        td.style.maxWidth = '230px';
+                        td.style.minWidth = '100px';
+                        td.style.overflow = 'hidden';
+                        td.style.textOverflow = 'ellipsis';
+                        td.style.whiteSpace = 'nowrap';
+                        td.title = alert.contacts || '-';
+                        addCopyOnClickToCell(td, alert.contacts);
+                        break;
+
+                    case 'timestamp':
+                        td.textContent = this.formatDate(alert.timestamp);
+                        td.style.minWidth = '120px';
+                        break;
+
+                    case 'priority':
+                        if (alert.priority === 1) {
+                            // קבע צבע לפי מצב colorMode
+                            const flagColor = this.colorMode === 'background' ? 'white' : 'red';
+
+                            td.innerHTML = `
+                                <i class="fas fa-flag" 
+                                style="color: ${flagColor}; font-size: 1rem;">
+                                </i>`;
+                            td.title = "Highest";
+                        } else {
+                            td.title = "Lowest";
+                        }
+                        break;
+
+                    case 'severity': {
+                        const severityIcon = document.createElement('div');
+                        severityIcon.className = `severity-icon ${alert.severity.toLowerCase()}`;
+                        severityIcon.title = alert.severity;
+                        const icon = document.createElement('i');
+                        switch (alert.severity) {
+                            case 'CRITICAL': icon.className = 'fas fa-bolt'; break;
+                            case 'MAJOR': icon.className = 'far fa-exclamation'; break;
+                            case 'UNKNOWN': icon.className = 'fas fa-question'; break;
+                            default: icon.className = 'fas fa-info-circle';
+                        }
+                        severityIcon.appendChild(icon);
+                        td.appendChild(severityIcon);
+                        break;
+                    }
+
+                    case 'status': {
+                        const statusIcon = document.createElement('i');
+                        statusIcon.className = this.getStatusIconClass(alert.status);
+                        if (alert.status === 'ASSIGN' && alert.assignee) {
+                            statusIcon.title = `Assigned to: ${alert.assignee}`;
+                            statusIcon.setAttribute('data-assignee', alert.assignee);
+                        } else {
+                            statusIcon.title = this.getStatusText(alert.status);
+                        }
+                        td.appendChild(statusIcon);
+                        break;
+                    }
+
+                    case 'actions': {
+                        td.className = 'actions-cell';
+                        let actionsMenu = '';
+                        if (alert.status != 'ACK') actionsMenu += `<a href="#" onclick="alertsManager.acknowledgeAlert('${alert.id}','${alert.idHelix}'); return false;">Acknowledge Event</a>`;
+                        if (alert.status !== 'ASSIGN') actionsMenu += `<a href="#" onclick="alertsManager.assignAlert('${alert.id}'); return false;">Assign Event</a>`;
+                        actionsMenu += `<a href="#" onclick="alertsManager.addNoteToAlert('${alert.id}'); return false;">Add Note</a>`;
+                        if (alert.status !== 'CLOSED') actionsMenu += `<a href="#" onclick="alertsManager.closeAlert('${alert.id}','${alert.idHelix}'); return false;">Close Event</a>`;
+                        if (alert.status == 'ACK') actionsMenu += `<a href="#" onclick="alertsManager.setAlertToOpen('${alert.id}','${alert.idHelix}'); return false;">UnAcknowledge Event</a>`;
+                        if (alert.status == 'ASSIGN') actionsMenu += `<a href="#" onclick="alertsManager.setAlertToOpen('${alert.id}','${alert.idHelix}'); return false;">UnAssign Event</a>`;
+
+                        td.innerHTML = `
+                    <div class="actions-dropdown">
+                        <button class="actions-btn" title="פעולות"><i class="fas fa-ellipsis-v"></i></button>
+                        <div class="actions-dropdown-content">${actionsMenu}</div>
+                    </div>`;
+
+                        const actionsBtn = td.querySelector('.actions-btn');
+                        if (actionsBtn) {
+                            actionsBtn.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                if (this.selectedAlerts.length > 0) this.clearSelection();
+                                this.toggleRowSelection(row, alert.id);
+                                const checkbox = row.querySelector('.alert-checkbox');
+                                if (checkbox) checkbox.checked = true;
+                            });
+                        }
+                        break;
+                    }
+
+                    case 'checkbox': {
+                        td.className = 'checkbox-cell';
+                        td.style.width = '40px';
+                        td.style.textAlign = 'center';
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.className = 'alert-checkbox';
+                        checkbox.checked = this.selectedAlerts.includes(alert.id);
+                        checkbox.addEventListener('change', (e) => {
+                            e.stopPropagation();
+                            if (e.target.checked) {
+                                row.classList.add('selected');
+                                if (!this.selectedAlerts.includes(alert.id)) this.selectedAlerts.push(alert.id);
+                            } else {
+                                row.classList.remove('selected');
+                                this.selectedAlerts = this.selectedAlerts.filter(id => id !== alert.id);
+                            }
+                            const masterCheckbox = document.querySelector('.master-checkbox');
+                            if (masterCheckbox) {
+                                const allSelected = this.filteredAlerts.length > 0 &&
+                                    this.filteredAlerts.every(a => this.selectedAlerts.includes(a.id));
+                                const someSelected = this.selectedAlerts.length > 0 && !allSelected;
+                                masterCheckbox.checked = allSelected;
+                                masterCheckbox.indeterminate = someSelected;
+                            }
+                            this.updateBulkActionsBar();
+                            const screenshotBtn = document.getElementById('screenshotBtn');
+                            if (screenshotBtn) screenshotBtn.disabled = this.selectedAlerts.length === 0;
+                        });
+                        td.appendChild(checkbox);
+                        break;
+                    }
                 }
 
-                // עדכן את מצב הצ'קבוקס הראשי
-                const masterCheckbox = document.querySelector('.master-checkbox');
-                if (masterCheckbox) {
-                    const allSelected = this.filteredAlerts.length > 0 &&
-                        this.filteredAlerts.every(alert => this.selectedAlerts.includes(alert.id));
-
-                    // אם יש לפחות התראה אחת נבחרת אבל לא כולן - מצב indeterminate
-                    const someSelected = this.selectedAlerts.length > 0 && !allSelected;
-
-                    masterCheckbox.checked = allSelected;
-                    masterCheckbox.indeterminate = someSelected;
-                }
-
-                // עדכן את סרגל הפעולות
-                this.updateBulkActionsBar();
-
-                // עדכן את מצב כפתור צילום המסך
-                const screenshotBtn = document.getElementById('screenshotBtn');
-                if (screenshotBtn) {
-                    screenshotBtn.disabled = this.selectedAlerts.length === 0;
-                }
+                row.appendChild(td);
             });
-
-            checkboxCell.appendChild(checkbox);
-            row.appendChild(checkboxCell);
 
             tableBody.appendChild(row);
         });
 
-        // עדכן את מצב הצ'קבוקס הראשי
-        const masterCheckbox = document.querySelector('.master-checkbox');
-        if (masterCheckbox) {
-            const allSelected = this.filteredAlerts.length > 0 &&
-                this.filteredAlerts.every(alert => this.selectedAlerts.includes(alert.id));
+        // עדכן את מצב הצ'קבוקס הראשי אם לא במצב מסך מלא
+        if (!this.isFullscreenMode) {
+            const masterCheckbox = document.querySelector('.master-checkbox');
+            if (masterCheckbox) {
+                const allSelected = this.filteredAlerts.length > 0 &&
+                    this.filteredAlerts.every(alert => this.selectedAlerts.includes(alert.id));
 
-            // אם יש לפחות התראה אחת נבחרת אבל לא כולן - מצב indeterminate
-            const someSelected = this.selectedAlerts.length > 0 && !allSelected;
+                // אם יש לפחות התראה אחת נבחרת אבל לא כולן - מצב indeterminate
+                const someSelected = this.selectedAlerts.length > 0 && !allSelected;
 
-            masterCheckbox.checked = allSelected;
-            masterCheckbox.indeterminate = someSelected;
+                masterCheckbox.checked = allSelected;
+                masterCheckbox.indeterminate = someSelected;
+            }
         }
+
+        this.updateSortIcons();
 
         this.movePopupsOutsideTableContainer();
     }
 
+    showBulkActionsPopup(actionsBtn) {
+        const rect = actionsBtn.getBoundingClientRect();
+        const hasSelected = this.selectedAlerts.length > 0;
+        const selectedCount = this.selectedAlerts.length;
+
+        // סגור פופאפים פתוחים
+        document.querySelectorAll('.popup-overlay').forEach(p => {
+            if (p.parentNode) p.parentNode.removeChild(p);
+        });
+
+        // בניית menuLinks בדיוק כמו בשורה רגילה
+        const menuLinks = [];
+
+        menuLinks.push({
+            text: `Acknowledge Event${hasSelected ? ` (${selectedCount})` : ''}`,
+            action: () => this.bulkAcknowledgeAlerts(),
+            disabled: !hasSelected
+        });
+
+        menuLinks.push({
+            text: `Assign Event${hasSelected ? ` (${selectedCount})` : ''}`,
+            action: () => this.bulkAssignAlerts(),
+            disabled: !hasSelected
+        });
+
+        menuLinks.push({
+            text: `Add Note${hasSelected ? ` (${selectedCount})` : ''}`,
+            action: () => this.bulkAddNote(),
+            disabled: !hasSelected
+        });
+
+        menuLinks.push({
+            text: `Close Event${hasSelected ? ` (${selectedCount})` : ''}`,
+            action: () => this.bulkCloseAlerts(),
+            disabled: !hasSelected
+        });
+
+        // ====================================================
+        // אותו קוד בדיוק של showActionsPopup - רק עם actions
+        // ====================================================
+
+        const overlay = document.createElement('div');
+        overlay.className = 'popup-overlay';
+        overlay.style.cssText = `
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background-color: rgba(0,0,0,0.1);
+        z-index: 9999;
+        display: block;
+        pointer-events: all;
+    `;
+
+        const popup = document.createElement('div');
+        popup.className = 'actions-popup';
+        popup.style.cssText = `
+        background-color: white;
+        border-radius: 8px;
+        padding: 5px;
+        max-width: 250px;
+        width: auto;
+        position: absolute;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        pointer-events: auto;
+    `;
+
+        // מיקום הפופאפ - אותה לוגיקה של showActionsPopup
+        const spaceAbove = rect.top;
+        const spaceBelow = window.innerHeight - rect.bottom;
+
+        if (spaceBelow > 200) {
+            popup.style.top = `${rect.bottom + 10}px`;
+            popup.style.left = `${rect.left}px`;
+        } else if (spaceAbove > 200) {
+            popup.style.bottom = `${window.innerHeight - rect.top + 10}px`;
+            popup.style.left = `${rect.left}px`;
+        } else {
+            popup.style.top = '50%';
+            popup.style.left = '50%';
+            popup.style.transform = 'translate(-50%, -50%)';
+        }
+
+        const content = document.createElement('div');
+        content.className = 'actions-content';
+
+        menuLinks.forEach(link => {
+            // divider
+            if (link.divider) {
+                const divider = document.createElement('div');
+                divider.style.cssText = `
+                height: 1px;
+                background: #eee;
+                margin: 4px 0;
+            `;
+                content.appendChild(divider);
+                return;
+            }
+
+            const actionBtn = document.createElement('button');
+            actionBtn.className = 'action-popup-btn';
+            actionBtn.textContent = link.text;
+            actionBtn.style.cssText = `
+            display: block;
+            width: 100%;
+            padding: 10px 5px;
+            margin: 2px 0;
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            text-align: center;
+            cursor: ${link.disabled ? 'not-allowed' : 'pointer'};
+            transition: all 0.2s;
+            font-size: 1rem;
+            opacity: ${link.disabled ? '0.4' : '1'};
+            color: #333;
+        `;
+
+            if (!link.disabled) {
+                actionBtn.onmouseover = () => {
+                    actionBtn.style.backgroundColor = '#e9ecef';
+                    actionBtn.style.borderColor = '#ced4da';
+                };
+                actionBtn.onmouseout = () => {
+                    actionBtn.style.backgroundColor = '#f8f9fa';
+                    actionBtn.style.borderColor = '#ddd';
+                };
+                actionBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                    link.action();
+                });
+            }
+
+            content.appendChild(actionBtn);
+        });
+
+        popup.appendChild(content);
+        overlay.appendChild(popup);
+        document.body.appendChild(overlay);
+
+        // סגירה בלחיצה על הרקע
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+            }
+        });
+
+        // סגירה כשהעכבר יוצא
+        popup.addEventListener('mouseleave', () => {
+            setTimeout(() => {
+                if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+            }, 100);
+        });
+
+        popup.addEventListener('click', (e) => e.stopPropagation());
+
+        document.addEventListener('click', function closePopup(e) {
+            if (!popup.contains(e.target) && e.target !== actionsBtn) {
+                if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                document.removeEventListener('click', closePopup);
+            }
+        });
+    }
 
     // פונקציה לצילום מסך של השורות הנבחרות
     async captureScreenshot() {
@@ -2485,6 +3349,497 @@ class AlertsManager {
         }
     }
 
+    // ============================================================
+    // טעינה דינמית של ExcelJS + FileSaver
+    // ============================================================
+    async loadExcelJS() {
+        return new Promise(async (resolve, reject) => {
+            // *** טען ExcelJS אם לא קיים ***
+            if (typeof ExcelJS === 'undefined') {
+                await new Promise((res, rej) => {
+                    const script = document.createElement('script');
+                    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js';
+                    script.onload = res;
+                    script.onerror = () => rej(new Error('נכשלה טעינת ExcelJS'));
+                    document.head.appendChild(script);
+                });
+            }
+
+            // *** טען FileSaver אם לא קיים ***
+            if (typeof saveAs === 'undefined') {
+                await new Promise((res, rej) => {
+                    const script = document.createElement('script');
+                    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js';
+                    script.onload = res;
+                    script.onerror = () => rej(new Error('נכשלה טעינת FileSaver'));
+                    document.head.appendChild(script);
+                });
+            }
+
+            resolve();
+        });
+    }
+
+
+    // ============================================================
+    // exportToExcel — מחליף את הגרסה הישנה במלואה
+    // ============================================================
+    async exportToExcel() {
+        try {
+            if (this.selectedAlerts.length === 0) {
+                alert('יש לבחור לפחות שורה אחת לייצוא');
+                return;
+            }
+
+            // *** טען ספריות אם צריך ***
+            if (typeof ExcelJS === 'undefined' || typeof saveAs === 'undefined') {
+                await this.loadExcelJS();
+            }
+
+            const exportData = this.prepareExcelData();
+
+            if (exportData.length === 0) {
+                alert('לא נמצאו נתונים לייצוא');
+                return;
+            }
+
+            // ==========================================
+            // צבעים
+            // ==========================================
+            const C = {
+                headerBg: '320F5B',   // סגול כהה
+                headerFont: 'FFFFFF',
+
+                criticalBg: 'FF4444',   // אדום
+                criticalFont: 'FFFFFF',
+
+                majorBg: 'FF8C00',   // כתום
+                majorFont: 'FFFFFF',
+
+                unknownBg: 'B04DFF',   // סגול
+                unknownFont: 'FFFFFF',
+
+                altRowBg: 'F5F5F5',   // שורות זוגיות
+                borderColor: 'BDBDBD',
+            };
+
+            // ==========================================
+            // פונקציות עזר
+            // ==========================================
+            const thinBorder = () => ({
+                top: { style: 'thin', color: { argb: 'FF' + C.borderColor } },
+                bottom: { style: 'thin', color: { argb: 'FF' + C.borderColor } },
+                left: { style: 'thin', color: { argb: 'FF' + C.borderColor } },
+                right: { style: 'thin', color: { argb: 'FF' + C.borderColor } },
+            });
+
+            const applyStyle = (cell, {
+                bgColor = null,
+                fontColor = '000000',
+                bold = false,
+                hAlign = 'left',
+                fontSize = 11,
+                wrapText = false,
+            } = {}) => {
+                cell.font = {
+                    name: 'Calibri',
+                    size: fontSize,
+                    bold,
+                    color: { argb: 'FF' + fontColor },
+                };
+                cell.alignment = {
+                    horizontal: hAlign,
+                    vertical: 'middle',
+                    wrapText,
+                };
+                cell.border = thinBorder();
+                if (bgColor) {
+                    cell.fill = {
+                        type: 'pattern',
+                        pattern: 'solid',
+                        fgColor: { argb: 'FF' + bgColor },
+                    };
+                }
+            };
+
+            // ==========================================
+            // יצירת Workbook
+            // ==========================================
+            const wb = new ExcelJS.Workbook();
+            wb.creator = 'NOC Alerts';
+            wb.created = new Date();
+            wb.modified = new Date();
+
+            const ws = wb.addWorksheet('התראות', {
+                views: [{ state: 'frozen', ySplit: 1 }],   // *** הקפאת כותרת ***
+                properties: { defaultRowHeight: 18 },
+            });
+
+            // ==========================================
+            // הגדרת עמודות
+            // ==========================================
+            const columnLabels = {
+                hostAddress: 'IP Address',
+                host: 'Host',
+                message: 'Message',
+                severity: 'Severity',
+                status: 'Status',
+                priority: 'Priority',
+                contacts: 'Responsible Team',
+                timestamp: 'Date & Time',
+                modified: 'Last Update',
+                notes: 'Notes',
+            };
+
+            // *** בנה רשימת עמודות לפי הסדר הנוכחי ***
+            const exportColumns = this.columnOrder
+                .filter(col =>
+                    col !== 'actions' &&
+                    col !== 'checkbox' &&
+                    col !== 'email' &&
+                    this.visibleColumns[col] &&
+                    columnLabels[col]          // רק עמודות עם תווית
+                )
+                .reverse();
+
+            // *** הגדר רוחב לכל עמודה ***
+            const colWidthMap = {
+                hostAddress: 16,
+                host: 24,
+                message: 50,
+                severity: 12,
+                status: 12,
+                priority: 12,
+                contacts: 28,
+                timestamp: 20,
+                modified: 20,
+                notes: 40,
+            };
+
+            ws.columns = exportColumns.map(col => ({
+                header: columnLabels[col],
+                key: col,
+                width: colWidthMap[col] || 16,
+            }));
+
+            // ==========================================
+            // עיצוב שורת כותרות
+            // ==========================================
+            const headerRow = ws.getRow(1);
+            headerRow.height = 24;
+            headerRow.eachCell(cell => {
+                applyStyle(cell, {
+                    bgColor: C.headerBg,
+                    fontColor: C.headerFont,
+                    bold: true,
+                    hAlign: 'center',
+                    fontSize: 12,
+                });
+            });
+
+            // ==========================================
+            // הוספת שורות נתונים
+            // ==========================================
+            exportData.forEach((rowData, rowIdx) => {
+                const severity = (rowData['_severity'] || '').toUpperCase();
+
+                // *** בנה שורה לפי סדר העמודות ***
+                const rowValues = exportColumns.map(col => {
+                    const label = columnLabels[col];
+                    return rowData[label] !== undefined ? rowData[label] : '';
+                });
+
+                const excelRow = ws.addRow(rowValues);
+                excelRow.height = 17;
+
+                // *** קבע צבע לפי Severity ***
+                let rowBg = rowIdx % 2 === 1 ? C.altRowBg : null;
+                let rowFont = '000000';
+
+                switch (severity) {
+                    case 'CRITICAL':
+                        rowBg = C.criticalBg;
+                        rowFont = C.criticalFont;
+                        break;
+                    case 'MAJOR':
+                        rowBg = C.majorBg;
+                        rowFont = C.majorFont;
+                        break;
+                    case 'UNKNOWN':
+                        rowBg = C.unknownBg;
+                        rowFont = C.unknownFont;
+                        break;
+                }
+
+                // *** עצב כל תא ***
+                excelRow.eachCell((cell, colNumber) => {
+                    const col = exportColumns[colNumber - 1];
+
+                    let bg = rowBg;
+                    let font = rowFont;
+                    let bold = false;
+                    let hAlign = 'left';
+                    let wrapText = false;
+
+                    switch (col) {
+                        case 'severity':
+                        case 'status':
+                            hAlign = 'center';
+                            bold = true;
+                            break;
+
+                        case 'priority':
+                            hAlign = 'center';
+                            bold = true;
+                            break;
+
+                        case 'timestamp':
+                        case 'modified':
+                            hAlign = 'center';
+                            break;
+
+                        case 'notes':
+                            wrapText = true;
+                            break;
+
+                        case 'hostAddress':
+                            hAlign = 'center';
+                            break;
+                    }
+
+                    applyStyle(cell, { bgColor: bg, fontColor: font, bold, hAlign, wrapText });
+                });
+            });
+
+            // ==========================================
+            // הורד את הקובץ
+            // ==========================================
+            const now = new Date();
+            const dateStr =
+                `${now.getDate().toString().padStart(2, '0')}-` +
+                `${(now.getMonth() + 1).toString().padStart(2, '0')}-` +
+                `${now.getFullYear()}`;
+            const timeStr =
+                `${now.getHours().toString().padStart(2, '0')}-` +
+                `${now.getMinutes().toString().padStart(2, '0')}`;
+
+            const fileName = `alerts_${dateStr}_${timeStr}.xlsx`;
+
+            const buffer = await wb.xlsx.writeBuffer();
+            const blob = new Blob([buffer], {
+                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            });
+            saveAs(blob, fileName);
+
+            const successMessage =
+                `${this.selectedAlerts.length} התראות יוצאו בהצלחה לקובץ ${fileName}`;
+
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.show(successMessage, 'success');
+            } else {
+                this.showSuccess(successMessage);
+            }
+
+        } catch (error) {
+            console.error('Error exporting to Excel:', error);
+            this.showError('שגיאה בייצוא לאקסל: ' + error.message);
+        }
+    }
+
+    // *** פונקציה חדשה - מחליפה את styleExcelHeaders ***
+    styleExcelSheet(ws, cleanData, rawData) {
+        if (!cleanData || cleanData.length === 0) return;
+
+        const headers = Object.keys(cleanData[0]);
+
+        // ========================================
+        // עיצוב שורת כותרת
+        // ========================================
+        const headerStyle = {
+            font: {
+                bold: true,
+                color: { rgb: 'FFFFFF' },
+                sz: 11
+            },
+            fill: {
+                patternType: 'solid',
+                fgColor: { rgb: '320F5B' }  // סגול כהה
+            },
+            alignment: {
+                horizontal: 'center',
+                vertical: 'center',
+                wrapText: false
+            },
+            border: {
+                top: { style: 'thin', color: { rgb: 'FFFFFF' } },
+                bottom: { style: 'thin', color: { rgb: 'FFFFFF' } },
+                left: { style: 'thin', color: { rgb: 'FFFFFF' } },
+                right: { style: 'thin', color: { rgb: 'FFFFFF' } }
+            }
+        };
+
+        headers.forEach((header, colIndex) => {
+            const cellAddress = XLSXStyle.utils.encode_cell({ r: 0, c: colIndex });
+            if (!ws[cellAddress]) return;
+            ws[cellAddress].s = headerStyle;
+        });
+
+        // ========================================
+        // מיפוי צבעי Severity
+        // ========================================
+        const severityColors = {
+            'CRITICAL': {
+                bg: 'FF4444',       // אדום
+                font: 'FFFFFF'      // טקסט לבן
+            },
+            'MAJOR': {
+                bg: 'FF8C00',       // כתום
+                font: 'FFFFFF'      // טקסט לבן
+            },
+            'UNKNOWN': {
+                bg: 'B04DFF',       // סגול
+                font: 'FFFFFF'      // טקסט לבן
+            }
+        };
+
+        // ========================================
+        // עיצוב שורות נתונים
+        // ========================================
+        rawData.forEach((rawRow, rowIndex) => {
+            const severity = (rawRow['_severity'] || '').toUpperCase();
+            const colorDef = severityColors[severity];
+
+            headers.forEach((header, colIndex) => {
+                const cellAddress = XLSXStyle.utils.encode_cell({
+                    r: rowIndex + 1,    // +1 כי שורה 0 היא הכותרת
+                    c: colIndex
+                });
+
+                // *** צור תא אם לא קיים ***
+                if (!ws[cellAddress]) {
+                    ws[cellAddress] = { t: 's', v: '' };
+                }
+
+                // *** בנה סגנון בסיסי לכל תא ***
+                const cellStyle = {
+                    alignment: {
+                        vertical: 'center',
+                        wrapText: header === 'Notes' // עטיפת טקסט רק בעמודת הערות
+                    },
+                    border: {
+                        top: { style: 'thin', color: { rgb: 'DDDDDD' } },
+                        bottom: { style: 'thin', color: { rgb: 'DDDDDD' } },
+                        left: { style: 'thin', color: { rgb: 'DDDDDD' } },
+                        right: { style: 'thin', color: { rgb: 'DDDDDD' } }
+                    }
+                };
+
+                // *** הוסף צבע רקע אם יש Severity מוכר ***
+                if (colorDef) {
+                    cellStyle.fill = {
+                        patternType: 'solid',
+                        fgColor: { rgb: colorDef.bg }
+                    };
+                    cellStyle.font = {
+                        color: { rgb: colorDef.font },
+                        sz: 10
+                    };
+                } else {
+                    // שורות ללא Severity - רקע לבן
+                    cellStyle.fill = {
+                        patternType: 'solid',
+                        fgColor: { rgb: 'FFFFFF' }
+                    };
+                    cellStyle.font = {
+                        color: { rgb: '333333' },
+                        sz: 10
+                    };
+                }
+
+                ws[cellAddress].s = cellStyle;
+            });
+        });
+    }
+
+    // הכנת הנתונים לייצוא
+    prepareExcelData() {
+        const exportRows = [];
+
+        const columnLabels = {
+            hostAddress: 'IP Address',
+            host: 'Host',
+            message: 'Message',
+            severity: 'Severity',
+            status: 'Status',
+            priority: 'Priority',
+            contacts: 'Responsible Team',
+            timestamp: 'Date & Time',
+            modified: 'Last Update',
+            notes: 'Notes'
+        };
+
+        this.selectedAlerts.forEach(alertId => {
+            const alert = this.alerts.find(a => a.id === alertId);
+            if (!alert) return;
+
+            const exportColumns = this.columnOrder
+                .filter(col =>
+                    col !== 'actions' &&
+                    col !== 'checkbox' &&
+                    col !== 'email' &&
+                    this.visibleColumns[col]
+                )
+                .reverse(); // ← הפיכת סדר העמודות: STATUS ראשון, IP אחרון
+
+            const row = {};
+
+            exportColumns.forEach(col => {
+                const label = columnLabels[col] || col;
+
+                switch (col) {
+                    case 'timestamp':
+                    case 'modified':
+                        row[label] = alert[col] ? this.formatDate(alert[col]) : '-';
+                        break;
+
+                    case 'notes':
+                        if (!alert.notes) {
+                            row[label] = '';
+                        } else if (Array.isArray(alert.notes)) {
+                            row[label] = alert.notes
+                                .map(n => {
+                                    const user = n.userName || 'משתמש';
+                                    const date = n.date ? this.formatDate(n.date) : '';
+                                    const text = n.text || n;
+                                    return `[${user} - ${date}]: ${text}`;
+                                })
+                                .join('\n');
+                        } else {
+                            row[label] = String(alert.notes);
+                        }
+                        break;
+
+                    case 'priority':
+                        // *** דגל במקום HIGHEST ***
+                        row[label] = alert.priority === 1 ? '🚩' : '';
+                        break;
+
+                    default:
+                        row[label] = alert[col] !== null && alert[col] !== undefined
+                            ? String(alert[col])
+                            : '';
+                }
+            });
+
+            // *** שמירת severity לצביעה פנימית (לא יוצג כעמודה) ***
+            row['_severity'] = alert.severity; // ← שדה פנימי לצביעה
+
+            exportRows.push(row);
+        });
+
+        return exportRows;
+    }
+
     // פונקציה לפורמט תאריך בפופאפ הערות
     formatNoteDate(dateString) {
         if (!dateString) return '-';
@@ -2831,14 +4186,8 @@ class AlertsManager {
         if (userName === null || note === null) {
             const userNameElement = document.getElementById('statusUserName');
             const noteElement = document.getElementById('statusNote');
-
-            if (userNameElement) {
-                userName = userNameElement.value;
-            }
-
-            if (noteElement) {
-                note = noteElement.value;
-            }
+            if (userNameElement) userName = userNameElement.value;
+            if (noteElement) note = noteElement.value;
         }
 
         if (!userName || ((action === 'ASSIGN' || action === 'CLOSE') && !note)) {
@@ -2874,7 +4223,7 @@ class AlertsManager {
                     endpoint = '/Alerts/AssignEvents';
                     requestData = {
                         eventIds: [idHelix],
-                        assignedUser: "mafil@menoramivt.net", // mafil@menoramivt.net
+                        assignedUser: "mafil@menoramivt.net",
                         note: userName + ":" + note
                     };
                     break;
@@ -2916,69 +4265,65 @@ class AlertsManager {
 
             if (result.success) {
                 // עדכון מקומי של סטטוס ההתראה (רק אם זה לא הוספת הערה)
-                if (action !== 'NOTE') {
-                    this.updateAlertStatus(alertId, action === 'OPEN' ? 'OPEN' : action === 'ACK' ? 'ACK' : 'ASSIGN');
-                }
-
-
-                // עדכון הערות אם יש צורך
-                if (note) {  // בדיקה שההערה לא ריקה
+                const newStatus = this.getNewStatusFromAction(action);
+                if (newStatus) {
                     const alertIndex = this.alerts.findIndex(a => a.id === alertId);
                     if (alertIndex !== -1) {
-                        // הוסף את ההערה להתראה
-                        const currentNotes = this.alerts[alertIndex].notes;
-                        const newNoteObj = {
-                            text: note,  // שמור רק את תוכן ההערה ללא שם המשתמש
-                            date: new Date().toISOString(),
-                            userName: userName  // שמור את שם המשתמש בשדה נפרד
-                        };
+                        this.alerts[alertIndex].status = newStatus;
+                        this.alerts[alertIndex].modified = new Date().toISOString();
+                    }
+                }
 
+                // עדכון הערות אם יש
+                if (note) {
+                    const alertIndex = this.alerts.findIndex(a => a.id === alertId);
+                    if (alertIndex !== -1) {
+                        const newNoteObj = {
+                            text: note,
+                            date: new Date().toISOString(),
+                            userName: userName
+                        };
+                        const currentNotes = this.alerts[alertIndex].notes;
                         if (Array.isArray(currentNotes)) {
                             this.alerts[alertIndex].notes = [newNoteObj, ...currentNotes];
                         } else if (currentNotes) {
                             this.alerts[alertIndex].notes = [
-                                { text: currentNotes, date: this.alerts[alertIndex].modified || this.alerts[alertIndex].timestamp, userName: "משתמש" },
+                                {
+                                    text: currentNotes,
+                                    date: this.alerts[alertIndex].modified || this.alerts[alertIndex].timestamp,
+                                    userName: "משתמש"
+                                },
                                 newNoteObj
                             ];
                         } else {
                             this.alerts[alertIndex].notes = [newNoteObj];
                         }
-
                         this.alerts[alertIndex].modified = new Date().toISOString();
                     }
                 }
 
-                // עדכון התצוגה
-                this.applyFilters();
+                // בפעולה מרובה - submitBulkAction מטפל בעדכון התצוגה
+                if (!this._isBulkOperation) {
+                    this.applyFilters();
 
-                let successMessage;
-                switch (action) {
-                    case 'ACK':
-                        successMessage = `ההתראה אושרה בהצלחה על ידי ${userName}`;
-                        break;
-                    case 'OPEN':
-                        successMessage = `ההתראה נפתחה מחדש בהצלחה על ידי ${userName}`;
-                        break;
-                    case 'ASSIGN':
-                        successMessage = `ההתראה שויכה בהצלחה ל-${userName}`;
-                        break;
-                    case 'CLOSE':
-                        successMessage = `ההתראה נסגרה בהצלחה על ידי ${userName}`;
-                        break;
-                    case 'NOTE':
-                        successMessage = `ההערה נוספה בהצלחה על ידי ${userName}`;
-                        break;
+                    let successMessage;
+                    switch (action) {
+                        case 'ACK': successMessage = `ההתראה אושרה בהצלחה על ידי ${userName}`; break;
+                        case 'OPEN': successMessage = `ההתראה נפתחה מחדש בהצלחה על ידי ${userName}`; break;
+                        case 'ASSIGN': successMessage = `ההתראה שויכה בהצלחה ל-${userName}`; break;
+                        case 'CLOSE': successMessage = `ההתראה נסגרה בהצלחה על ידי ${userName}`; break;
+                        case 'NOTE': successMessage = `ההערה נוספה בהצלחה על ידי ${userName}`; break;
+                    }
+
+                    if (typeof NotificationManager !== 'undefined') {
+                        NotificationManager.show(successMessage, 'success');
+                    } else {
+                        this.showSuccess(successMessage);
+                    }
                 }
 
-                if (typeof NotificationManager !== 'undefined') {
-                    NotificationManager.show(successMessage, 'success');
-                } else {
-                    this.showSuccess(successMessage);
-                }
-
-                // הוספת קריאה נפרדת להוספת הערה אחרי ASSIGN או ACK או OPEN עם השהייה קצרה
-                if ((action === 'ACK' || action === 'OPEN' || action === 'ASSIGN') && note) {  // בדיקה שההערה לא ריקה
-                    // המתנה של 3 שניות לפני הוספת ההערה
+                // הוספת הערה אחרי ACK/OPEN/ASSIGN
+                if ((action === 'ACK' || action === 'OPEN' || action === 'ASSIGN') && note) {
                     setTimeout(async () => {
                         try {
                             await fetch('/Alerts/AddNote', {
@@ -2997,59 +4342,23 @@ class AlertsManager {
                         } catch (noteError) {
                             console.error('Error adding note after status update:', noteError);
                         }
-                    }, 3000); // השהייה של 3 שניות
-                }
-            } else {
-                this.showError(result.message || 'שגיאה בביצוע הפעולה');
-            }
-
-            this.showLoading(false);
-
-            if (result.success) {
-                // עדכון מקומי של סטטוס ההתראה...
-                // עדכון הערות אם יש צורך...
-                // עדכון התצוגה...
-
-                // הצגת הודעת הצלחה רק אם זו לא פעולה מרובה
-                if (!this.isModalOpen) {
-                    let successMessage;
-                    switch (action) {
-                        case 'ACK':
-                            successMessage = `ההתראה אושרה בהצלחה על ידי ${userName}`;
-                            break;
-                        case 'OPEN':
-                            successMessage = `ההתראה נפתחה מחדש בהצלחה על ידי ${userName}`;
-                            break;
-                        case 'ASSIGN':
-                            successMessage = `ההתראה שויכה בהצלחה ל-${userName}`;
-                            break;
-                        case 'CLOSE':
-                            successMessage = `ההתראה נסגרה בהצלחה על ידי ${userName}`;
-                            break;
-                        case 'NOTE':
-                            successMessage = `ההערה נוספה בהצלחה על ידי ${userName}`;
-                            break;
-                    }
-
-                    if (typeof NotificationManager !== 'undefined') {
-                        NotificationManager.show(successMessage, 'success');
-                    } else {
-                        this.showSuccess(successMessage);
-                    }
+                    }, 3000);
                 }
 
                 this.showLoading(false);
-                return true; // החזרת ערך שמציין הצלחה
+                return true;
+
             } else {
                 this.showError(result.message || 'שגיאה בביצוע הפעולה');
                 this.showLoading(false);
-                return false; // החזרת ערך שמציין כישלון
+                return false;
             }
+
         } catch (error) {
             console.error(`Error in action (${action}):`, error);
             this.showLoading(false);
             this.showError('שגיאה בביצוע הפעולה: ' + error.message);
-            return false; // החזרת ערך שמציין כישלון
+            return false;
         }
     }
 
@@ -3081,11 +4390,10 @@ class AlertsManager {
     }
 
     updateAlertStatus(alertId, newStatus) {
-        // עדכון מקומי של סטטוס ההתראה
         const alertIndex = this.alerts.findIndex(a => a.id === alertId);
         if (alertIndex !== -1) {
             this.alerts[alertIndex].status = newStatus;
-            this.alerts[alertIndex].modified = Date.now();
+            this.alerts[alertIndex].modified = new Date().toISOString(); // *** תיקון: ISO string במקום Date.now() ***
             this.applyFilters(); // רענן את התצוגה
         }
     }
