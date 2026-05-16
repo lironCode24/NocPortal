@@ -37,26 +37,26 @@ public class AlertsController : Controller
     private static string _jwtToken;
     private static DateTime _tokenExpiry = DateTime.MinValue;
     
-private readonly string _alertsDataFilePath;
-private readonly string _alertsCacheFilePath;
-private readonly string _savedFiltersFilePath;
+    private readonly string _alertsDataFilePath;
+    private readonly string _alertsCacheFilePath;
+    private readonly string _savedFiltersFilePath;
 
-private static readonly object _fileLock = new object();
+    private static readonly object _fileLock = new object();
 
-public AlertsController(IHttpClientFactory httpClientFactory, IWebHostEnvironment env)
-{
-    _httpClientFactory = httpClientFactory;
+    public AlertsController(IHttpClientFactory httpClientFactory, IWebHostEnvironment env)
+    {
+        _httpClientFactory = httpClientFactory;
 
-    var filesDir = Path.Combine(env.ContentRootPath, "portal", "files");
+        var filesDir = Path.Combine(env.ContentRootPath, "portal", "files");
 
-    Directory.CreateDirectory(filesDir);
+        Directory.CreateDirectory(filesDir);
 
-    _alertsDataFilePath = Path.Combine(filesDir, "alerts_data.txt");
-    _alertsCacheFilePath = Path.Combine(filesDir, "alerts_cache.json");
-    _savedFiltersFilePath = Path.Combine(filesDir, "saved_filters.json");
+        _alertsDataFilePath = Path.Combine(filesDir, "alerts_data.txt");
+        _alertsCacheFilePath = Path.Combine(filesDir, "alerts_cache.json");
+        _savedFiltersFilePath = Path.Combine(filesDir, "saved_filters.json");
 
-    LoadAlertsData();
-}
+        LoadAlertsData();
+    }
 
     private string GenerateStableId(JsonElement source)
     {
@@ -295,8 +295,9 @@ public AlertsController(IHttpClientFactory httpClientFactory, IWebHostEnvironmen
                 ClearNotesCache();
                 
                 // קריאה לשירות החיצוני לקבלת התראות עדכניות
-                var alerts = await FetchAlertsFromService();
-                
+                // var alerts = await FetchAlertsFromService();
+                var alerts = GetMockAlertsList(50);
+
                 // שמירת ההתראות בקובץ מטמון
                 lock (_fileLock)
                 {
@@ -1542,7 +1543,41 @@ public AlertsController(IHttpClientFactory httpClientFactory, IWebHostEnvironmen
                 return "UNKNOWN";
         }
     }
-    
+
+    [HttpGet]
+    private List<object> GetMockAlertsList(int count)
+    {
+        var mockAlerts = new List<object>();
+        var now = DateTimeOffset.UtcNow;
+        var rand = new Random();
+
+        string[] hosts = { "srv-web-prod-01", "db-sql-cluster-02", "app-api-gateway" };
+        string[] ips = { "10.10.20.11", "10.10.40.55", "10.10.10.5" };
+        
+        for (int i = 1; i <= count; i++)
+        {
+            var alert = new
+            {
+                id = Guid.NewGuid().ToString("N").Substring(0, 16),
+                idHelix = $"bme_event_{1000000 + i}",
+                host = hosts[rand.Next(hosts.Length)],
+                message = "Mock Alert Error Description Code " + rand.Next(100, 999),
+                timestamp = now.AddMinutes(-rand.Next(5, 200)).ToUnixTimeMilliseconds(),
+                severity = rand.Next(2) == 0 ? "CRITICAL" : "MAJOR",
+                status = "OPEN",
+                hostAddress = ips[rand.Next(ips.Length)],
+                contacts = "DevOps Team",
+                notes = (object)null,
+                modified = (long?)null,
+                assignee = (string)null,
+                priority = rand.Next(1, 4)
+            };
+            mockAlerts.Add(alert);
+        }
+        
+        return mockAlerts.Cast<dynamic>().OrderByDescending(a => a.timestamp).ToList();
+    }
+
     private string MapStatus(string status)
     {
         status = (status ?? "").ToUpper();
