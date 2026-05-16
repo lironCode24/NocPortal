@@ -1,0 +1,4 @@
+﻿FileName: technical_guide_example.pdf
+UploadedBy: טל
+UploadPath: C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\NocPortal\wwwroot\portal\נהלים\technical_guide_example.pdf
+UploadDate: 16/05/2026 14:21:45
