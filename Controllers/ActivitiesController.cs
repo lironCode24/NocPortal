@@ -8,9 +8,15 @@ using System.Runtime.InteropServices;
 
 public class ActivitiesController : Controller
 {
-    private readonly string _activitiesFilePath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\activities.txt";
-    private readonly string _activityTasksFilePath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\activity_tasks.txt";
+    private readonly string _activitiesFilePath;
+    private readonly string _activityTasksFilePath;
 
+    public ActivitiesController(IWebHostEnvironment env)
+    {
+        _activitiesFilePath = Path.Combine(env.ContentRootPath, "portal", "files", "activities.txt");
+        _activityTasksFilePath = Path.Combine(env.ContentRootPath, "portal", "files", "activity_tasks.txt");
+    }
+    
     // Get all activities
     [HttpGet]
     public IActionResult GetActivities(bool includeArchived = false)

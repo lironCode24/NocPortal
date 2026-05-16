@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
 using System.IO;
@@ -16,10 +17,16 @@ public class DashboardsController : Controller
     // ─────────────────────────────────────────────
     // הגדרות - זהה לסגנון AlertsController
     // ─────────────────────────────────────────────
-    private readonly string _metricsCacheFilePath = 
-        @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\rack_metrics_cache.json";
+    private readonly IWebHostEnvironment _env;
+    private readonly string _metricsCacheFilePath;
 
     private static readonly object _fileLock = new object();
+
+    public DashboardsController(IWebHostEnvironment env)
+    {
+        _env = env;
+        _metricsCacheFilePath = Path.Combine(_env.ContentRootPath, "portal", "files", "rack_metrics_cache.json");
+    }
 
     // ─────────────────────────────────────────────
     // Views

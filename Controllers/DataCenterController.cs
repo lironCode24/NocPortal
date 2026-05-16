@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
@@ -14,10 +15,12 @@ using System.Text;
 public class DataCenterController : Controller
 {
     // שימוש בנתיב יחסי או בהגדרה מקובץ תצורה
-    private readonly string _excelFilePathRG = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\תיעוד ציודים בחדרי שרתים - רמת גן.xlsx";
-    private readonly string _excelFilePathPT = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\תיעוד ציודים בחדר שרתים - פתח תקווה.xlsx";
+    private readonly IWebHostEnvironment _env;
+    private readonly string _filesFolderPath;
+    private readonly string _excelFilePathRG;
+    private readonly string _excelFilePathPT;
     // הוספת שדות חדשים לניהול קאש
-    private readonly string _cacheFolderPath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\dataCenterCache";
+    private readonly string _cacheFolderPath;
     private readonly string _connectionsFolderPath;
     private readonly TimeSpan _cacheExpiration = TimeSpan.FromHours(12); // תוקף הקאש - 12 שעות
 
@@ -31,10 +34,17 @@ public class DataCenterController : Controller
     private static string _jwtToken;
     private static DateTime _tokenExpiry = DateTime.MinValue;
     
-    public DataCenterController(IHttpClientFactory httpClientFactory)
+    public DataCenterController(IHttpClientFactory httpClientFactory, IWebHostEnvironment env)
     {
         _httpClientFactory = httpClientFactory;
+        _env = env;
+
+        _filesFolderPath = Path.Combine(_env.ContentRootPath, "portal", "files");
+        _excelFilePathRG = Path.Combine(_filesFolderPath, "תיעוד ציודים בחדרי שרתים - רמת גן.xlsx");
+        _excelFilePathPT = Path.Combine(_filesFolderPath, "תיעוד ציודים בחדר שרתים - פתח תקווה.xlsx");
+        _cacheFolderPath = Path.Combine(_filesFolderPath, "dataCenterCache");
         _connectionsFolderPath = Path.Combine(_cacheFolderPath, "connections");
+
         // וודא שהתיקיות קיימות
         Directory.CreateDirectory(_cacheFolderPath);
         Directory.CreateDirectory(_connectionsFolderPath);

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
 using System.IO;
@@ -13,12 +14,25 @@ using System.Text.RegularExpressions;
 
 public class MessagesController : Controller
 {
-    private readonly string _messagesFilePath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\messages.txt";
-    private readonly string _uploadsPath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\messagesUploads";
-    private readonly string _emailCachePath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\emailCache"; // הוסף שדה חדש לשמירת נתיב תיקיית המטמון
+    private readonly IWebHostEnvironment _env;
+    private readonly string _filesRootPath;
+    private readonly string _uploadsRelativePath = Path.Combine("portal", "files", "messagesUploads");
+    private readonly string _messagesFilePath;
+    private readonly string _uploadsPath;
+    private readonly string _emailCachePath; // הוסף שדה חדש לשמירת נתיב תיקיית המטמון
 
     // הוסף שדה חדש לשמירת נתיב קובץ מיפוי מיילים
-    private readonly string _emailMappingFilePath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\email_mapping.csv";
+    private readonly string _emailMappingFilePath;
+
+    public MessagesController(IWebHostEnvironment env)
+    {
+        _env = env;
+        _filesRootPath = env.ContentRootPath;
+        _messagesFilePath = Path.Combine(_filesRootPath, "portal", "files", "messages.txt");
+        _uploadsPath = Path.Combine(_filesRootPath, "portal", "files", "messagesUploads");
+        _emailCachePath = Path.Combine(_filesRootPath, "portal", "files", "emailCache");
+        _emailMappingFilePath = Path.Combine(_filesRootPath, "portal", "files", "email_mapping.csv");
+    }
     
     private static DateTime _lastCacheCleanupTime = DateTime.MinValue;
     private static DateTime _lastFullCacheCleanupTime = DateTime.MinValue;
@@ -118,7 +132,7 @@ public class MessagesController : Controller
             }
 
             // החזרת נתיב יחסי
-            var relativePath = Path.Combine(_uploadsPath, messageId, csvFileName);
+            var relativePath = Path.Combine(_uploadsRelativePath, messageId, csvFileName);
 
             return Json(new 
             { 
@@ -226,7 +240,7 @@ public class MessagesController : Controller
             }
 
             // שמור נתיב יחסי במקום מוחלט
-            var relativePath = Path.Combine(_uploadsPath, messageId, fileName);
+            var relativePath = Path.Combine(_uploadsRelativePath, messageId, fileName);
 
             return Json(new { success = true, filePath = relativePath });
         }
@@ -379,7 +393,7 @@ public class MessagesController : Controller
             else
             {
                 // אם זה נתיב יחסי - בנה נתיב מוחלט
-                fullPath = Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", decodedPath);
+                fullPath = Path.Combine(_filesRootPath, decodedPath);
             }
 
             // נרמל את הנתיב (תקן slashes)
@@ -398,7 +412,7 @@ public class MessagesController : Controller
                     }
                     else
                     {
-                        alternativePath = Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", filePath);
+                        alternativePath = Path.Combine(_filesRootPath, filePath);
                     }
                     
                     alternativePath = Path.GetFullPath(alternativePath);
@@ -445,16 +459,28 @@ public class MessagesController : Controller
         };
     }
 
+    private string ResolveFilePath(string filePath)
+    {
+        if (string.IsNullOrEmpty(filePath))
+            return filePath;
+
+        if (Path.IsPathRooted(filePath))
+            return filePath;
+
+        return Path.GetFullPath(Path.Combine(_filesRootPath, filePath));
+    }
+
     [HttpGet]
     public IActionResult GetCsvFile(string filePath)
     {
-        if (string.IsNullOrEmpty(filePath) || !System.IO.File.Exists(filePath))
+        var fullPath = ResolveFilePath(filePath);
+        if (string.IsNullOrEmpty(fullPath) || !System.IO.File.Exists(fullPath))
         {
             return NotFound();
         }
 
-        var fileBytes = System.IO.File.ReadAllBytes(filePath);
-        return File(fileBytes, "text/csv", Path.GetFileName(filePath));
+        var fileBytes = System.IO.File.ReadAllBytes(fullPath);
+        return File(fileBytes, "text/csv", Path.GetFileName(fullPath));
     }
     
     [HttpGet]
@@ -462,13 +488,14 @@ public class MessagesController : Controller
     {
         try
         {
-            if (string.IsNullOrEmpty(filePath) || !System.IO.File.Exists(filePath))
+            var fullPath = ResolveFilePath(filePath);
+            if (string.IsNullOrEmpty(fullPath) || !System.IO.File.Exists(fullPath))
             {
                 return Json(new { success = false, error = "File not found" });
             }
 
             // קריאה לפונקציה הפרטית שכבר מטפלת נכון בפסיקים
-            var result = await ParseCsvFile(filePath);
+            var result = await ParseCsvFile(fullPath);
             return Json(result);
         }
         catch (Exception ex)
@@ -2253,20 +2280,7 @@ public class MessagesController : Controller
                     {
                         await semaphore.WaitAsync(); // השג אישור לעיבוד
                         
-                        // המר נתיב יחסי לנתיב מוחלט
-                        string fullPath;
-                        
-                        if (Path.IsPathRooted(emailPath))
-                        {
-                            fullPath = emailPath;
-                        }
-                        else
-                        {
-                            fullPath = Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", emailPath);
-                        }
-                        
-                        // נרמל את הנתיב
-                        fullPath = Path.GetFullPath(fullPath);
+                        string fullPath = ResolveFilePath(emailPath);
                         
                         if (!System.IO.File.Exists(fullPath))
                         {

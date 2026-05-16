@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
 using System.IO;
@@ -14,12 +15,11 @@ public class EmployeeTasksController : Controller
     private const int MaxRetries = 3;
     private const int RetryDelayMs = 100;
 
-    public EmployeeTasksController()
+    public EmployeeTasksController(IWebHostEnvironment env)
     {
-        _employeeService = new EmployeeService();
+        _employeeService = new EmployeeService(env);
         _userTasksService = new UserTasksService();
-        _employeeTasksFilePath = 
-            @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\employee_tasks.txt";
+        _employeeTasksFilePath = Path.Combine(env.ContentRootPath, "portal", "files", "employee_tasks.txt");
     }
 
     [HttpGet]

@@ -2966,17 +2966,9 @@ ${this.formatContentWithTables(messageData.openItems)}
     // פונקציה חדשה להמרת תמונה ל-base64
     async convertImageToBase64(imagePath) {
         try {
-            // המר נתיב יחסי לנתיב מוחלט
-            let fullPath;
-            if (Path.isPathRooted(imagePath)) {
-                fullPath = imagePath;
-            } else {
-                fullPath = Path.join('C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files', imagePath);
-            }
-
             // בדוק אם הקובץ קיים
-            if (!await this.fileExists(fullPath)) {
-                throw new Error(`File not found: ${fullPath}`);
+            if (!await this.fileExists(imagePath)) {
+                throw new Error(`File not found: ${imagePath}`);
             }
 
             // קרא את הקובץ כ-ArrayBuffer
@@ -3295,15 +3287,8 @@ ${data.base64Data}`;
     normalizeFilePath(path) {
         if (!path) return path;
 
-        // Check if it's an absolute path (starts with drive letter or slash)
-        const isAbsolutePath = /^([a-z]:|\\|\/)/i.test(path);
-
-        if (isAbsolutePath) {
-            return path;
-        } else {
-            // Join with base path
-            return 'C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files\\' + path;
-        }
+        // Keep relative paths unchanged; server-side endpoints will resolve them from the portal/files root.
+        return path;
     }
 
     // Duplicate message

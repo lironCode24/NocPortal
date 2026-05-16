@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
@@ -11,8 +12,7 @@ using System.Threading.Tasks;
 [Route("[controller]/[action]")]
 public class SuiteConfigController : Controller
 {
-    private readonly string _csvPath =
-        @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\suite_config.csv";
+    private readonly string _csvPath;
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly string _elasticBaseUrl = "https://172.22.250.10:9200";
@@ -22,6 +22,13 @@ public class SuiteConfigController : Controller
     public SuiteConfigController(IHttpClientFactory httpClientFactory)
     {
         _httpClientFactory = httpClientFactory;
+        _csvPath = Path.Combine(Directory.GetCurrentDirectory(), "portal", "files", "suite_config.csv");
+    }
+
+    public SuiteConfigController(IHttpClientFactory httpClientFactory, IWebHostEnvironment env)
+        : this(httpClientFactory)
+    {
+        _csvPath = Path.Combine(env.ContentRootPath, "portal", "files", "suite_config.csv");
     }
 
     // ==========================================

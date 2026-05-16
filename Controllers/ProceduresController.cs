@@ -1,4 +1,5 @@
 
+using Microsoft.AspNetCore.Hosting;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -17,12 +18,14 @@ namespace MyWebApp.Controllers
         private readonly string _proceduresPath;
         private readonly string _pdfCachePath; 
         private readonly string _metadataPath; 
+        private readonly string _contentRootPath;
 
-        public ProceduresController()
+        public ProceduresController(IWebHostEnvironment env)
         {
-            _proceduresPath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\נהלים";
+            _contentRootPath = env.ContentRootPath;
+            _proceduresPath = Path.Combine(_contentRootPath, "portal", "נהלים");
             _pdfCachePath = Path.Combine(Path.GetTempPath(), "ProceduresPdfCache");
-            _metadataPath = Path.Combine(@"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\Procedures", "Metadata");
+            _metadataPath = Path.Combine(_contentRootPath, "portal", "files", "Procedures", "Metadata");
 
             // Create cache directory if it doesn't exist
             if (!Directory.Exists(_pdfCachePath))
@@ -523,7 +526,7 @@ namespace MyWebApp.Controllers
             try
             {
                 // Path to images folder
-                var imagesPath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\ProcedureImages";
+                var imagesPath = Path.Combine(_contentRootPath, "portal", "files", "ProcedureImages");
                 var imagePath = Path.Combine(imagesPath, fileName);
                 
                 if (!System.IO.File.Exists(imagePath))

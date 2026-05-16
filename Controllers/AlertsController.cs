@@ -37,26 +37,26 @@ public class AlertsController : Controller
     private static string _jwtToken;
     private static DateTime _tokenExpiry = DateTime.MinValue;
     
-    // קובץ לשמירת מידע על התראות
-    private readonly string _alertsDataFilePath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\alerts_data.txt";
-    private readonly string _alertsCacheFilePath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\alerts_cache.json";
+private readonly string _alertsDataFilePath;
+private readonly string _alertsCacheFilePath;
+private readonly string _savedFiltersFilePath;
 
-    // נתיב לקובץ הסינונים השמורים
-    private readonly string _savedFiltersFilePath = 
-        @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\saved_filters.json";
+private static readonly object _fileLock = new object();
 
-    private static readonly object _fileLock = new object();
+public AlertsController(IHttpClientFactory httpClientFactory, IWebHostEnvironment env)
+{
+    _httpClientFactory = httpClientFactory;
 
-    public AlertsController(IHttpClientFactory httpClientFactory, IWebHostEnvironment env)
-    {
-        _httpClientFactory = httpClientFactory;
-        
-        // וודא שהתיקייה קיימת
-        Directory.CreateDirectory(Path.GetDirectoryName(_alertsDataFilePath));
-        
-        // טען את המידע מהקובץ בעת אתחול הקונטרולר
-        LoadAlertsData();
-    }
+    var filesDir = Path.Combine(env.ContentRootPath, "portal", "files");
+
+    Directory.CreateDirectory(filesDir);
+
+    _alertsDataFilePath = Path.Combine(filesDir, "alerts_data.txt");
+    _alertsCacheFilePath = Path.Combine(filesDir, "alerts_cache.json");
+    _savedFiltersFilePath = Path.Combine(filesDir, "saved_filters.json");
+
+    LoadAlertsData();
+}
 
     private string GenerateStableId(JsonElement source)
     {

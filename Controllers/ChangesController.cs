@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
@@ -8,13 +9,17 @@ using System.Text.Json;
 
 public class ChangesController : Controller
 {
-    // נתיב לתיקיית השינויים
-    private const string CHANGES_FILE_PATH = @"R:\USERS\TASHTIT\NOC\CAB_Automation\results";
-    // נתיב לקובץ המאגד את כל השינויים
-    private const string AGGREGATED_CHANGES_PATH = @"R:\USERS\TASHTIT\NOC\CAB_Automation\aggregated_changes.json";
-    
-    private const string SERVICENOW_FILE_PATH = 
-        @"R:\USERS\TASHTIT\NOC\CAB_Automation\change_request.csv";
+    private readonly string CHANGES_FILE_PATH;
+    private readonly string AGGREGATED_CHANGES_PATH;
+    private readonly string SERVICENOW_FILE_PATH;
+
+    public ChangesController(IWebHostEnvironment env)
+    {
+        var filesRoot = Path.Combine(env.WebRootPath, "assets", "files");
+        CHANGES_FILE_PATH = Path.Combine(filesRoot, "results");
+        AGGREGATED_CHANGES_PATH = Path.Combine(filesRoot, "aggregated_changes.json");
+        SERVICENOW_FILE_PATH = Path.Combine(filesRoot, "change_request.csv");
+    }
 
     [HttpGet]
     public IActionResult GetChanges()

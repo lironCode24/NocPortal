@@ -14,8 +14,8 @@ public class UserTasksService
 
     public UserTasksService()
     {
-        _userTasksFilePath = 
-            @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\user_personal_tasks.txt";
+        _userTasksFilePath = Path.Combine(
+            Directory.GetCurrentDirectory(), "portal", "files", "user_personal_tasks.txt");
     }
 
     public List<EmployeeTask> GetTasksByUsername(string username)

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Net.Http;
@@ -11,26 +12,32 @@ using System.Linq;
 public class SuiteResultsController : Controller
 {
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IWebHostEnvironment _env;
 
     private readonly string _elasticBaseUrl = "https://172.22.250.10:9200";
     private readonly string _elasticUser     = "grafana_user";
     private readonly string _elasticPassword = "Grafana_user1";
 
     // *** נתיב קובץ אנשי קשר ***
-    private readonly string _contactsFilePath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\test_contacts.csv";
-    private readonly string _downtimeSystemsPath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\downtime_systems.csv";
+    private readonly string _contactsFilePath;
+    private readonly string _downtimeSystemsPath;
+    private readonly string _phoneDirectoryPath;
 
-    private readonly string _runAllLockFilePath = 
-        @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\runall_lock.txt";
+    private readonly string _runAllLockFilePath;
 
     private readonly TimeSpan _lockDuration = TimeSpan.FromMinutes(5);
 
     public SuiteResultsController(
         IHttpClientFactory httpClientFactory,
-        // הזרקת ה-controller כ-service — או צור instance ישיר
-        SuiteConfigController suiteConfig)
+        SuiteConfigController suiteConfig,
+        IWebHostEnvironment env)
     {
         _httpClientFactory = httpClientFactory;
+        _env = env;
+        _contactsFilePath = Path.Combine(env.ContentRootPath, "portal", "files", "test_contacts.csv");
+        _downtimeSystemsPath = Path.Combine(env.ContentRootPath, "portal", "files", "downtime_systems.csv");
+        _phoneDirectoryPath = Path.Combine(env.ContentRootPath, "portal", "files", "phone_directory.csv");
+        _runAllLockFilePath = Path.Combine(env.ContentRootPath, "portal", "files", "runall_lock.txt");
     }
 
     // ==========================================
@@ -45,7 +52,7 @@ public class SuiteResultsController : Controller
             // return GenerateMockResults(suitesCount: 50, testsPerSuite: 17);
             
             // 1. קרא את רשימת הסוויטות מהקובץ
-            var suiteConfig = new SuiteConfigController(_httpClientFactory);
+            var suiteConfig = new SuiteConfigController(_httpClientFactory, _env);
             var configEntries = suiteConfig.ReadSuitesFromCsv();
 
             if (configEntries.Count == 0)
@@ -1688,7 +1695,7 @@ public class SuiteResultsController : Controller
     {
         try
         {
-            var suiteConfig   = new SuiteConfigController(_httpClientFactory);
+            var suiteConfig   = new SuiteConfigController(_httpClientFactory, _env);
             var configEntries = suiteConfig.ReadSuitesFromCsv();
 
             if (!configEntries.Any())
@@ -1826,7 +1833,7 @@ public class SuiteResultsController : Controller
                 });
 
             var suiteConfig = new SuiteConfigController(
-                _httpClientFactory);
+                _httpClientFactory, _env);
             var all = suiteConfig.ReadSuitesFromCsv();
 
             int updatedCount = 0;
@@ -1911,7 +1918,7 @@ public class SuiteResultsController : Controller
                 string.IsNullOrWhiteSpace(email))
                 return Json(new { success = false, phone = "" });
 
-            var csvPath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\phone_directory.csv";
+            var csvPath = _phoneDirectoryPath;
 
             if (!System.IO.File.Exists(csvPath))
                 return Json(new { success = false, phone = "" });

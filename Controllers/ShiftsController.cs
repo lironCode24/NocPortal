@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Http;
 using System.Collections.Generic;
@@ -11,12 +12,19 @@ using System.Drawing;
 
 public class ShiftsController : Controller
 {
-    // Define file paths as constants
-    private const string SHIFTS_FILE_PATH = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\shifts.csv";
-    private const string BACKUP_DIRECTORY = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\shifts_backup";
-    private const string EXCEL_FILE_PATH = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\משמרות.xlsx";
-    private const string FUTURE_SHIFTS_FILE_PATH = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\future_shifts.csv";
+    private readonly string SHIFTS_FILE_PATH;
+    private readonly string BACKUP_DIRECTORY;
+    private readonly string EXCEL_FILE_PATH;
+    private readonly string FUTURE_SHIFTS_FILE_PATH;
 
+    public ShiftsController(IWebHostEnvironment env)
+    {
+        SHIFTS_FILE_PATH = Path.Combine(env.ContentRootPath, "portal", "files", "shifts.csv");
+        BACKUP_DIRECTORY = Path.Combine(env.ContentRootPath, "portal", "files", "shifts_backup");
+        EXCEL_FILE_PATH = Path.Combine(env.ContentRootPath, "portal", "files", "משמרות.xlsx");
+        FUTURE_SHIFTS_FILE_PATH = Path.Combine(env.ContentRootPath, "portal", "files", "future_shifts.csv");
+    }
+    
     [HttpGet]
     public IActionResult GetShifts()
     {

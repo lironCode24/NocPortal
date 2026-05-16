@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
 using System.IO;
@@ -7,7 +8,14 @@ using System.Text.Json;
 
 public class DailyTasksController : Controller
 {
-    private readonly string _tasksFilePath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\daily_tasks.txt";
+    private readonly string _tasksFilePath;
+    private readonly IWebHostEnvironment _env;
+
+    public DailyTasksController(IWebHostEnvironment env)
+    {
+        _env = env;
+        _tasksFilePath = Path.Combine(_env.ContentRootPath, "portal", "files", "daily_tasks.txt");
+    }
 
     [HttpGet]
     public IActionResult GetTasks(string date)

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Hosting;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -10,7 +11,22 @@ public class EmployeeService
 
     public EmployeeService()
     {
-        _employeesFilePath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\employees.txt";
+        _employeesFilePath = Path.Combine(
+            Directory.GetCurrentDirectory(),
+            "portal",
+            "files",
+            "employees.txt"
+        );
+    }
+
+    public EmployeeService(IWebHostEnvironment env)
+    {
+        _employeesFilePath = Path.Combine(
+            env.ContentRootPath,
+            "portal",
+            "files",
+            "employees.txt"
+        );
     }
 
     // Constructor for dependency injection with custom path

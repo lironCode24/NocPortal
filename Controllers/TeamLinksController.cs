@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
@@ -6,7 +7,12 @@ using System.Linq;
 
 public class TeamLinksController : Controller
 {
-    private readonly string csvPath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\team_links.csv";
+    private readonly string csvPath;
+
+    public TeamLinksController(IWebHostEnvironment env)
+    {
+        csvPath = Path.Combine(env.ContentRootPath, "portal", "files", "team_links.csv");
+    }
 
     [HttpGet]
     public IActionResult GetTeamLinks()

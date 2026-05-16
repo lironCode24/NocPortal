@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Hosting;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -11,11 +12,12 @@ namespace NocPortal.Services
 
         // מפתח הצפנה - שמור ב-appsettings או Environment Variable!
         private const string EncryptionKey = "NocPortal2025SecretKey32BytesLng!";
-        private readonly string _usersFilePath = @"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\files\users.json";
+        private readonly string _usersFilePath;
 
         public UserService(IWebHostEnvironment env, ILogger<UserService> logger)
         {
             _logger = logger;
+            _usersFilePath = Path.Combine(env.ContentRootPath, "portal", "files", "users.json");
             EnsureDataDirectoryAndFile();
         }
 
