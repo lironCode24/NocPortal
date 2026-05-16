@@ -1,0 +1,58 @@
+num,en,he
+5,IturMutav-Module,מערכות איתור מוטבים
+6,HealthClaims-Application,מערכת תביעות בריאות
+7,DentalClinics-Application,פורטל ממ"ש
+11,LombardyHealthClaims-Module,שולחן עבודה לומברדי תביעות בריאות
+12,HealthInsurance-Application,מערכת התפעול: בריאות
+13,HealthForgn-Application,מערכת עובדים זרים
+21,GviaElementary-Application,גבייה אלמנטרי ובריאות
+23,UnifiedTasks-Application,תור מאוחד תביעות אלמנטרי
+24,Tamino-Application,מערכת דוחות (טמינו)
+25,HESKHATAVOT-Application,ניהול הסכמים והצעות
+27,TopazPension-Application,טופז פנסיה
+35,KdamKlitaPension-Module,קדם קליטה פנסיה וגמל
+44,AgentsContrct-Module,מערכת הסכמי סוכנים
+47,NIHULIT-Application,מערכת ניהולית
+51,IQULIM-Application,מערכת עיקולים
+53,PublicAffairs-Application,מערכת פניות הציבור
+71,HafakaYAMI-Module,הפקה ימי
+72,ElementaryClaims-Application,מערכת תביעות אלמנטרי
+75,TOR_HATAM-Application,תור לחתם אלמנטרי
+81,ElementaryNet-Application,אלמנטרינט
+102,MeyoazimPension-Module,ניהול יועצים ועמיתים מיועצים פנסיונים
+112,KUPA-Application,קופה
+138,MIVTAH-Application,מבטח
+139,TopazLife-Application,טופז ביטוח חיים
+140,LifeClaims-Application,מערכת תביעות ביטוח חיים
+141,Medirisk-Application,מדיריסק
+143,OzmaLife-Module,עוצמה
+148,LombardyDeskLife-Module,שולחן עבודה לומברדי תביעות חיים
+152,PowerAttorney-Application,ייפוי כח
+189,MenoraWebSite-Application,אתר קבוצת מנורה מבטחים
+195,DentalClaims-Application,מערכת תביעות שיניים
+201,ElementaryMX-Application,ניהול מבצעים אלמנטרי
+210,GviaGemel-Module,מערכת גבייה גמל
+229,Travel-Application,מערכת לביטוח נסיעות לחו"ל
+267,GviaLife-Module,גבייה ביטוח חיים
+268,HulyotLife-Module,חוליות
+270,HalvaotLife-Module,הלוואות ביטוח חיים
+271,ElementaryIway-Application,מערכות הפקה אלמנטרי IWAY
+292,NiudOutPension-Application,ניוד יוצא פנסיה
+293,NiudOutGemel-Application,ניוד יוצא גמל
+294,NiudOutLife-Application,ניוד יוצא ביטוח חיים
+373,TopazPensionClaims-Module,תביעות פנסיה נכות ושארים
+379,SavingControl-ServiceBSI,בקרת חסכון
+387,CollectiveLife-Application,קולקטיב חיים
+423,LinksToken-ServiceAPI,LinksToken
+464,eMergeTopaz-Applitech,eMerge Topaz
+467,eMergeNonTopaz-Applitech,eMerge Non Topaz
+504,Niud In Life-Application,ניוד נכנס ביטוח חיים (חוזר ניוד)
+505,NiudInPension-Application,ניוד נכנס פנסיה וגמל (חוזר ניוד)
+506,NiudJoining-Application,תהליך מקדים – ניוד אגב הצטרפות
+510,BPM Tashtit Lombardi-Application,תשתית BPM - לומברדי
+531,HafakaWeb-Application,NEXT
+537,OshAmlot-Application,דוחות עמלות וחשבות
+555,EMPDB-Application,מנחם
+573,BPMNiyudTefen-Application,ניהול בקשות ניוד תפנסופט
+578,ODS-Applitech,ODS
+597,LombardyLoanMMPG,LombardyLoanMMPG

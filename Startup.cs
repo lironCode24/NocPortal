@@ -77,14 +77,6 @@ namespace MyWebApp
             app.UseHttpsRedirection();
             app.UseStaticFiles();
 
-            // Font Awesome מהתיקייה המשותפת
-            app.UseStaticFiles(new StaticFileOptions
-            {
-                FileProvider = new PhysicalFileProvider(@"C:\Users\liron\Desktop\automation\Noc Portal\NocPortal\NocPortal\portal\fontawesome"),
-
-                RequestPath = "/fontawesome"
-            });
-
             app.UseCookiePolicy();
             app.UseRouting();
 
