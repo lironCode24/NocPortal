@@ -1117,14 +1117,12 @@ public class MessagesController : Controller
             // המר את הנתונים למודל באופן ידני
             var jsonElement = (JsonElement)requestData;
             
-            if (!jsonElement.TryGetProperty("MessageId", out var messageIdElement) || 
-                messageIdElement.ValueKind != JsonValueKind.String ||
-                !jsonElement.TryGetProperty("Jobs", out var jobsElement) ||
-                jobsElement.ValueKind != JsonValueKind.Array)
+            if (!jsonElement.TryGetProperty("MessageId", out var messageIdElement) || messageIdElement.ValueKind != JsonValueKind.String ||
+                !jsonElement.TryGetProperty("Jobs", out var jobsElement) || jobsElement.ValueKind != JsonValueKind.Array)
             {
                 return Json(new { success = false, error = "נתונים חסרים או לא תקינים" });
             }
-            
+
             string messageId = messageIdElement.GetString();
             
             // טען את כל ההודעות
@@ -1135,43 +1133,38 @@ public class MessagesController : Controller
             {
                 return Json(new { success = false, error = "הודעה לא נמצאה" });
             }
-            
+
             if (message.Jobs == null)
             {
                 return Json(new { success = false, error = "אין משימות בהודעה זו" });
             }
-            
+
             // עדכן את המשימות
             foreach (var jobElement in jobsElement.EnumerateArray())
             {
-                if (!jobElement.TryGetProperty("JobIndex", out var jobIndexElement) ||
-                    jobIndexElement.ValueKind != JsonValueKind.Number)
+                if (!jobElement.TryGetProperty("JobIndex", out var jobIndexElement) || jobIndexElement.ValueKind != JsonValueKind.Number)
                 {
                     continue;
                 }
-                
+
                 int jobIndex = jobIndexElement.GetInt32();
-                
                 if (jobIndex < 0 || jobIndex >= message.Jobs.Count)
                 {
                     continue;
                 }
-                
+
                 // עדכן את סטטוס הביצוע
-                if (jobElement.TryGetProperty("IsCompleted", out var isCompletedElement) &&
-                    isCompletedElement.ValueKind == JsonValueKind.True)
+                if (jobElement.TryGetProperty("IsCompleted", out var isCompletedElement) && isCompletedElement.ValueKind == JsonValueKind.True)
                 {
                     message.Jobs[jobIndex].IsCompleted = true;
                     
                     // עדכן את פרטי המבצע
-                    if (jobElement.TryGetProperty("CompletedBy", out var completedByElement) &&
-                        completedByElement.ValueKind == JsonValueKind.String)
+                    if (jobElement.TryGetProperty("CompletedBy", out var completedByElement) && completedByElement.ValueKind == JsonValueKind.String)
                     {
                         message.Jobs[jobIndex].CompletedBy = completedByElement.GetString();
                     }
                     
-                    if (jobElement.TryGetProperty("CompletedDate", out var completedDateElement) &&
-                        completedDateElement.ValueKind == JsonValueKind.String)
+                    if (jobElement.TryGetProperty("CompletedDate", out var completedDateElement) && completedDateElement.ValueKind == JsonValueKind.String)
                     {
                         message.Jobs[jobIndex].CompletedDate = completedDateElement.GetString();
                     }
@@ -1179,7 +1172,7 @@ public class MessagesController : Controller
                     {
                         message.Jobs[jobIndex].CompletedDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
                     }
-                    
+
                     // אם מסומן כבוצע, וודא שלא מסומן גם כבריצה
                     message.Jobs[jobIndex].IsRunning = false;
                     message.Jobs[jobIndex].RunningBy = null;
@@ -1190,22 +1183,19 @@ public class MessagesController : Controller
                     message.Jobs[jobIndex].IsCompleted = false;
                     message.Jobs[jobIndex].CompletedBy = null;
                     message.Jobs[jobIndex].CompletedDate = null;
-                    
+
                     // עדכן את סטטוס הריצה
-                    if (jobElement.TryGetProperty("IsRunning", out var isRunningElement) &&
-                        isRunningElement.ValueKind == JsonValueKind.True)
+                    if (jobElement.TryGetProperty("IsRunning", out var isRunningElement) && isRunningElement.ValueKind == JsonValueKind.True)
                     {
                         message.Jobs[jobIndex].IsRunning = true;
                         
                         // עדכן את פרטי המריץ
-                        if (jobElement.TryGetProperty("RunningBy", out var runningByElement) &&
-                            runningByElement.ValueKind == JsonValueKind.String)
+                        if (jobElement.TryGetProperty("RunningBy", out var runningByElement) && runningByElement.ValueKind == JsonValueKind.String)
                         {
                             message.Jobs[jobIndex].RunningBy = runningByElement.GetString();
                         }
                         
-                        if (jobElement.TryGetProperty("RunningDate", out var runningDateElement) &&
-                            runningDateElement.ValueKind == JsonValueKind.String)
+                        if (jobElement.TryGetProperty("RunningDate", out var runningDateElement) && runningDateElement.ValueKind == JsonValueKind.String)
                         {
                             message.Jobs[jobIndex].RunningDate = runningDateElement.GetString();
                         }
@@ -1222,13 +1212,13 @@ public class MessagesController : Controller
                     }
                 }
             }
-            
+
             // עדכן את זמן העדכון האחרון
             message.LastModified = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-            
+
             // שמור את השינויים
             SaveMessages(messages);
-            
+
             return Json(new { success = true });
         }
         catch (Exception ex)
@@ -1249,20 +1239,16 @@ public class MessagesController : Controller
             }
 
             var messages = ReadMessagesFromFile();
-            
             for (int i = 0; i < messages.Count; i++)
             {
                 var messageJson = JsonSerializer.Serialize(messages[i]);
                 var messageObj = JsonSerializer.Deserialize<JsonElement>(messageJson);
-                
                 string messageId = messageObj.TryGetProperty("id", out var idProp) ? idProp.GetString() : null;
-                
+
                 if (messageId == request.Id)
                 {
-                    string originalDate = messageObj.TryGetProperty("date", out var dateProp) 
-                        ? dateProp.GetString() 
-                        : DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-                    
+                    string originalDate = messageObj.TryGetProperty("date", out var dateProp) ? dateProp.GetString() : DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+
                     // בדוק אם יש קבצים כלשהם בתיקיית temp שצריך להעביר
                     bool needToMoveFiles = false;
                     
@@ -1297,13 +1283,13 @@ public class MessagesController : Controller
                     {
                         needToMoveFiles = true;
                     }
-                    
+
                     // העבר קבצים אם צריך
                     if (needToMoveFiles)
                     {
                         Console.WriteLine($"Moving files from temp to {request.Id} for edit operation");
                         MoveFilesFromTemp("temp", request.Id);
-                        
+
                         // עדכן את נתיבי התמונות של ההתראות
                         if (request.AlertItems != null)
                         {
@@ -1316,7 +1302,7 @@ public class MessagesController : Controller
                                 }
                             }
                         }
-                        
+
                         // עדכן את נתיבי הקבצים המצורפים
                         if (request.Attachments != null)
                         {
@@ -1329,7 +1315,7 @@ public class MessagesController : Controller
                                 }
                             }
                         }
-                        
+
                         // עדכן את נתיב קובץ ה-CSV
                         if (request.CsvFilePath != null && request.CsvFilePath.Contains("temp"))
                         {
@@ -1394,7 +1380,6 @@ public class MessagesController : Controller
                             
                         case "בקשות":
                             updatedMessage["content"] = request.Content;
-                            
                             // שמירת מערך המיילים או מייל בודד
                             if (request.AttachedEmails != null && request.AttachedEmails.Count > 0)
                             {
@@ -1432,15 +1417,15 @@ public class MessagesController : Controller
                             break;
                             
                         case "רשימות":
-                            updatedMessage["csvFilePath"] =  request.CsvFilePath.Replace("\\", "/");
+                            updatedMessage["csvFilePath"] = request.CsvFilePath.Replace("\\", "/");
                             updatedMessage["tableData"] = request.TableData;
                             break;
                             
                         case "דוחות UC4":
-                            updatedMessage["csvFilePath"] =  request.CsvFilePath.Replace("\\", "/");
+                            updatedMessage["csvFilePath"] = request.CsvFilePath.Replace("\\", "/");
                             updatedMessage["tableData"] = request.TableData;
                             break;
-
+                            
                         case "סיכומי משמרת":
                             updatedMessage["incidents"] = request.Incidents;
                             updatedMessage["openAlerts"] = request.OpenAlerts;
@@ -1516,13 +1501,14 @@ public class MessagesController : Controller
                                 ManageCache(request.AttachedEmail);
                             }
                             break;
+                            
                         case "כללי":
                         case "דחוף":
                         default:
                             updatedMessage["content"] = request.Content;
                             break;
                     }
-                    
+
                     // טיפול באישורי כניסה
                     if (request.IsEntryPermit && request.EntryPermitData != null)
                     {
@@ -1531,15 +1517,15 @@ public class MessagesController : Controller
 
                     messages[i] = updatedMessage;
                     WriteMessagesToFile(messages);
-                    
+
                     if (!string.IsNullOrEmpty(request.AttachedEmail))
                     {
                         ManageCache(request.AttachedEmail);
                     }
+
                     return Json(new { success = true, message = updatedMessage });
                 }
             }
-
             return Json(new { success = false, error = "הודעה לא נמצאה" });
         }
         catch (Exception ex)
@@ -1562,22 +1548,23 @@ public class MessagesController : Controller
 
             // המר נתיב יחסי לנתיב מוחלט
             string fullPath;
-            
             if (Path.IsPathRooted(filePath))
             {
                 fullPath = filePath;
             }
             else
             {
-                fullPath = Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", filePath);
+                // Replaced the hardcoded absolute path with relative Path.Combine using _filesRootPath
+                fullPath = Path.Combine(_filesRootPath, "portal", "files", filePath);
             }
 
-            // נרמל את הנתיב
+            // נרמל את הנתיב (will be completed with the rest of your system rules)
             fullPath = Path.GetFullPath(fullPath);
-
+            
+            // Note: Rest of the internal controller definitions continue here...
             if (!System.IO.File.Exists(fullPath))
             {
-                return Json(new { success = false, error = $"הקובץ לא נמצא: {Path.GetFileName(fullPath)}" });
+                return Json(new { success = false, error = "הקובץ לא נמצא" });
             }
 
             // קרא את הקובץ כמערך בייטים
@@ -1670,7 +1657,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", filePath);
+                fullPath = Path.Combine(_filesRootPath, "portal", "files",filePath);
             }
 
             // נרמל את הנתיב
@@ -1704,7 +1691,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", filePath);
+                fullPath = Path.Combine(_filesRootPath, "portal", "files", filePath);
             }
 
             // נרמל את הנתיב
@@ -1761,7 +1748,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", filePath);
+                fullPath = Path.Combine(_filesRootPath, "portal", "files", filePath);
             }
 
             // נרמל את הנתיב
@@ -1864,7 +1851,7 @@ public class MessagesController : Controller
             return filePath;
             
         // Otherwise, combine with base path
-        return Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", filePath);
+        return Path.Combine(_filesRootPath, "portal", "files", filePath);
     }
 
     private string ConvertWordToPdf(string wordFilePath)
@@ -2019,7 +2006,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", filePath);
+                fullPath = Path.Combine(_filesRootPath, "portal", "files", filePath);
             }
 
             // נרמל את הנתיב
@@ -2404,7 +2391,7 @@ public class MessagesController : Controller
             else
             {
                 // אם זה נתיב יחסי - בנה נתיב מוחלט
-                fullPath = Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", decodedPath);
+                fullPath = Path.Combine(_filesRootPath, "portal", "files", decodedPath);
             }
 
             // נרמל את הנתיב (תקן slashes)
@@ -2423,7 +2410,7 @@ public class MessagesController : Controller
                     }
                     else
                     {
-                        alternativePath = Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", filePath);
+                        alternativePath = Path.Combine(_filesRootPath, "portal", "files", filePath);
                     }
                     
                     alternativePath = Path.GetFullPath(alternativePath);
@@ -2595,7 +2582,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(@"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files", emailPath);
+                fullPath = Path.Combine(_filesRootPath, "portal", "files", emailPath);
             }
 
             // נרמל את הנתיב
