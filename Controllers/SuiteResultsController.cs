@@ -34,10 +34,10 @@ public class SuiteResultsController : Controller
     {
         _httpClientFactory = httpClientFactory;
         _env = env;
-        _contactsFilePath = Path.Combine(env.ContentRootPath, "portal", "files", "test_contacts.csv");
-        _downtimeSystemsPath = Path.Combine(env.ContentRootPath, "portal", "files", "downtime_systems.csv");
-        _phoneDirectoryPath = Path.Combine(env.ContentRootPath, "portal", "files", "phone_directory.csv");
-        _runAllLockFilePath = Path.Combine(env.ContentRootPath, "portal", "files", "runall_lock.txt");
+        _contactsFilePath = Path.Combine(env.WebRootPath, "assets", "files", "test_contacts.csv");
+        _downtimeSystemsPath = Path.Combine(env.WebRootPath, "assets", "files", "downtime_systems.csv");
+        _phoneDirectoryPath = Path.Combine(env.WebRootPath, "assets", "files", "phone_directory.csv");
+        _runAllLockFilePath = Path.Combine(env.WebRootPath, "assets", "files", "runall_lock.txt");
     }
 
     // ==========================================

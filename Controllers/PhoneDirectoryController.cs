@@ -11,7 +11,7 @@ public class PhoneDirectoryController : Controller
 
     public PhoneDirectoryController(IWebHostEnvironment env)
     {
-        csvPath = Path.Combine(env.ContentRootPath, "portal", "files", "phone_directory.csv");
+        csvPath = Path.Combine(env.WebRootPath, "assets", "files", "phone_directory.csv");
     }
 
     [HttpGet]

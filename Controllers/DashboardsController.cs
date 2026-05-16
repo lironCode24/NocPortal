@@ -25,7 +25,7 @@ public class DashboardsController : Controller
     public DashboardsController(IWebHostEnvironment env)
     {
         _env = env;
-        _metricsCacheFilePath = Path.Combine(_env.ContentRootPath, "portal", "files", "rack_metrics_cache.json");
+        _metricsCacheFilePath = Path.Combine(_env.WebRootPath, "assets", "files", "rack_metrics_cache.json");
     }
 
     // ─────────────────────────────────────────────

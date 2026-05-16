@@ -19,10 +19,10 @@ public class ShiftsController : Controller
 
     public ShiftsController(IWebHostEnvironment env)
     {
-        SHIFTS_FILE_PATH = Path.Combine(env.ContentRootPath, "portal", "files", "shifts.csv");
-        BACKUP_DIRECTORY = Path.Combine(env.ContentRootPath, "portal", "files", "shifts_backup");
-        EXCEL_FILE_PATH = Path.Combine(env.ContentRootPath, "portal", "files", "משמרות.xlsx");
-        FUTURE_SHIFTS_FILE_PATH = Path.Combine(env.ContentRootPath, "portal", "files", "future_shifts.csv");
+        SHIFTS_FILE_PATH = Path.Combine(env.WebRootPath, "assets", "files", "shifts.csv");
+        BACKUP_DIRECTORY = Path.Combine(env.WebRootPath, "assets", "files", "shifts_backup");
+        EXCEL_FILE_PATH = Path.Combine(env.WebRootPath, "assets", "files", "משמרות.xlsx");
+        FUTURE_SHIFTS_FILE_PATH = Path.Combine(env.WebRootPath, "assets", "files", "future_shifts.csv");
     }
     
     [HttpGet]

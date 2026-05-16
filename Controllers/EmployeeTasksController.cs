@@ -19,7 +19,7 @@ public class EmployeeTasksController : Controller
     {
         _employeeService = new EmployeeService(env);
         _userTasksService = new UserTasksService();
-        _employeeTasksFilePath = Path.Combine(env.ContentRootPath, "portal", "files", "employee_tasks.txt");
+        _employeeTasksFilePath = Path.Combine(env.WebRootPath, "assets", "files", "employee_tasks.txt");
     }
 
     [HttpGet]

@@ -39,7 +39,7 @@ public class DataCenterController : Controller
         _httpClientFactory = httpClientFactory;
         _env = env;
 
-        _filesFolderPath = Path.Combine(_env.ContentRootPath, "portal", "files");
+        _filesFolderPath = Path.Combine(_env.WebRootPath, "assets", "files");
         _excelFilePathRG = Path.Combine(_filesFolderPath, "תיעוד ציודים בחדרי שרתים - רמת גן.xlsx");
         _excelFilePathPT = Path.Combine(_filesFolderPath, "תיעוד ציודים בחדר שרתים - פתח תקווה.xlsx");
         _cacheFolderPath = Path.Combine(_filesFolderPath, "dataCenterCache");

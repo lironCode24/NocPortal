@@ -13,7 +13,7 @@ public class EmployeeService
     {
         _employeesFilePath = Path.Combine(
             Directory.GetCurrentDirectory(),
-            "portal",
+            "assets",
             "files",
             "employees.txt"
         );
@@ -22,8 +22,8 @@ public class EmployeeService
     public EmployeeService(IWebHostEnvironment env)
     {
         _employeesFilePath = Path.Combine(
-            env.ContentRootPath,
-            "portal",
+            env.WebRootPath,
+            "assets",
             "files",
             "employees.txt"
         );

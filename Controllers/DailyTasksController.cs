@@ -14,7 +14,7 @@ public class DailyTasksController : Controller
     public DailyTasksController(IWebHostEnvironment env)
     {
         _env = env;
-        _tasksFilePath = Path.Combine(_env.ContentRootPath, "portal", "files", "daily_tasks.txt");
+        _tasksFilePath = Path.Combine(_env.WebRootPath, "assets", "files", "daily_tasks.txt");
     }
 
     [HttpGet]

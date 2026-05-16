@@ -47,7 +47,7 @@ public class AlertsController : Controller
     {
         _httpClientFactory = httpClientFactory;
 
-        var filesDir = Path.Combine(env.ContentRootPath, "portal", "files");
+        var filesDir = Path.Combine(env.WebRootPath, "portal", "files");
 
         Directory.CreateDirectory(filesDir);
 

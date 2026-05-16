@@ -17,7 +17,7 @@ namespace NocPortal.Services
         public UserService(IWebHostEnvironment env, ILogger<UserService> logger)
         {
             _logger = logger;
-            _usersFilePath = Path.Combine(env.ContentRootPath, "portal", "files", "users.json");
+            _usersFilePath = Path.Combine(env.WebRootPath, "assets", "files", "users.json");
             EnsureDataDirectoryAndFile();
         }
 

@@ -16,7 +16,7 @@ public class MessagesController : Controller
 {
     private readonly IWebHostEnvironment _env;
     private readonly string _filesRootPath;
-    private readonly string _uploadsRelativePath = Path.Combine("portal", "files", "messagesUploads");
+    private readonly string _uploadsRelativePath;
     private readonly string _messagesFilePath;
     private readonly string _uploadsPath;
     private readonly string _emailCachePath; // הוסף שדה חדש לשמירת נתיב תיקיית המטמון
@@ -27,11 +27,12 @@ public class MessagesController : Controller
     public MessagesController(IWebHostEnvironment env)
     {
         _env = env;
-        _filesRootPath = env.ContentRootPath;
-        _messagesFilePath = Path.Combine(_filesRootPath, "portal", "files", "messages.txt");
-        _uploadsPath = Path.Combine(_filesRootPath, "portal", "files", "messagesUploads");
-        _emailCachePath = Path.Combine(_filesRootPath, "portal", "files", "emailCache");
-        _emailMappingFilePath = Path.Combine(_filesRootPath, "portal", "files", "email_mapping.csv");
+        _filesRootPath = env.WebRootPath;
+        _messagesFilePath = Path.Combine(_filesRootPath, "assets", "files", "messages.txt");
+        _uploadsPath = Path.Combine(_filesRootPath, "assets", "files", "messagesUploads");
+        _emailCachePath = Path.Combine(_filesRootPath, "assets", "files", "emailCache");
+        _emailMappingFilePath = Path.Combine(_filesRootPath, "assets", "files", "email_mapping.csv");
+        _uploadsRelativePath = Path.Combine(_filesRootPath, "assets", "files", "messagesUploads");
     }
     
     private static DateTime _lastCacheCleanupTime = DateTime.MinValue;
@@ -1555,7 +1556,7 @@ public class MessagesController : Controller
             else
             {
                 // Replaced the hardcoded absolute path with relative Path.Combine using _filesRootPath
-                fullPath = Path.Combine(_filesRootPath, "portal", "files", filePath);
+                fullPath = Path.Combine(_filesRootPath, "assets", "files", filePath);
             }
 
             // נרמל את הנתיב (will be completed with the rest of your system rules)
@@ -1657,7 +1658,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(_filesRootPath, "portal", "files",filePath);
+                fullPath = Path.Combine(_filesRootPath, "assets", "files",filePath);
             }
 
             // נרמל את הנתיב
@@ -1691,7 +1692,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(_filesRootPath, "portal", "files", filePath);
+                fullPath = Path.Combine(_filesRootPath, "assets", "files", filePath);
             }
 
             // נרמל את הנתיב
@@ -1748,7 +1749,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(_filesRootPath, "portal", "files", filePath);
+                fullPath = Path.Combine(_filesRootPath, "assets", "files", filePath);
             }
 
             // נרמל את הנתיב
@@ -1851,7 +1852,7 @@ public class MessagesController : Controller
             return filePath;
             
         // Otherwise, combine with base path
-        return Path.Combine(_filesRootPath, "portal", "files", filePath);
+        return Path.Combine(_filesRootPath, "assets", "files", filePath);
     }
 
     private string ConvertWordToPdf(string wordFilePath)
@@ -2006,7 +2007,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(_filesRootPath, "portal", "files", filePath);
+                fullPath = Path.Combine(_filesRootPath, "assets", "files", filePath);
             }
 
             // נרמל את הנתיב
@@ -2391,7 +2392,7 @@ public class MessagesController : Controller
             else
             {
                 // אם זה נתיב יחסי - בנה נתיב מוחלט
-                fullPath = Path.Combine(_filesRootPath, "portal", "files", decodedPath);
+                fullPath = Path.Combine(_filesRootPath, "assets", "files", decodedPath);
             }
 
             // נרמל את הנתיב (תקן slashes)
@@ -2410,7 +2411,7 @@ public class MessagesController : Controller
                     }
                     else
                     {
-                        alternativePath = Path.Combine(_filesRootPath, "portal", "files", filePath);
+                        alternativePath = Path.Combine(_filesRootPath, "assets", "files", filePath);
                     }
                     
                     alternativePath = Path.GetFullPath(alternativePath);
@@ -2582,7 +2583,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(_filesRootPath, "portal", "files", emailPath);
+                fullPath = Path.Combine(_filesRootPath, "assets", "files", emailPath);
             }
 
             // נרמל את הנתיב

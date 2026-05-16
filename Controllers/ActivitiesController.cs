@@ -13,8 +13,8 @@ public class ActivitiesController : Controller
 
     public ActivitiesController(IWebHostEnvironment env)
     {
-        _activitiesFilePath = Path.Combine(env.ContentRootPath, "portal", "files", "activities.txt");
-        _activityTasksFilePath = Path.Combine(env.ContentRootPath, "portal", "files", "activity_tasks.txt");
+        _activitiesFilePath = Path.Combine(env.WebRootPath, "assets", "files", "activities.txt");
+        _activityTasksFilePath = Path.Combine(env.WebRootPath, "assets", "files", "activity_tasks.txt");
     }
     
     // Get all activities

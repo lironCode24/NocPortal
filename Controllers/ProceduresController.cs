@@ -22,10 +22,10 @@ namespace MyWebApp.Controllers
 
         public ProceduresController(IWebHostEnvironment env)
         {
-            _contentRootPath = env.ContentRootPath;
+            _contentRootPath = env.WebRootPath;
             _proceduresPath = Path.Combine(_contentRootPath, "portal", "נהלים");
             _pdfCachePath = Path.Combine(Path.GetTempPath(), "ProceduresPdfCache");
-            _metadataPath = Path.Combine(_contentRootPath, "portal", "files", "Procedures", "Metadata");
+            _metadataPath = Path.Combine(_contentRootPath, "assets", "files", "Procedures", "Metadata");
 
             // Create cache directory if it doesn't exist
             if (!Directory.Exists(_pdfCachePath))
@@ -526,7 +526,7 @@ namespace MyWebApp.Controllers
             try
             {
                 // Path to images folder
-                var imagesPath = Path.Combine(_contentRootPath, "portal", "files", "ProcedureImages");
+                var imagesPath = Path.Combine(_contentRootPath, "assets", "files", "ProcedureImages");
                 var imagePath = Path.Combine(imagesPath, fileName);
                 
                 if (!System.IO.File.Exists(imagePath))

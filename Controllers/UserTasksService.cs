@@ -15,7 +15,7 @@ public class UserTasksService
     public UserTasksService()
     {
         _userTasksFilePath = Path.Combine(
-            Directory.GetCurrentDirectory(), "portal", "files", "user_personal_tasks.txt");
+            Directory.GetCurrentDirectory(), "assets", "files", "user_personal_tasks.txt");
     }
 
     public List<EmployeeTask> GetTasksByUsername(string username)

@@ -22,13 +22,13 @@ public class SuiteConfigController : Controller
     public SuiteConfigController(IHttpClientFactory httpClientFactory)
     {
         _httpClientFactory = httpClientFactory;
-        _csvPath = Path.Combine(Directory.GetCurrentDirectory(), "portal", "files", "suite_config.csv");
+        _csvPath = Path.Combine(Directory.GetCurrentDirectory(), "assets", "files", "suite_config.csv");
     }
 
     public SuiteConfigController(IHttpClientFactory httpClientFactory, IWebHostEnvironment env)
         : this(httpClientFactory)
     {
-        _csvPath = Path.Combine(env.ContentRootPath, "portal", "files", "suite_config.csv");
+        _csvPath = Path.Combine(env.WebRootPath, "assets", "files", "suite_config.csv");
     }
 
     // ==========================================

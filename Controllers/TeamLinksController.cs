@@ -11,7 +11,7 @@ public class TeamLinksController : Controller
 
     public TeamLinksController(IWebHostEnvironment env)
     {
-        csvPath = Path.Combine(env.ContentRootPath, "portal", "files", "team_links.csv");
+        csvPath = Path.Combine(env.WebRootPath, "assets", "files", "team_links.csv");
     }
 
     [HttpGet]
