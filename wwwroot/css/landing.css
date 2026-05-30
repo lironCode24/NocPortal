@@ -44,7 +44,6 @@ header {
     width: 48px;
     height: 48px;
     border-radius: 12px;
-    background: linear-gradient(135deg,#0066cc,#004fa3);
     color: white;
     display: flex;
     align-items: center;
