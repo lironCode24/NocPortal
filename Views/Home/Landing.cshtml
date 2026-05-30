@@ -1,0 +1,150 @@
+@{
+    Layout = null;
+    ViewData["Title"] = "NocPortal";
+}
+
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>@ViewData["Title"]</title>
+    <link rel="stylesheet" href="~/css/landing.css">
+</head>
+<body>
+    <!-- ============================================
+         HEADER / NAVBAR
+         ============================================ -->
+    <header>
+        <div class="navbar">
+            <div class="navbar-brand">
+                <span class="logo-icon">⚙</span>
+                <div class="logo-text">
+                    <span class="logo-name">NocPortal</span>
+                    <span class="logo-tagline">Control Center Management</span>
+                </div>
+            </div>
+
+            <nav class="navbar-links">
+                <a href="#features">יכולות</a>
+                <a href="#about">אודות</a>
+            </nav>
+
+            <a href="/Auth/Login" class="nav-login-btn">
+                כניסה למערכת
+            </a>
+        </div>
+    </header>
+
+    <!-- ============================================
+         HERO SECTION
+         ============================================ -->
+    <section class="hero">
+        <div class="hero-content">
+            <h1>מערכת כוללת לניהול ותפעול חדר בקרה ו-Data Center</h1>
+            <p class="subtitle">
+                מערכת הנדסית שנולדה מתוך השטח כדי לרכז את כל הניטור, המעקב והדשבורדים התפעוליים בממשק אחד מרכזי, נקי ומהיר.
+            </p>
+            
+            <div class="hero-buttons">
+                <a href="/Auth/Login" class="nav-login-btn">כניסה למערכת 🚀</a>
+            </div>
+
+            <div class="hero-credentials">
+                <p>פרטי התחברות לדמו:</p>
+                <div>
+                    <span class="credential-item">שם משתמש: admin</span>
+                    <span class="credential-item">סיסמה: demo123</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================
+         FEATURES SECTION
+         ============================================ -->
+    <section id="features" class="features">
+        <h2 class="section-title">?מה יש בפנים</h2>
+        <p class="section-subtitle">כלים חזקים ועדכניים עבור ניהול תפעולי מקצועי</p>
+        
+        <div class="features-grid">
+            <!-- Feature 1: Dashboards -->
+            <div class="feature-card">
+                <span class="feature-icon">📊</span>
+                <h3>דשבורדים תפעוליים</h3>
+                <p>תמונת מצב ויזואלית וברורה של ה-Data Center בזמן אמת. ניטור חי של כל המשאבים, הטמפרטורה, ההספק והציוד הקריטי.</p>
+                <div class="feature-screenshot">🖼️ תמונת מצב דשבורד</div>
+            </div>
+
+            <!-- Feature 2: Monitoring & Control -->
+            <div class="feature-card">
+                <span class="feature-icon">🔍</span>
+                <h3>מערכת מעקב ובקרה</h3>
+                <p>ניהול, תיעוד והיסטוריית אירועים ותקלות של הצוות. רישום אוטומטי של כל הפעילויות, אזעקות וטיפול בבעיות בזמן אמת.</p>
+                <div class="feature-screenshot">🖼️ תמונת מצב מעקב</div>
+            </div>
+
+            <!-- Feature 3: Centralized Management -->
+            <div class="feature-card">
+                <span class="feature-icon">🎛️</span>
+                <h3>ממשק ניהול מרכזי</h3>
+                <p>ריכוז כל המידע התפעולי והניטור תחת קורת גג אחת (Single Source of Truth). דשבורדים, נהלים, משימות והתקשרויות – הכל במקום אחד.</p>
+                <div class="feature-screenshot">🖼️ תמונת מצב ניהול</div>
+            </div>
+
+            <!-- Feature 4: Procedures & Documentation -->
+            <div class="feature-card">
+                <span class="feature-icon">📋</span>
+                <h3>ספרייה של נהלים</h3>
+                <p>מאגר מרכזי של כל הנהלים התפעוליים, הפרוצדורות וה-Runbooks. גישה מהירה לתיעוד וקלות בביצוע משימות שגרתיות ודחופות.</p>
+                <div class="feature-screenshot">🖼️ תמונת מצב נהלים</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================
+         ABOUT / BACKGROUND SECTION
+         ============================================ -->
+    <section id="about" class="about">
+        <div class="about-container">
+            <h2>הרקע לפרויקט</h2>
+            
+            <div class="about-sections">
+                <div class="about-section">
+                    <h3>הצורך - מה החסר?</h3>
+                    <p>
+                        ניהול חדר בקרה דורש מעקב רציף, והכלים הקיימים בשוק לעיתים מורכבים מדי, מפוזרים או לא מותאמים לדינמיקה האמיתית של ה-NOC. צוות תפעול יעיל צריך כלים שמוגבלים אליו – לא להפך.
+                    </p>
+                </div>
+
+                <div class="about-section">
+                    <h3>הפתרון - מה בנינו?</h3>
+                    <p>
+                        פיתחתם את הפורטל כמענה ישיר לכאבים האלו – פתרון שנבנה על ידי אנשי מקצוע עבור אנשי מקצוע, כדי למנוע כפילויות ולקצר זמני תגובה. מערכת פשוטה אך חזקה, מותאמת לצורכי הנוק האמיתיים.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================
+         FOOTER
+         ============================================ -->
+    <footer>
+        <div class="footer-content">
+            <div class="footer-contact">
+                <div class="footer-message">
+                    בנינו את המערכת הזו כדי לפתור בעיה אמיתית. נשמח לשמוע מכם פידבק, רעיונות או שאלות.
+                </div>
+                <p>
+                    📧 <a href="mailto:admin@nocportal.local" class="footer-link">צור קשר</a> | 
+                    💼 <a href="https://www.linkedin.com/in/your-profile" class="footer-link" target="_blank">LinkedIn</a>
+                </p>
+            </div>
+            <div class="footer-copyright">
+                <p>&copy; 2026 NocPortal. כל הזכויות שמורות.</p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>

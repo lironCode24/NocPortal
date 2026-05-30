@@ -34,7 +34,6 @@ namespace NocPortal.Controllers
 
             Console.Error.WriteLine($"USER ROLES: {string.Join(", ", roles)}");
 
-
             if (User.IsInRole("NOC") || User.IsInRole("Admin"))
                 return RedirectToAction("Index", "Home");
             else

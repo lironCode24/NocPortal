@@ -87,6 +87,11 @@ namespace MyWebApp
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapControllerRoute(
+                    name: "landing",
+                    pattern: "",
+                    defaults: new { controller = "Home", action = "Landing" });
+
+                endpoints.MapControllerRoute(
                     name: "home",
                     pattern: "Home",
                     defaults: new { controller = "Home", action = "Index" });
