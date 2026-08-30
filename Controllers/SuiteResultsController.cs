@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Net.Http;
@@ -12,32 +11,30 @@ using System.Linq;
 public class SuiteResultsController : Controller
 {
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly IWebHostEnvironment _env;
 
-    private readonly string _elasticBaseUrl = "https://172.22.250.10:9200";
-    private readonly string _elasticUser     = "grafana_user";
-    private readonly string _elasticPassword = "Grafana_user1";
+    private readonly SecretsService _secrets;
+
+    private string _elasticBaseUrl => _secrets.ElasticBaseUrl;
+    private string _elasticUser    => _secrets.ElasticUsername;
+    private string _elasticPassword => _secrets.ElasticPassword;
 
     // *** נתיב קובץ אנשי קשר ***
-    private readonly string _contactsFilePath;
-    private readonly string _downtimeSystemsPath;
-    private readonly string _phoneDirectoryPath;
+    private readonly string _contactsFilePath = @"R:\USERS\TASHTIT\NOC\Portal\files\test_contacts.csv";
+    private readonly string _downtimeSystemsPath = @"R:\USERS\TASHTIT\NOC\Portal\files\downtime_systems.csv";
 
-    private readonly string _runAllLockFilePath;
+    private readonly string _runAllLockFilePath = 
+        @"R:\USERS\TASHTIT\NOC\Portal\files\runall_lock.txt";
 
     private readonly TimeSpan _lockDuration = TimeSpan.FromMinutes(5);
 
     public SuiteResultsController(
         IHttpClientFactory httpClientFactory,
-        SuiteConfigController suiteConfig,
-        IWebHostEnvironment env)
+        SecretsService secrets,
+        // הזרקת ה-controller כ-service — או צור instance ישיר
+        SuiteConfigController suiteConfig)
     {
         _httpClientFactory = httpClientFactory;
-        _env = env;
-        _contactsFilePath = Path.Combine(env.WebRootPath, "assets", "files", "test_contacts.csv");
-        _downtimeSystemsPath = Path.Combine(env.WebRootPath, "assets", "files", "downtime_systems.csv");
-        _phoneDirectoryPath = Path.Combine(env.WebRootPath, "assets", "files", "phone_directory.csv");
-        _runAllLockFilePath = Path.Combine(env.WebRootPath, "assets", "files", "runall_lock.txt");
+        _secrets           = secrets;
     }
 
     // ==========================================
@@ -49,10 +46,10 @@ public class SuiteResultsController : Controller
     {
         try
         {
-            // return GenerateMockResults(suitesCount: 50, testsPerSuite: 17);
+            // return GenerateMockResults(suitesCount: 50, testsPerSuite: 17,patchSuitesCount: 4);
             
             // 1. קרא את רשימת הסוויטות מהקובץ
-            var suiteConfig = new SuiteConfigController(_httpClientFactory, _env);
+            var suiteConfig = new SuiteConfigController(_httpClientFactory, _secrets);
             var configEntries = suiteConfig.ReadSuitesFromCsv();
 
             if (configEntries.Count == 0)
@@ -79,8 +76,9 @@ public class SuiteResultsController : Controller
             client.DefaultRequestHeaders.Add(
                 "Authorization", $"Basic {creds}");
 
-            var since = DateTime.UtcNow.AddDays(-7)
-                                    .ToString("o");
+            var since = DateTime.UtcNow
+                                .AddDays(-7)
+                                .ToString("yyyy-MM-ddTHH:mm:ss");
 
             // *** חדש: שלוף זמן Run All במקביל לסוויטות ***
             var runAllLastTimeTask = FetchRunAllLastTime(client);
@@ -164,6 +162,365 @@ public class SuiteResultsController : Controller
     }
 
     // ==========================================
+    // GET: כל הטסטים שרצו ב-24 שעות האחרונות
+    // ==========================================
+    [HttpGet]
+    public async Task<IActionResult> GetAllRecentTests(int hours = 24)
+    {
+        try
+        {
+            // return GenerateMockRecentTests(count : 150, hours : 24);
+            var handler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = (_, _, _, _) => true
+            };
+
+            using var client = new HttpClient(handler);
+            var creds = Convert.ToBase64String(
+                Encoding.UTF8.GetBytes($"{_elasticUser}:{_elasticPassword}"));
+            client.DefaultRequestHeaders.Add("Authorization", $"Basic {creds}");
+
+            var since = DateTime.UtcNow
+                                .AddHours(-hours)
+                                .ToString("yyyy-MM-ddTHH:mm:ss");
+
+            // ==========================================
+            // collapse על container_name
+            // מחזיר רק ריצה אחרונה לכל טסט ייחודי
+            // ==========================================
+            var requestBody = new
+            {
+                _source = new[]
+                {
+                    "container_name",
+                    "container_uid",
+                    "container_type",
+                    "status",
+                    "start_time",
+                    "duration",
+                    "parent_container_uid",
+                    "parent_container_name",
+                    "container_fqn",
+                    "project_name",
+                    "project_uid",
+                    "environment_name",
+                    "location_name",
+                    "location_key",
+                    "instance_name",
+                    "instance_uid",
+                    "result_uid",
+                    "db_id",
+                    "pass_rate",
+                    "stats"
+                },
+                query = new
+                {
+                    @bool = new
+                    {
+                        must = new object[]
+                        {
+                            new
+                            {
+                                term = new Dictionary<string, object>
+                                {
+                                    ["container_type"] = "case"
+                                }
+                            },
+                            new
+                            {
+                                range = new Dictionary<string, object>
+                                {
+                                    ["start_time"] = new Dictionary<string, object>
+                                    {
+                                        ["gte"] = since
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+
+                // collapse - מקבץ לפי שם טסט, שומר רק האחרון
+                collapse = new
+                {
+                    field = "container_name",
+                    inner_hits = new
+                    {
+                        name = "latest_run",
+                        size = 1,
+                        sort = new object[]
+                        {
+                            new Dictionary<string, object>
+                            {
+                                ["start_time"] = new Dictionary<string, object>
+                                {
+                                    ["order"] = "desc"
+                                }
+                            }
+                        }
+                    }
+                },
+
+                // מספר תוצאות גדול - כי עכשיו כל תוצאה = טסט ייחודי
+                size = 10000,
+
+                sort = new object[]
+                {
+                    new Dictionary<string, object>
+                    {
+                        ["start_time"] = new Dictionary<string, object>
+                        {
+                            ["order"] = "desc"
+                        }
+                    }
+                }
+            };
+
+            var json    = JsonSerializer.Serialize(requestBody);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await client.PostAsync(
+                $"{_elasticBaseUrl}/cbr-*/_search", content);
+
+            if (!response.IsSuccessStatusCode)
+                return StatusCode((int)response.StatusCode,
+                    new { success = false, message = "Elastic error" });
+
+            var responseContent = await response.Content.ReadAsStringAsync();
+            var elasticResponse = JsonSerializer.Deserialize<JsonElement>(responseContent);
+
+            var results = ProcessRecentTestResults(elasticResponse);
+
+            return Json(new
+            {
+                success = true,
+                total   = results.Count,
+                hours,
+                since,
+                tests   = results
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"GetAllRecentTests Error: {ex.Message}");
+            return StatusCode(500, new { success = false, message = ex.Message });
+        }
+    }
+
+    // ==========================================
+    // עיבוד תוצאות — כל הטסטים האחרונים
+    // ==========================================
+    private List<object> ProcessRecentTestResults(JsonElement elasticResponse)
+    {
+        var results = new List<object>();
+
+        if (!elasticResponse.TryGetProperty("hits", out var hitsOuter))
+            return results;
+        if (!hitsOuter.TryGetProperty("hits", out var hits))
+            return results;
+
+        foreach (var hit in hits.EnumerateArray())
+        {
+            if (!hit.TryGetProperty("_source", out var src))
+                continue;
+
+            // ── שדות בסיסיים ──────────────────────────────────────
+            var containerName = src.TryGetProperty("container_name", out var cn)
+                ? cn.GetString() : null;
+            var status        = src.TryGetProperty("status",         out var st)
+                ? st.GetString() : null;
+            var startTime     = src.TryGetProperty("start_time",     out var stt)
+                ? stt.GetString() : null;
+            var duration = 0.0;
+            if (src.TryGetProperty("duration", out var dur))
+            {
+                if (dur.ValueKind == JsonValueKind.Number)
+                    duration = dur.GetDouble();
+                // אם null או string — נשאר 0
+            }
+
+            // ── מזהים ─────────────────────────────────────────────
+            var containerUid  = src.TryGetProperty("container_uid",  out var cu)
+                ? cu.GetString() : null;
+            var resultUid     = src.TryGetProperty("result_uid",     out var ru)
+                ? ru.GetString() : null;
+            var instanceUid   = src.TryGetProperty("instance_uid",   out var iu)
+                ? iu.GetString() : null;
+            var dbId          = src.TryGetProperty("db_id",          out var di)
+                ? di.GetInt64() : 0;
+
+            // ── פרויקט / סביבה ────────────────────────────────────
+            var projectName   = src.TryGetProperty("project_name",   out var pn)
+                ? pn.GetString() : null;
+            var projectUid    = src.TryGetProperty("project_uid",    out var pu)
+                ? pu.GetString() : null;
+            var environmentName = src.TryGetProperty("environment_name", out var en)
+                ? en.GetString() : null;
+            var locationName  = src.TryGetProperty("location_name",  out var ln)
+                ? ln.GetString() : null;
+            var locationKey   = src.TryGetProperty("location_key",   out var lk)
+                ? lk.GetString() : null;
+            var instanceName  = src.TryGetProperty("instance_name",  out var inn)
+                ? inn.GetString() : null;
+
+            // ── parent ────────────────────────────────────────────
+            var parentContainerUid  = src.TryGetProperty("parent_container_uid",  out var pcu)
+                ? pcu.GetString() : null;
+            var parentContainerName = src.TryGetProperty("parent_container_name", out var pcn)
+                ? pcn.GetString() : null;
+            var containerFqn        = src.TryGetProperty("container_fqn",         out var fqn)
+                ? fqn.GetString() : null;
+
+            // ── pass rate ─────────────────────────────────────────
+            var passRate = src.TryGetProperty("pass_rate", out var pr)
+                ? pr.GetDouble() : 0;
+
+            // ── stats ─────────────────────────────────────────────
+            int    stepCount       = 0;
+            double stepPassRate    = 0;
+            double stepDurationAvg = 0;
+
+            if (src.TryGetProperty("stats", out var stats))
+            {
+                if (stats.TryGetProperty("step_count",        out var sc))
+                    stepCount       = sc.GetInt32();
+                if (stats.TryGetProperty("step_pass_rate",    out var spr))
+                    stepPassRate    = spr.GetDouble();
+                if (stats.TryGetProperty("step_duration_avg", out var sda))
+                    stepDurationAvg = sda.ValueKind != JsonValueKind.Null
+                        ? sda.GetDouble() : 0;
+            }
+
+            // ── duration בשניות ───────────────────────────────────
+            // duration מגיע במילישניות מ-Elastic
+            var durationSeconds = duration > 0 ? duration / 1000.0 : 0;
+
+           // חלץ priority ו-testId מ-containerName
+            var priority  = ParsePriorityFromName(containerName);
+            var catalogNum = ParseTestIdFromName(containerName);
+
+            // *** אם מספר קטלוגי הוא 9999 — השתמש ב-containerUid כ-testId ***
+            var testId = catalogNum == "9999"
+                ? (!string.IsNullOrEmpty(containerUid)
+                    ? containerUid
+                    : containerName ?? "")
+                : (!string.IsNullOrEmpty(catalogNum)
+                    ? catalogNum
+                    : containerUid ?? "");
+
+           // חשב projectId מ-project_name
+            var projectId = GetCloudBeatProjectId(projectName);
+
+            results.Add(new
+            {
+                // מזהים
+                testId,
+                dbId,
+                resultUid,
+                instanceUid,
+
+                // שמות
+                testName            = containerName,
+                containerName,
+                containerFqn,
+                parentContainerUid,
+                parentContainerName,
+
+                // פרויקט / סביבה
+                projectName,
+                projectUid,
+                projectId,         // חדש — מספר פרויקט CloudBeat
+                environmentName,
+                locationName,
+                locationKey,
+                instanceName,
+
+                // תוצאה
+                status,
+                passRate,
+                lastRunTime         = startTime,
+
+                // משך
+                durationSeconds,
+                durationMs          = duration,
+
+               // priority מפורסר
+                priority,
+
+                // סטטיסטיקות
+                stepCount,
+                stepPassRate,
+                stepDurationAvg,
+            });
+        }
+
+        return results;
+    }
+
+    //  מיפוי project_name → projectId
+    private static int GetCloudBeatProjectId(string? projectName)
+    {
+        if (string.IsNullOrEmpty(projectName)) return 0;
+
+        return projectName.Trim() switch
+        {
+            "תשתיות טכנולוגיות"                          => 138,
+            "קטלוג מערכות - קריטיות תפעולית גבוהה"       => 162,
+            "Onit_to_Nihulit_Gvia_Elem_Linux"             => 439,
+            _ => 0
+        };
+    }
+
+    //  חילוץ priority מ-containerName
+    private static string ParsePriorityFromName(string? containerName)
+    {
+        if (string.IsNullOrEmpty(containerName)) return "";
+        var parts = containerName.Split(" - ");
+        // פורמט: DEPT - TestId - TestName - Browser - Priority
+        return parts.Length >= 5 ? parts[4].Trim() : "";
+    }
+
+    //  חילוץ testId מ-containerName
+    private static string ParseTestIdFromName(string? containerName)
+    {
+        if (string.IsNullOrEmpty(containerName)) return "";
+        var parts = containerName.Split(" - ");
+        return parts.Length >= 2 ? parts[1].Trim() : "";
+    }
+
+    // ==========================================
+    // פרסור שם טסט — גרסה ל-RecentTests
+    // (זהה ל-ParseContainerName אבל לא דורסת Department)
+    // ==========================================
+    private void ParseContainerNameForResult(SuiteTestResult result)
+    {
+        if (string.IsNullOrEmpty(result.ContainerName)) return;
+
+        var parts = result.ContainerName.Split(" - ");
+
+        if (parts.Length >= 3)
+        {
+            var catalogNum  = parts[1].Trim();
+            result.TestName = parts[2].Trim();
+
+            // *** אם מספר קטלוגי הוא 9999 — השתמש ב-Id הייחודי ***
+            if (catalogNum == "9999")
+            {
+                result.TestId = !string.IsNullOrEmpty(result.Id)
+                    ? result.Id
+                    : result.ContainerName;
+            }
+            else
+            {
+                result.TestId = catalogNum;
+            }
+        }
+
+        if (parts.Length >= 5)
+            result.Priority = parts[4].Trim();
+    }
+
+    // ==========================================
     // *** שליפת זמן הריצה האחרון של Run All ***
     // ==========================================
     private async Task<string?> FetchRunAllLastTime(HttpClient client)
@@ -195,7 +552,7 @@ public class SuiteResultsController : Controller
                                     {
                                         term = new Dictionary<string, object>
                                         {
-                                            ["container_uid.keyword"] = caseUid
+                                            ["container_uid"] = caseUid
                                         }
                                     }
                                 }
@@ -263,7 +620,7 @@ public class SuiteResultsController : Controller
                 catch (Exception ex)
                 {
                     Console.Error.WriteLine(
-                        $"FetchRunAllLastTime uid={caseUid}: {ex.Message}");
+                        $"Error: FetchRunAllLastTime uid={caseUid}: {ex.Message}");
                 }
             }
 
@@ -272,7 +629,7 @@ public class SuiteResultsController : Controller
         catch (Exception ex)
         {
             Console.Error.WriteLine(
-                $"FetchRunAllLastTime error: {ex.Message}");
+                $"FetchRunAllLastTime Error: {ex.Message}");
             return null;
         }
     }
@@ -369,11 +726,96 @@ public class SuiteResultsController : Controller
         catch (Exception ex)
         {
             Console.Error.WriteLine(
-                $"RunCloudBeatSuite error: {ex.Message}");
+                $"RunCloudBeatSuite Error: {ex.Message}");
             return Json(new
             {
                 success = false,
-                message = $"Server error: {ex.Message}"
+                message = $"Server Error: {ex.Message}"
+            });
+        }
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> RunCloudBeatCase(
+        [FromBody] RunCaseRequest req)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(req?.CloudBeatId))
+                return Json(new
+                {
+                    success = false,
+                    message = "CloudBeat Case ID is missing"
+                });
+
+            var apiKeys = new Dictionary<string, string>
+            {
+                ["automation"] = "54ae6a3c-c475-48f1-a50d-b200ea335fa5",
+                ["noc"]        = "9a7077d5-88a8-47f3-ab38-f7003f8059c3"
+            };
+
+            var runnerType = req.RunnerType?.ToLower() ?? "automation";
+
+            if (!apiKeys.TryGetValue(runnerType, out var apiKey))
+                return Json(new
+                {
+                    success = false,
+                    message = $"Invalid runner type: {runnerType}"
+                });
+
+            var url =
+                $"https://prod-api-cloudbeat.menora.co.il/cases/api/case/" +
+                $"{Uri.EscapeDataString(req.CloudBeatId)}/run" +
+                $"?apiKey={Uri.EscapeDataString(apiKey)}";
+
+            var handler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback =
+                    (_, _, _, _) => true
+            };
+
+            using var client = new HttpClient(handler);
+            client.Timeout = TimeSpan.FromSeconds(30);
+
+            var response = await client.GetAsync(url);
+            var body = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                return Json(new
+                {
+                    success    = true,
+                    message    = "Case started successfully",
+                    statusCode = (int)response.StatusCode,
+                    body
+                });
+            }
+            else
+            {
+                return Json(new
+                {
+                    success    = false,
+                    message    = $"שגיאה מ-CloudBeat (HTTP {(int)response.StatusCode})",
+                    statusCode = (int)response.StatusCode,
+                    body
+                });
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            return Json(new
+            {
+                success = false,
+                message = "Timeout — CloudBeat did not respond within 30 seconds"
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"RunCloudBeatCase Error: {ex.Message}");
+            return Json(new
+            {
+                success = false,
+                message = $"Server Error: {ex.Message}"
             });
         }
     }
@@ -527,11 +969,11 @@ public class SuiteResultsController : Controller
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"RunAllSuites error: {ex.Message}");
+            Console.Error.WriteLine($"RunAllSuites Error: {ex.Message}");
             return Json(new
             {
                 success = false,
-                message = $"Server error: {ex.Message}"
+                message = $"Server Error: {ex.Message}"
             });
         }
     }
@@ -546,8 +988,11 @@ public class SuiteResultsController : Controller
             username = username.Split('\\').Last();
         username = username.ToLower().Trim();
 
-        // *** משתמשי צוות אוטומציה ספציפיים ***
-        var privilegedUsers = new[] { "lirongo", "rinaja", "dekelra" };
+        // *** קרא רשימת משתמשים מורשים מ-appsettings ***
+        var privilegedUsers = _secrets.PrivilegedUsers
+            .Select(u => u.ToLower().Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         if (privilegedUsers.Contains(username)) return true;
 
         // *** Admin role — בדוק גם את ה-claim וגם את ה-role ***
@@ -664,7 +1109,7 @@ public class SuiteResultsController : Controller
                                         {
                                             // *** חיפוש לפי container_uid בלבד ***
                                             // *** ללא פילטר container_type ***
-                                            ["container_uid.keyword"] = caseUid
+                                            ["container_uid"] = caseUid
                                         }
                                     }
                                 }
@@ -761,7 +1206,7 @@ public class SuiteResultsController : Controller
         catch (Exception ex)
         {
             Console.Error.WriteLine(
-                $"GetRunAllLastResult error: {ex.Message}");
+                $"GetRunAllLastResult Error: {ex.Message}");
             return StatusCode(500, new
             {
                 success = false,
@@ -798,7 +1243,7 @@ public class SuiteResultsController : Controller
                             {
                                 term = new Dictionary<string, object>
                                 {
-                                    ["container_uid.keyword"] =
+                                    ["container_uid"] =
                                         suite.SuiteUid
                                 }
                             },
@@ -806,7 +1251,7 @@ public class SuiteResultsController : Controller
                             {
                                 term = new Dictionary<string, object>
                                 {
-                                    ["container_type.keyword"] = "suite"
+                                    ["container_type"] = "suite"
                                 }
                             }
                         }
@@ -870,7 +1315,7 @@ public class SuiteResultsController : Controller
         catch (Exception ex)
         {
             Console.Error.WriteLine(
-                $"FetchSuiteMetadata error: {ex.Message}");
+                $"FetchSuiteMetadata Error: {ex.Message}");
         }
     }
 
@@ -936,7 +1381,9 @@ public class SuiteResultsController : Controller
             client.DefaultRequestHeaders.Add(
                 "Authorization", $"Basic {creds}");
 
-            var since = DateTime.UtcNow.AddDays(-7).ToString("o");
+            var since = DateTime.UtcNow
+                                .AddDays(-7)
+                                .ToString("yyyy-MM-ddTHH:mm:ss");
 
             var tests = await FetchTestsForSuite(
                 client, suiteId, size, since);
@@ -963,8 +1410,9 @@ public class SuiteResultsController : Controller
 
     [HttpGet]
     public IActionResult GenerateMockResults(
-        int suitesCount   = 15,
-        int testsPerSuite = 10)
+        int suitesCount      = 15,
+        int testsPerSuite    = 10,
+        int patchSuitesCount = 4)
     {
         var random = new Random();
         var suites = new List<SuiteInfo>();
@@ -1061,7 +1509,102 @@ public class SuiteResultsController : Controller
                 suite.Status = "passed";
             }
 
-            suites.Add(suite);
+                        suites.Add(suite);
+        }
+
+        // *** סוויטות Post-Patch ***
+        var patchSuiteNames = new[]
+        {
+            "Patch - Security Scan",
+            "Patch - DB Migration",
+            "Patch - API Regression",
+            "Patch - UI Smoke"
+        };
+
+        for (int p = 1; p <= patchSuitesCount; p++)
+        {
+            var team    = teamNames[(p - 1) % teamNames.Length];
+            var browser = browsers[p % 2];
+
+            var lastRun = DateTime.Now
+                .AddMinutes(-p * 15)
+                .ToString("o");
+
+            var patchName = p <= patchSuiteNames.Length
+                ? patchSuiteNames[p - 1]
+                : $"Patch Suite {p}";
+
+            var patchSuite = new SuiteInfo
+            {
+                SuiteUid     = Guid.NewGuid().ToString(),
+                SuiteName    = $"{suitesCount + p} {patchName} - {team} - {browser}",
+                Status       = "pending",
+                StartTime    = lastRun,
+                LastRunTime  = lastRun,
+                Duration     = random.Next(5000, 20000),
+                IsPatchSuite = true,          // *** סימון Patch ***
+                Tests        = new List<SuiteTestResult>()
+            };
+
+            var patchTestsAmount = random.Next(2, testsPerSuite);
+            for (int t = 1; t <= patchTestsAmount; t++)
+            {
+                var duration = random.Next(1000, 7000);
+                var testName =
+                    $"TASHTIT - {20000 + t} - Patch Test {t} description" +
+                    $" - CH - {random.Next(1, 5)}";
+
+                var testRunTime = DateTime.UtcNow
+                    .AddMinutes(-(p * 15 + t))
+                    .ToString("o");
+
+                var roll       = random.Next(0, 10);
+                var testStatus = roll > 3
+                    ? "passed"
+                    : roll > 1
+                        ? "failed"
+                        : "warning";
+
+                var test = new SuiteTestResult
+                {
+                    Id              = Guid.NewGuid().ToString(),
+                    ContainerName   = testName,
+                    Status          = testStatus,
+                    StartTime       = testRunTime,
+                    LastRunTime     = testRunTime,
+                    Duration        = duration,
+                    DurationSeconds = duration / 1000.0
+                };
+
+                ParseContainerName(test);
+
+                if (!string.IsNullOrEmpty(test.TestId))
+                {
+                    test.Contacts = GetContactsForTest(test.TestId);
+                }
+
+                patchSuite.Tests.Add(test);
+            }
+
+            ParseSuiteName(patchSuite);
+
+            // *** חשב סטטוס ***
+            if (patchSuite.Tests.Any(t =>
+                (t.Status ?? "").ToLower() == "failed"))
+            {
+                patchSuite.Status = "failed";
+            }
+            else if (patchSuite.Tests.Any(t =>
+                (t.Status ?? "").ToLower() == "warning"))
+            {
+                patchSuite.Status = "warning";
+            }
+            else
+            {
+                patchSuite.Status = "passed";
+            }
+
+            suites.Add(patchSuite);
         }
 
         // *** מדמה Run All שרץ לפני 30 דקות ***
@@ -1075,6 +1618,106 @@ public class SuiteResultsController : Controller
             total          = suites.Count,
             suites,
             runAllLastTime = mockRunAllLastTime
+        });
+    }
+
+    // ==========================================
+    // GET: Mock לכל הטסטים האחרונים
+    // ==========================================
+    [HttpGet]
+    public IActionResult GenerateMockRecentTests(
+        int count = 80,
+        int hours = 24)
+    {
+        var random      = new Random();
+        var statuses    = new[] { "passed", "passed", "passed", "failed", "warning" };
+        var priorities  = new[] { "P1", "P2", "P3", "" };
+        var departments = new[] { "TASHTIT", "FINANCE", "HR", "IT" };
+
+        // פרויקטים — תואם ל-GetCloudBeatProjectId
+        var projects = new[]
+        {
+            new { Name = "תשתיות טכנולוגיות",                      Id = 138 },
+            new { Name = "קטלוג מערכות - קריטיות תפעולית גבוהה",  Id = 162 },
+            new { Name = "Onit_to_Nihulit_Gvia_Elem_Linux",         Id = 439 }
+        };
+
+        // *** סוויטות לדוגמה — חלק מהטסטים ירוצו דרך סוויטה וחלק לא ***
+        var suiteNames = new[]
+        {
+            "1 Suite - Tashtiot_DBA Team - CH",
+            "2 Suite - Tashtiot_Core Team - CH",
+            "3 Suite - Tashtiot_UI Team - IE",
+            "4 Suite - Tashtiot_API Team - CH",
+            "5 Suite - Tashtiot_DBA Team - IE",
+            null,   // *** טסטים ללא סוויטה ***
+            null,
+            null
+        };
+
+        var tests = new List<object>();
+
+        for (int i = 0; i < count; i++)
+        {
+            var testId    = (10000 + (i % 30)).ToString();
+            var dept      = departments[i % departments.Length];
+            var status    = statuses[random.Next(statuses.Length)];
+            var priority  = priorities[random.Next(priorities.Length)];
+            var duration  = random.Next(500, 7500);
+            var minsAgo   = random.Next(0, hours * 60);
+            var project   = projects[i % projects.Length];
+
+            // *** בחר סוויטה אקראית — null = ללא סוויטה ***
+            var suiteName = suiteNames[random.Next(suiteNames.Length)];
+
+            var lastRunTime = DateTime.Now
+                .AddMinutes(-minsAgo)
+                .ToString("yyyy-MM-ddTHH:mm:ss");
+
+            // containerName כולל priority בפוזיציה [4]
+            // פורמט: DEPT - TestId - TestName - Browser - Priority
+            var containerName =
+                $"{dept} - {testId} - Test description {i + 1}" +
+                $" - CH - {priority}";
+
+            tests.Add(new
+            {
+                id                  = $"mock-{i}",
+                containerName,
+                testId,
+                testName            = $"Test description {i + 1}",
+                status,
+                priority,
+                duration,
+                durationSeconds     = duration / 1000.0,
+                startTime           = lastRunTime,
+                lastRunTime,
+                department          = dept,
+                projectName         = project.Name,
+                projectId           = project.Id,
+
+                parentContainerName = suiteName,
+                parentContainerUid  = suiteName != null
+                    ? $"mock-suite-uid-{Array.IndexOf(suiteNames, suiteName)}"
+                    : null
+            });
+        }
+
+        // *** מיין לפי זמן ריצה יורד ***
+        var sorted = tests
+            .Cast<dynamic>()
+            .OrderByDescending(t => (string)t.lastRunTime)
+            .ToList();
+
+        return Json(new
+        {
+            success = true,
+            total   = sorted.Count,
+            hours,
+            since   = DateTime.Now
+                        .AddHours(-hours)
+                        .ToString("yyyy-MM-ddTHH:mm:ss"),
+            tests   = sorted
         });
     }
 
@@ -1095,14 +1738,14 @@ public class SuiteResultsController : Controller
             {
                 term = new Dictionary<string, object>
                 {
-                    ["parent_container_uid.keyword"] = suiteId
+                    ["parent_container_uid"] = suiteId
                 }
             },
             new
             {
                 term = new Dictionary<string, object>
                 {
-                    ["container_type.keyword"] = "case"
+                    ["container_type"] = "case"
                 }
             }
         };
@@ -1195,9 +1838,12 @@ public class SuiteResultsController : Controller
                 if (!hit.TryGetProperty("_source", out var source))
                     continue;
 
-                var startTime = source.TryGetProperty(
-                    "start_time", out var timeProp)
-                    ? timeProp.GetString() ?? "" : "";
+                var startTimeRaw = source.TryGetProperty("start_time", out var stt) 
+                    ? stt.GetString() : null;
+
+                var startTime = startTimeRaw != null && !startTimeRaw.EndsWith("Z") 
+                    ? startTimeRaw + "Z" 
+                    : startTimeRaw;
 
                 // המר לשעון ישראל
                 var israelTime = ConvertUtcToIsrael(startTime);
@@ -1225,7 +1871,7 @@ public class SuiteResultsController : Controller
                 };
 
                 result.DurationSeconds = result.Duration / 1000.0;
-                ParseContainerName(result);
+                ParseContainerNameForResult(result);
                 results.Add(result);
             }
         }
@@ -1303,8 +1949,22 @@ public class SuiteResultsController : Controller
         if (parts.Length >= 3)
         {
             result.Department = parts[0].Trim();
-            result.TestId     = parts[1].Trim();
+            var catalogNum    = parts[1].Trim();
             result.TestName   = parts[2].Trim();
+
+            // *** אם מספר קטלוגי הוא 9999 — השתמש ב-Id הייחודי של הטסט ***
+            // *** (container_uid שכבר נמצא ב-result.Id) ***
+            if (catalogNum == "9999")
+            {
+                // השתמש ב-Id הייחודי של הרשומה (container_uid / _id מ-Elastic)
+                result.TestId = !string.IsNullOrEmpty(result.Id)
+                    ? result.Id
+                    : result.ContainerName; // fallback לשם מלא
+            }
+            else
+            {
+                result.TestId = catalogNum;
+            }
         }
 
         if (parts.Length >= 5)
@@ -1379,7 +2039,7 @@ public class SuiteResultsController : Controller
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"ReadContactsFromCsv error: {ex.Message}");
+            Console.Error.WriteLine($"ReadContactsFromCsv Error: {ex.Message}");
         }
 
         return contacts;
@@ -1419,7 +2079,7 @@ public class SuiteResultsController : Controller
         catch (Exception ex)
         {
             Console.Error.WriteLine(
-                $"WriteContactsToCsv error: {ex.Message}");
+                $"WriteContactsToCsv Error: {ex.Message}");
         }
     }
 
@@ -1464,7 +2124,7 @@ public class SuiteResultsController : Controller
         catch (Exception ex)
         {
             Console.Error.WriteLine(
-                $"GetContacts error: {ex.Message}");
+                $"GetContacts Error: {ex.Message}");
             return StatusCode(500, new
             {
                 success = false,
@@ -1549,7 +2209,7 @@ public class SuiteResultsController : Controller
         catch (Exception ex)
         {
             Console.Error.WriteLine(
-                $"AddContact error: {ex.Message}");
+                $"AddContact Error: {ex.Message}");
             return StatusCode(500, new
             {
                 success = false,
@@ -1629,7 +2289,7 @@ public class SuiteResultsController : Controller
         catch (Exception ex)
         {
             Console.Error.WriteLine(
-                $"UpdateContact error: {ex.Message}");
+                $"UpdateContact Error: {ex.Message}");
             return StatusCode(500, new
             {
                 success = false,
@@ -1677,7 +2337,7 @@ public class SuiteResultsController : Controller
         catch (Exception ex)
         {
             Console.Error.WriteLine(
-                $"DeleteContact error: {ex.Message}");
+                $"DeleteContact Error: {ex.Message}");
             return StatusCode(500, new
             {
                 success = false,
@@ -1695,7 +2355,7 @@ public class SuiteResultsController : Controller
     {
         try
         {
-            var suiteConfig   = new SuiteConfigController(_httpClientFactory, _env);
+            var suiteConfig   = new SuiteConfigController(_httpClientFactory, _secrets);
             var configEntries = suiteConfig.ReadSuitesFromCsv();
 
             if (!configEntries.Any())
@@ -1733,7 +2393,7 @@ public class SuiteResultsController : Controller
                                 {
                                     term = new Dictionary<string, object>
                                     {
-                                        ["container_uid.keyword"] =
+                                        ["container_uid"] =
                                             entry.ParentUid
                                     }
                                 },
@@ -1741,7 +2401,7 @@ public class SuiteResultsController : Controller
                                 {
                                     term = new Dictionary<string, object>
                                     {
-                                        ["container_type.keyword"] = "suite"
+                                        ["container_type"] = "suite"
                                     }
                                 }
                             }
@@ -1806,7 +2466,7 @@ public class SuiteResultsController : Controller
         catch (Exception ex)
         {
             Console.Error.WriteLine(
-                $"FetchLatestSuiteNames error: {ex.Message}");
+                $"FetchLatestSuiteNames Error: {ex.Message}");
             return StatusCode(500, new
             {
                 success = false,
@@ -1833,7 +2493,7 @@ public class SuiteResultsController : Controller
                 });
 
             var suiteConfig = new SuiteConfigController(
-                _httpClientFactory, _env);
+                _httpClientFactory, _secrets);
             var all = suiteConfig.ReadSuitesFromCsv();
 
             int updatedCount = 0;
@@ -1862,7 +2522,7 @@ public class SuiteResultsController : Controller
         catch (Exception ex)
         {
             Console.Error.WriteLine(
-                $"BulkUpdateSuiteNames error: {ex.Message}");
+                $"BulkUpdateSuiteNames Error: {ex.Message}");
             return StatusCode(500, new
             {
                 success = false,
@@ -1918,7 +2578,7 @@ public class SuiteResultsController : Controller
                 string.IsNullOrWhiteSpace(email))
                 return Json(new { success = false, phone = "" });
 
-            var csvPath = _phoneDirectoryPath;
+            var csvPath = @"R:\USERS\TASHTIT\NOC\Portal\files\phone_directory.csv";
 
             if (!System.IO.File.Exists(csvPath))
                 return Json(new { success = false, phone = "" });
@@ -1969,7 +2629,7 @@ public class SuiteResultsController : Controller
         catch (Exception ex)
         {
             Console.Error.WriteLine(
-                $"LookupPhoneByNameEmail error: {ex.Message}");
+                $"LookupPhoneByNameEmail Error: {ex.Message}");
             return Json(new { success = false, phone = "" });
         }
     }
@@ -2097,7 +2757,7 @@ public class SuiteResultsController : Controller
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"ReadDowntimeSystemsFromCsv error: {ex.Message}");
+            Console.Error.WriteLine($"ReadDowntimeSystemsFromCsv Error: {ex.Message}");
         }
         return result.OrderBy(s => s.Num).ToList();
     }
@@ -2260,7 +2920,7 @@ public class SuiteResultsController : Controller
         catch (Exception ex)
         {
             Console.Error.WriteLine(
-                $"CheckRunAllLock error: {ex.Message}");
+                $"CheckRunAllLock Error: {ex.Message}");
             return (false, 0, "", "", "");
         }
     }
@@ -2291,7 +2951,7 @@ public class SuiteResultsController : Controller
         catch (Exception ex)
         {
             Console.Error.WriteLine(
-                $"CreateRunAllLock error: {ex.Message}");
+                $"CreateRunAllLock Error: {ex.Message}");
         }
     }
 
@@ -2305,7 +2965,7 @@ public class SuiteResultsController : Controller
         catch (Exception ex)
         {
             Console.Error.WriteLine(
-                $"TryDeleteLockFile error: {ex.Message}");
+                $"TryDeleteLockFile Error: {ex.Message}");
         }
     }
 }
@@ -2411,4 +3071,10 @@ public class DowntimeSystem
 public class DeleteDowntimeRequest
 {
     public int Num { get; set; }
+}
+
+public class RunCaseRequest
+{
+    public string CloudBeatId { get; set; } = "";
+    public string RunnerType  { get; set; } = "automation";
 }

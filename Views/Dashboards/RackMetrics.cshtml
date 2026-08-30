@@ -1,5 +1,5 @@
 @{
-    ViewData["Title"] = "PDU RACKS";
+    ViewData["Title"] = "Data Center";
     Layout = "~/Views/Shared/_Layout.cshtml";
 }
 
@@ -8,15 +8,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDU RACKS</title>
+    <title>Data Center</title>
     <link rel="stylesheet"
           href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body>
     <div id="rackMetricsDashboardRoot"></div>
 
-    <script src="/js/DataCenterManager.js"></script>
-    <script src="/js/RackMetricsDashboard.js"></script>
+    <script src="/js/DataCenterManager.js"asp-append-version="true"></script>
+    <script src="/js/RackMetricsDashboard.js"asp-append-version="true"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             window.dataCenterManager = new DataCenterManager();

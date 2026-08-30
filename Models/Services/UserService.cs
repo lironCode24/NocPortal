@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Hosting;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -12,12 +11,11 @@ namespace NocPortal.Services
 
         // מפתח הצפנה - שמור ב-appsettings או Environment Variable!
         private const string EncryptionKey = "NocPortal2025SecretKey32BytesLng!";
-        private readonly string _usersFilePath;
+        private readonly string _usersFilePath = @"R:\USERS\TASHTIT\NOC\Portal\files\users.json";
 
         public UserService(IWebHostEnvironment env, ILogger<UserService> logger)
         {
             _logger = logger;
-            _usersFilePath = Path.Combine(env.WebRootPath, "assets", "files", "users.json");
             EnsureDataDirectoryAndFile();
         }
 
@@ -160,17 +158,30 @@ namespace NocPortal.Services
             return ReadUsers().Where(u => !u.IsApproved).ToList();
         }
 
-        public bool ValidateUser(string username, string password, out AppUser? user)
+        public bool ValidateUser(string username,string password, out AppUser? user, out string? errorMessage)
         {
             user = GetByUsername(username);
+            errorMessage = null;
 
             if (user == null)
+            {
+                errorMessage = "שם משתמש או סיסמה שגויים";
                 return false;
+            }
 
             if (!user.IsApproved)
+            {
+                errorMessage = "חשבונך טרם אושר - פנה למנהל המערכת";
                 return false;
+            }
 
-            return VerifyPassword(password, user.PasswordHash);
+            if (!VerifyPassword(password, user.PasswordHash))
+            {
+                errorMessage = "שם משתמש או סיסמה שגויים";
+                return false;
+            }
+
+            return true;
         }
 
         public (bool Success, string Message) RegisterUser(RegisterViewModel model)
@@ -191,6 +202,7 @@ namespace NocPortal.Services
                 PasswordHash = HashPassword(model.Password),
                 Role         = model.Role,
                 DisplayName  = model.DisplayName,
+                Email        = model.Email, 
                 IsApproved   = false,
                 CreatedAt    = DateTime.UtcNow
             };
@@ -398,5 +410,143 @@ namespace NocPortal.Services
                 return (false, $"שגיאה בעדכון הרשאות: {ex.Message}");
             }
         }
+        
+        // ── שינוי סיסמה למשתמש מחובר ──────────────────────────────────────────
+        public (bool success, string message) ResetPassword(
+            string userId,
+            string newPassword,
+            bool isTemporary = false)
+        {
+            // קרא את כל המשתמשים מהקובץ
+            var users = ReadUsers();
+            var user  = users.FirstOrDefault(u => u.Id == userId);
+
+            if (user == null)
+                return (false, "משתמש לא נמצא");
+
+            if (newPassword.Length < 6)
+                return (false, "הסיסמה חייבת להכיל לפחות 6 תווים");
+
+            // עדכן סיסמה עם HashPassword הקיים (PBKDF2)
+            user.PasswordHash = HashPassword(newPassword);
+
+            // ── טיפול בסיסמה זמנית ────────────────────────────────────
+            if (isTemporary)
+            {
+                user.MustChangePassword     = true;
+                user.TemporaryPasswordSetAt = DateTime.UtcNow;
+            }
+            else
+            {
+                // איפוס דרך מייל - לא זמנית, נקה את הדגל
+                user.MustChangePassword     = false;
+                user.TemporaryPasswordSetAt = null;
+            }
+
+            WriteUsers(users);
+
+            return (true, "הסיסמה אופסה בהצלחה");
+        }
+
+        // ── שינוי סיסמה למשתמש מחובר ──────────────────────────────────
+        public (bool success, string message) ChangePassword(
+            string userId,
+            string currentPassword,
+            string newPassword)
+        {
+            // קרא את כל המשתמשים מהקובץ
+            var users = ReadUsers();
+            var user  = users.FirstOrDefault(u => u.Id == userId);
+
+            if (user == null)
+                return (false, "משתמש לא נמצא");
+
+            // ── וידוא סיסמה נוכחית ────────────────────────────────────
+            if (!VerifyPassword(currentPassword, user.PasswordHash))
+                return (false, "הסיסמה הנוכחית שגויה");
+
+            if (newPassword.Length < 6)
+                return (false, "הסיסמה החדשה חייבת להכיל לפחות 6 תווים");
+
+            // ── בדיקה שהסיסמה החדשה שונה מהנוכחית ───────────────────
+            if (VerifyPassword(newPassword, user.PasswordHash))
+                return (false, "הסיסמה החדשה חייבת להיות שונה מהנוכחית");
+
+            // עדכן סיסמה עם HashPassword הקיים (PBKDF2)
+            user.PasswordHash = HashPassword(newPassword);
+
+            // ── נקה את דגל הסיסמה הזמנית ─────────────────────────────
+            user.MustChangePassword     = false;
+            user.TemporaryPasswordSetAt = null;
+
+            WriteUsers(users);
+
+            _logger.LogInformation(
+                "סיסמה שונתה: {UserId}", userId);
+
+            return (true, "הסיסמה שונתה בהצלחה");
+        }
+
+        // ── שליפת משתמש לפי שם משתמש ──────────────────────────────────
+        public AppUser? GetUserByUsername(string username)
+        {
+            var users = ReadUsers();
+            return users.FirstOrDefault(u =>
+                u.Username.Equals(username,
+                    StringComparison.OrdinalIgnoreCase));
+        }
+
+        // ── Edit User - עדכון פרטי משתמש ──────────────────────────────
+        public (bool success, string message) EditUser(
+            string userId,
+            string displayName,
+            string username,
+            string? email)
+        {
+            var user = GetUserById(userId);
+            if (user == null)
+                return (false, "משתמש לא נמצא");
+
+            var changes = new List<string>();
+
+            // ── בדוק אם שם המשתמש כבר תפוס ──────────────────────────
+            if (!string.Equals(user.Username, username,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                var existing = GetUserByUsername(username);
+                if (existing != null && existing.Id != userId)
+                    return (false, "שם המשתמש כבר קיים במערכת");
+
+                changes.Add($"Username: {user.Username} → {username}");
+                user.Username = username.Trim();
+            }
+
+            // ── עדכן שם תצוגה ─────────────────────────────────────────
+            if (!string.Equals(user.DisplayName, displayName,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                changes.Add($"DisplayName: {user.DisplayName} → {displayName}");
+                user.DisplayName = displayName.Trim();
+            }
+
+            // ── עדכן מייל ─────────────────────────────────────────────
+            var newEmail = string.IsNullOrWhiteSpace(email)
+                ? null
+                : email.Trim();
+
+            if (user.Email != newEmail)
+            {
+                changes.Add($"Email: {user.Email ?? "none"} → {newEmail ?? "none"}");
+                user.Email = newEmail;
+            }
+
+            if (changes.Count == 0)
+                return (true, "ללא שינויים");
+
+            Update(user);
+
+            return (true, string.Join(" | ", changes));
+        }
+
     }
 }

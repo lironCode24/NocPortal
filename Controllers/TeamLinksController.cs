@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
@@ -7,12 +6,7 @@ using System.Linq;
 
 public class TeamLinksController : Controller
 {
-    private readonly string csvPath;
-
-    public TeamLinksController(IWebHostEnvironment env)
-    {
-        csvPath = Path.Combine(env.WebRootPath, "assets", "files", "team_links.csv");
-    }
+    private readonly string csvPath = @"R:\USERS\TASHTIT\NOC\Portal\files\team_links.csv";
 
     [HttpGet]
     public IActionResult GetTeamLinks()

@@ -130,6 +130,14 @@ public class OfficeInteropHelper : IDisposable
         }
     }
 
+    // מתודה לקבלת המסמך הפתוח
+    public dynamic GetDocument()
+    {
+        if (_document == null)
+            throw new InvalidOperationException("No document is open. Call OpenDocument first.");
+        return _document;
+    }
+
     // מתודה לחילוץ טקסט ממסמך
     public string ExtractText()
     {

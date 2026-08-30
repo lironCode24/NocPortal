@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
 using System.IO;
@@ -11,38 +10,60 @@ using System.Net.Http;
 using System.Text;
 using Microsoft.AspNetCore.Authorization;
 
-[Authorize] 
 public class DashboardsController : Controller
 {
     // ─────────────────────────────────────────────
-    // הגדרות - זהה לסגנון AlertsController
+    // הגדרות
     // ─────────────────────────────────────────────
-    private readonly IWebHostEnvironment _env;
-    private readonly string _metricsCacheFilePath;
+    private readonly string _metricsCacheFilePath =
+        @"R:\USERS\TASHTIT\NOC\Portal\files\rack_metrics_cache.json";
 
     private static readonly object _fileLock = new object();
 
-    public DashboardsController(IWebHostEnvironment env)
-    {
-        _env = env;
-        _metricsCacheFilePath = Path.Combine(_env.WebRootPath, "assets", "files", "rack_metrics_cache.json");
-    }
+    // ─── דשבורדים ציבוריים - ללא Login ───────────────────────
+    private static readonly HashSet<string> _publicDashboards =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "systems-catalog"
+        };
 
     // ─────────────────────────────────────────────
     // Views
     // ─────────────────────────────────────────────
-    public IActionResult Index()
+
+    // ─── Index: ציבורי לקטלוג, מוגן לשאר ────────────────────
+    public IActionResult Index(string dashboard)
     {
+        // ─── אם הדשבורד ציבורי - אפשר גישה ───
+        if (!string.IsNullOrEmpty(dashboard) &&
+            _publicDashboards.Contains(dashboard))
+        {
+            return View();
+        }
+
+        // ─── שאר הדשבורדים - דורשים Login ───
+        if (!User.Identity.IsAuthenticated)
+        {
+            return RedirectToAction("Login", "Auth",
+                new
+                {
+                    ReturnUrl = Request.Path.Value +
+                                Request.QueryString.Value
+                });
+        }
+
         return View();
     }
 
+    // ─── RackMetrics - דורש Login ────────────────────────────
+    [Authorize]
     public IActionResult RackMetrics()
     {
         return View();
     }
 
     // ─────────────────────────────────────────────
-    // קריאת קובץ Cache - זהה לסגנון AlertsController
+    // קריאת קובץ Cache
     // ─────────────────────────────────────────────
     private RackMetricsCacheFile ReadCacheFile()
     {
@@ -60,19 +81,23 @@ public class DashboardsController : Controller
 
                 return JsonSerializer.Deserialize<RackMetricsCacheFile>(
                     json,
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                    new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    }
                 );
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Error reading metrics cache: {ex.Message}");
+                Console.Error.WriteLine(
+                    $"Error reading metrics cache: {ex.Message}");
                 return null;
             }
         }
     }
 
     // ─────────────────────────────────────────────
-    // כתיבת קובץ Cache - זהה לסגנון AlertsController
+    // כתיבת קובץ Cache
     // ─────────────────────────────────────────────
     private void WriteCacheFile(RackMetricsCacheFile data)
     {
@@ -80,10 +105,8 @@ public class DashboardsController : Controller
         {
             try
             {
-                // וודא שהתיקייה קיימת
                 Directory.CreateDirectory(
-                    Path.GetDirectoryName(_metricsCacheFilePath)
-                );
+                    Path.GetDirectoryName(_metricsCacheFilePath));
 
                 string json = JsonSerializer.Serialize(
                     data,
@@ -98,25 +121,27 @@ public class DashboardsController : Controller
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Error writing metrics cache: {ex.Message}");
+                Console.Error.WriteLine(
+                    $"Error writing metrics cache: {ex.Message}");
             }
         }
     }
 
     // ─────────────────────────────────────────────
-    // UpdateMetricsCache - זהה לסגנון UpdateAlertsCache
+    // UpdateMetricsCache - דורש Login
     // ─────────────────────────────────────────────
     [HttpGet]
+    [Authorize]
     public async Task<IActionResult> UpdateMetricsCache()
     {
         try
         {
             bool shouldUpdate = true;
 
-            // בדוק אם הקובץ עודכן ב-5 הדקות האחרונות
             if (System.IO.File.Exists(_metricsCacheFilePath))
             {
-                var lastWriteTime    = System.IO.File.GetLastWriteTime(_metricsCacheFilePath);
+                var lastWriteTime       = System.IO.File.GetLastWriteTime(
+                                              _metricsCacheFilePath);
                 var timeSinceLastUpdate = DateTime.Now - lastWriteTime;
 
                 if (timeSinceLastUpdate.TotalMinutes < 5)
@@ -152,14 +177,14 @@ public class DashboardsController : Controller
     }
 
     // ─────────────────────────────────────────────
-    // GetAllRackMetricsFromCache
+    // GetAllRackMetricsFromCache - דורש Login
     // ─────────────────────────────────────────────
     [HttpGet]
+    [Authorize]
     public async Task<IActionResult> GetAllRackMetricsFromCache()
     {
         try
         {
-            // קריאה מהקובץ המקומי - זהה לסגנון GetAlerts
             string json;
             lock (_fileLock)
             {
@@ -176,17 +201,28 @@ public class DashboardsController : Controller
 
             if (string.IsNullOrEmpty(json))
             {
-                return Json(new { success = false, error = "Cache file is empty" });
+                return Json(new
+                {
+                    success = false,
+                    error   = "Cache file is empty"
+                });
             }
 
             var cache = JsonSerializer.Deserialize<RackMetricsCacheFile>(
                 json,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                }
             );
 
             if (cache == null)
             {
-                return Json(new { success = false, error = "Failed to parse cache" });
+                return Json(new
+                {
+                    success = false,
+                    error   = "Failed to parse cache"
+                });
             }
 
             return Json(new
@@ -205,9 +241,10 @@ public class DashboardsController : Controller
     }
 
     // ─────────────────────────────────────────────
-    // GetCurrentRackMetricsCached
+    // GetCurrentRackMetricsCached - דורש Login
     // ─────────────────────────────────────────────
     [HttpGet]
+    [Authorize]
     public IActionResult GetCurrentRackMetricsCached(
         string rackId,
         string dataCenterType,
@@ -219,7 +256,11 @@ public class DashboardsController : Controller
 
             if (cache == null)
             {
-                return Json(new { success = false, error = "Cache not available" });
+                return Json(new
+                {
+                    success = false,
+                    error   = "Cache not available"
+                });
             }
 
             var key = $"{dataCenterType}:{rackId}:{side}";
@@ -251,9 +292,10 @@ public class DashboardsController : Controller
     }
 
     // ─────────────────────────────────────────────
-    // ForceRefreshMetricsCache
+    // ForceRefreshMetricsCache - דורש Login
     // ─────────────────────────────────────────────
     [HttpPost]
+    [Authorize]
     public async Task<IActionResult> ForceRefreshMetricsCache()
     {
         try
@@ -276,9 +318,10 @@ public class DashboardsController : Controller
     }
 
     // ─────────────────────────────────────────────
-    // GetMetricsCacheStatus
+    // GetMetricsCacheStatus - דורש Login
     // ─────────────────────────────────────────────
     [HttpGet]
+    [Authorize]
     public IActionResult GetMetricsCacheStatus()
     {
         try
@@ -308,7 +351,8 @@ public class DashboardsController : Controller
                     0,
                     (int)(cache.NextUpdate - DateTime.UtcNow).TotalMinutes
                 ),
-                cacheAgeMinutes = (DateTime.UtcNow - cache.LastUpdated).TotalMinutes
+                cacheAgeMinutes =
+                    (DateTime.UtcNow - cache.LastUpdated).TotalMinutes
             });
         }
         catch (Exception ex)
@@ -320,16 +364,12 @@ public class DashboardsController : Controller
     // ═════════════════════════════════════════════
     // פונקציות פנימיות
     // ═════════════════════════════════════════════
-
-    /// <summary>
-    /// רענון Cache - קריאה ל-DataCenter API ושמירה לקובץ
-    /// זהה לסגנון FetchAlertsFromService ב-AlertsController
-    /// </summary>
     private async Task<RackMetricsCacheFile> RefreshMetricsCacheAsync()
     {
         try
         {
-            Console.WriteLine($"Starting to refresh metrics cache. Time: {DateTime.Now}");
+            Console.WriteLine(
+                $"Starting to refresh metrics cache. Time: {DateTime.Now}");
 
             var allRacks = await GetAllRacksListAsync();
 
@@ -341,7 +381,6 @@ public class DashboardsController : Controller
 
             var newMetrics = new Dictionary<string, RackMetricsEntry>();
 
-            // טעינת מטריקות לכל הארונות במקביל - בקבוצות של 10
             const int BATCH_SIZE = 10;
             for (int i = 0; i < allRacks.Count; i += BATCH_SIZE)
             {
@@ -349,20 +388,22 @@ public class DashboardsController : Controller
 
                 var tasks = batch.SelectMany(rack => new[]
                 {
-                    FetchSingleRackMetricsAsync(rack.RackId, rack.DataCenterType, "L"),
-                    FetchSingleRackMetricsAsync(rack.RackId, rack.DataCenterType, "R")
+                    FetchSingleRackMetricsAsync(
+                        rack.RackId, rack.DataCenterType, "L"),
+                    FetchSingleRackMetricsAsync(
+                        rack.RackId, rack.DataCenterType, "R")
                 });
 
                 var results = await Task.WhenAll(tasks);
 
                 foreach (var result in results.Where(r => r != null))
                 {
-                    var key = $"{result.DataCenterType}:{result.RackId}:{result.Side}";
+                    var key =
+                        $"{result.DataCenterType}:{result.RackId}:{result.Side}";
                     newMetrics[key] = result;
                 }
             }
 
-            // יצירת אובייקט ה-Cache
             var cacheData = new RackMetricsCacheFile
             {
                 LastUpdated = DateTime.UtcNow,
@@ -370,25 +411,22 @@ public class DashboardsController : Controller
                 Metrics     = newMetrics
             };
 
-            // שמירה לקובץ - זהה לסגנון AlertsController
             WriteCacheFile(cacheData);
 
             Console.WriteLine(
-                $"Metrics cache updated: {newMetrics.Count} entries. Time: {DateTime.Now}"
-            );
+                $"Metrics cache updated: {newMetrics.Count} entries. " +
+                $"Time: {DateTime.Now}");
 
             return cacheData;
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Error refreshing metrics cache: {ex.Message}");
+            Console.Error.WriteLine(
+                $"Error refreshing metrics cache: {ex.Message}");
             return null;
         }
     }
 
-    /// <summary>
-    /// קריאת מטריקות לארון בודד
-    /// </summary>
     private async Task<RackMetricsEntry> FetchSingleRackMetricsAsync(
         string rackId,
         string dataCenterType,
@@ -423,8 +461,11 @@ public class DashboardsController : Controller
             }
 
             var json    = await response.Content.ReadAsStringAsync();
-            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            var data    = JsonSerializer.Deserialize<JsonElement>(json, options);
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
+            var data = JsonSerializer.Deserialize<JsonElement>(json, options);
 
             return new RackMetricsEntry
             {
@@ -432,21 +473,21 @@ public class DashboardsController : Controller
                 Side               = side,
                 DataCenterType     = dataCenterType,
                 Success            = data.TryGetProperty("success", out var s)
-                                        && s.GetBoolean(),
+                                         && s.GetBoolean(),
                 CurrentPower       = data.TryGetProperty("currentPower", out var p)
-                                        && p.ValueKind != JsonValueKind.Null
-                                        ? p.GetDouble() : null,
-                CurrentTemperature = data.TryGetProperty("currentTemperature", out var t)
-                                        && t.ValueKind != JsonValueKind.Null
-                                        ? t.GetDouble() : null,
+                                         && p.ValueKind != JsonValueKind.Null
+                                         ? p.GetDouble() : null,
+                CurrentTemperature = data.TryGetProperty(
+                                         "currentTemperature", out var t)
+                                         && t.ValueKind != JsonValueKind.Null
+                                         ? t.GetDouble() : null,
                 LastUpdated        = DateTime.UtcNow
             };
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine(
-                $"Error fetching metrics for {rackId} side {side}: {ex.Message}"
-            );
+                $"Error fetching metrics for {rackId} side {side}: {ex.Message}");
 
             return new RackMetricsEntry
             {
@@ -459,9 +500,6 @@ public class DashboardsController : Controller
         }
     }
 
-    /// <summary>
-    /// קבלת רשימת כל הארונות
-    /// </summary>
     private async Task<List<RackIdentifier>> GetAllRacksListAsync()
     {
         try
@@ -475,20 +513,24 @@ public class DashboardsController : Controller
             using var httpClient = new HttpClient(handler);
             var baseUrl = $"{Request.Scheme}://{Request.Host}";
             var racks   = new List<RackIdentifier>();
-            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
 
             foreach (var dcType in new[] { "PT", "RG" })
             {
                 try
                 {
                     var response = await httpClient.GetAsync(
-                        $"{baseUrl}/DataCenter/GetRacksData?dataCenterType={dcType}"
-                    );
+                        $"{baseUrl}/DataCenter/GetRacksData" +
+                        $"?dataCenterType={dcType}");
 
                     if (!response.IsSuccessStatusCode) continue;
 
                     var json = await response.Content.ReadAsStringAsync();
-                    var data = JsonSerializer.Deserialize<JsonElement>(json, options);
+                    var data = JsonSerializer.Deserialize<JsonElement>(
+                        json, options);
 
                     if (data.TryGetProperty("racksData", out var racksData))
                     {
@@ -505,8 +547,7 @@ public class DashboardsController : Controller
                 catch (Exception ex)
                 {
                     Console.Error.WriteLine(
-                        $"Error getting racks for {dcType}: {ex.Message}"
-                    );
+                        $"Error getting racks for {dcType}: {ex.Message}");
                 }
             }
 
@@ -514,7 +555,8 @@ public class DashboardsController : Controller
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Error getting racks list: {ex.Message}");
+            Console.Error.WriteLine(
+                $"Error getting racks list: {ex.Message}");
             return new List<RackIdentifier>();
         }
     }
@@ -523,7 +565,6 @@ public class DashboardsController : Controller
 // ═════════════════════════════════════════════
 // מודלים
 // ═════════════════════════════════════════════
-
 public class RackMetricsCacheFile
 {
     public DateTime LastUpdated { get; set; }

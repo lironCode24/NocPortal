@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Http;
 using System.Collections.Generic;
@@ -12,19 +11,12 @@ using System.Drawing;
 
 public class ShiftsController : Controller
 {
-    private readonly string SHIFTS_FILE_PATH;
-    private readonly string BACKUP_DIRECTORY;
-    private readonly string EXCEL_FILE_PATH;
-    private readonly string FUTURE_SHIFTS_FILE_PATH;
+    // Define file paths as constants
+    private const string SHIFTS_FILE_PATH = @"R:\USERS\TASHTIT\NOC\Portal\files\shifts.csv";
+    private const string BACKUP_DIRECTORY = @"R:\USERS\TASHTIT\NOC\Portal\files\shifts_backup";
+    private const string EXCEL_FILE_PATH = @"R:\USERS\TASHTIT\NOC\משמרות\משמרות.xlsx";
+    private const string FUTURE_SHIFTS_FILE_PATH = @"R:\USERS\TASHTIT\NOC\Portal\files\future_shifts.csv";
 
-    public ShiftsController(IWebHostEnvironment env)
-    {
-        SHIFTS_FILE_PATH = Path.Combine(env.WebRootPath, "assets", "files", "shifts.csv");
-        BACKUP_DIRECTORY = Path.Combine(env.WebRootPath, "assets", "files", "shifts_backup");
-        EXCEL_FILE_PATH = Path.Combine(env.WebRootPath, "assets", "files", "משמרות.xlsx");
-        FUTURE_SHIFTS_FILE_PATH = Path.Combine(env.WebRootPath, "assets", "files", "future_shifts.csv");
-    }
-    
     [HttpGet]
     public IActionResult GetShifts()
     {

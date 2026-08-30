@@ -9,6 +9,7 @@ using System.IO;
 using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Hosting;
 using System.Diagnostics; 
+using NocPortal.Services;
 
 public static class HttpClientExtensions
 {
@@ -26,35 +27,45 @@ public static class HttpClientExtensions
 public class AlertsController : Controller
 {
     private static readonly ConcurrentDictionary<string, List<NoteItem>> _notesCache = new ConcurrentDictionary<string, List<NoteItem>>();
+    private static readonly ConcurrentDictionary<string, string> _helixIdToInternalId = new ConcurrentDictionary<string, string>();
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly string _proxyUrl = "http://10.10.111.209:8080";
-    private readonly string _accessKey = "85Q505MJG73R3KVTYDI9YEZLYT8I59";
-    private readonly string _accessToken = "MhMx6Xzxg3djFUmUO0gP3kkgMdxvMlOiY8ZJIbrlix9YMthuTq";
-    private readonly string _tenantId = "976648405";
-    private readonly string _baseUrl = "https://menora-itom.onbmc.com";
+    private readonly SecretsService     _secrets;
+
+    // *** שדות מחושבים מה-SecretsService ***
+    private string _accessKey    => _secrets.HelixAccessKey;
+    private string _accessToken  => _secrets.HelixAccessSecret;
+    private string _tenantId     => _secrets.HelixTenantId;
+    private string _baseUrl      => _secrets.HelixBaseUrl;
+    private string _proxyUrl     => _secrets.HelixProxyUrl;
     
     // מטמון לטוקנים
     private static string _jwtToken;
     private static DateTime _tokenExpiry = DateTime.MinValue;
     
-    private readonly string _alertsDataFilePath;
-    private readonly string _alertsCacheFilePath;
-    private readonly string _savedFiltersFilePath;
+    // קובץ לשמירת מידע על התראות
+    private readonly string _alertsDataFilePath = @"R:\USERS\TASHTIT\NOC\Portal\files\alerts_data.txt";
+    private readonly string _alertsCacheFilePath = @"R:\USERS\TASHTIT\NOC\Portal\files\alerts_cache.json";
+
+    // נתיב לקובץ הסינונים השמורים
+    private readonly string _savedFiltersFilePath = 
+        @"R:\USERS\TASHTIT\NOC\Portal\files\saved_filters.json";
 
     private static readonly object _fileLock = new object();
 
-    public AlertsController(IHttpClientFactory httpClientFactory, IWebHostEnvironment env)
+    private readonly AuditLogService _auditLog;
+
+    public AlertsController(IHttpClientFactory httpClientFactory, IWebHostEnvironment env,
+        SecretsService secrets,
+        AuditLogService auditLog)  
     {
         _httpClientFactory = httpClientFactory;
-
-        var filesDir = Path.Combine(env.WebRootPath, "portal", "files");
-
-        Directory.CreateDirectory(filesDir);
-
-        _alertsDataFilePath = Path.Combine(filesDir, "alerts_data.txt");
-        _alertsCacheFilePath = Path.Combine(filesDir, "alerts_cache.json");
-        _savedFiltersFilePath = Path.Combine(filesDir, "saved_filters.json");
-
+        _secrets           = secrets;
+        _auditLog = auditLog;
+        
+        // וודא שהתיקייה קיימת
+        Directory.CreateDirectory(Path.GetDirectoryName(_alertsDataFilePath));
+        
+        // טען את המידע מהקובץ בעת אתחול הקונטרולר
         LoadAlertsData();
     }
 
@@ -128,25 +139,63 @@ public class AlertsController : Controller
     }
     
     [HttpGet]
+    public IActionResult GetCurrentUser()
+    {
+        var username = User.Identity?.Name ?? "";
+        return Json(new { username });
+    }
+
+    [HttpGet]
     public IActionResult GetAlerts(int minutes = 1440)
     {
         try
         {
-            // קריאה מהקובץ המקומי
             string json;
+            DateTime lastWriteTime = DateTime.MinValue;
+
             lock (_fileLock)
             {
                 if (!System.IO.File.Exists(_alertsCacheFilePath))
                 {
-                    return Json(new List<object>()); // אם הקובץ לא קיים, החזר רשימה ריקה
+                    return Json(new
+                    {
+                        alerts = new List<object>(),
+                        cacheExists = false,
+                        message = "Cache file not found yet",
+                        lastUpdated = (string)null  
+                    });
                 }
+
                 json = System.IO.File.ReadAllText(_alertsCacheFilePath);
+                lastWriteTime = System.IO.File.GetLastWriteTime(_alertsCacheFilePath);
             }
-            
-            // המרת ה-JSON לאובייקטים
+
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return Json(new
+                {
+                    alerts = new List<object>(),
+                    cacheExists = false,
+                    message = "Cache file is empty",
+                    lastUpdated = (string)null  
+                });
+            }
+
             var alerts = JsonSerializer.Deserialize<List<object>>(json);
-            
-            return Json(alerts);
+            var cacheAgeSeconds = (DateTime.Now - lastWriteTime).TotalSeconds;
+
+            // *** חדש: המר לשעון ישראל ***
+            var israelTz = TimeZoneInfo.FindSystemTimeZoneById("Israel Standard Time");
+            var israelTime = TimeZoneInfo.ConvertTime(lastWriteTime, israelTz);
+            string lastUpdatedStr = israelTime.ToString("dd/MM/yyyy HH:mm:ss");
+
+            return Json(new
+            {
+                alerts,
+                cacheExists = true,
+                cacheAgeSeconds = (int)cacheAgeSeconds,
+                lastUpdated = lastUpdatedStr  
+            });
         }
         catch (Exception ex)
         {
@@ -197,7 +246,27 @@ public class AlertsController : Controller
                     long date = note.TryGetProperty("date", out var dateProp) ? dateProp.GetInt64() : 0;
                     string source = note.TryGetProperty("source", out var sourceProp) ? sourceProp.GetString() : "";
                     string content = note.TryGetProperty("content", out var contentProp) ? contentProp.GetString() : "";
-                    
+
+                    if (!string.IsNullOrEmpty(content) && 
+                        content.Contains("OVERRIDE_CLOSED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // סמן שיש לעדכן את הסטטוס ל-CLOSED
+                        // נחזיר דגל מיוחד דרך מחלקה עוטפת
+                        notesList.Add(new NoteItem
+                        {
+                            Text = content,
+                            UserName = source,
+                            Date = TimeZoneInfo.ConvertTimeFromUtc(
+                                DateTimeOffset.FromUnixTimeMilliseconds(date).UtcDateTime,
+                                TimeZoneInfo.FindSystemTimeZoneById("Israel Standard Time")),
+                            Time = TimeZoneInfo.ConvertTimeFromUtc(
+                                DateTimeOffset.FromUnixTimeMilliseconds(date).UtcDateTime,
+                                TimeZoneInfo.FindSystemTimeZoneById("Israel Standard Time")).ToString("HH:mm"),
+                            Source = source,
+                            IsOverrideClosed = true
+                        });
+                        continue;
+                    }
                     
                     // פילטור פשוט: הצג רק הערות עם source לא ריק
                     if (!string.IsNullOrEmpty(source))
@@ -243,72 +312,76 @@ public class AlertsController : Controller
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($">>> ERROR in FetchEventNotes for event {eventId}: {ex.Message}");
+            Console.Error.WriteLine($">>> Error in FetchEventNotes for event {eventId}: {ex.Message}");
             Console.Error.WriteLine($">>> Stack trace: {ex.StackTrace}");
             return new List<NoteItem>();
         }
     }
 
     [HttpGet]
-    public async Task<IActionResult> UpdateAlertsCache()
+    public async Task<IActionResult> UpdateAlertsCache(bool force = false)
     {
         try
         {
-            // בדוק אם הקובץ עודכן ב-1 הדקות האחרונות ואם לא נדרש רענון מלא
             bool shouldUpdate = true;
-            
-            if (System.IO.File.Exists(_alertsCacheFilePath))
+
+            if (System.IO.File.Exists(_alertsCacheFilePath) && !force)
             {
                 var lastWriteTime = System.IO.File.GetLastWriteTime(_alertsCacheFilePath);
                 var timeSinceLastUpdate = DateTime.Now - lastWriteTime;
-                
-                // אם עברו יותר מ-3 דקות בלי עדכון - מחק את הקאש
-                if (timeSinceLastUpdate.TotalMinutes >= 3)
+
+                if (timeSinceLastUpdate.TotalMinutes >= 5)
                 {
                     lock (_fileLock)
                     {
                         if (System.IO.File.Exists(_alertsCacheFilePath))
                         {
                             System.IO.File.Delete(_alertsCacheFilePath);
-                            Console.WriteLine($"Cache deleted - not updated for {timeSinceLastUpdate.TotalMinutes:F1} minutes");
                         }
                     }
-                    
-                    // נקה את מטמון ההערות
                     ClearNotesCache();
-                    
-                    // עדכן מחדש
                     shouldUpdate = true;
                 }
-                // אם עברו פחות מ-1 דקות מהעדכון האחרון, אל תעדכן
-                if (timeSinceLastUpdate.TotalMinutes < 1)
+                // *** תיקון: חסום רק אם עברו פחות מ-25 שניות (ולא force) ***
+                if (timeSinceLastUpdate.TotalSeconds < 25)
                 {
-                    shouldUpdate = false;
-                    return Json(new { success = true, updated = false, message = "Cache is still fresh" });
+                    return Json(new
+                    {
+                        success = true,
+                        updated = false,
+                        message = "Cache is still fresh"
+                    });
                 }
             }
-            
-            // רק אם צריך לעדכן, פנה ל-API
-            if (shouldUpdate)
-            {
-                // נקה את מטמון ההערות לפני עדכון
-                ClearNotesCache();
-                
-                // קריאה לשירות החיצוני לקבלת התראות עדכניות
-                // var alerts = await FetchAlertsFromService();
-                var alerts = GetMockAlertsList(50);
 
-                // שמירת ההתראות בקובץ מטמון
-                lock (_fileLock)
-                {
-                    Directory.CreateDirectory(Path.GetDirectoryName(_alertsCacheFilePath));
-                    System.IO.File.WriteAllText(_alertsCacheFilePath, JsonSerializer.Serialize(alerts));
-                }
-                
-                return Json(new { success = true, updated = true, count = alerts.Count });
+            // נקה מטמון הערות לפני עדכון
+            ClearNotesCache();
+
+            // קריאה לשירות החיצוני לקבלת התראות עדכניות
+            var alerts = await FetchAlertsFromService();
+
+            // שמירת ההתראות בקובץ מטמון
+            lock (_fileLock)
+            {
+                Directory.CreateDirectory(
+                    Path.GetDirectoryName(_alertsCacheFilePath));
+                System.IO.File.WriteAllText(
+                    _alertsCacheFilePath,
+                    JsonSerializer.Serialize(alerts));
             }
-            
-            return Json(new { success = true, updated = false });
+
+            // *** חדש: המר לשעון ישראל ***
+            var israelTz = TimeZoneInfo.FindSystemTimeZoneById("Israel Standard Time");
+            var israelTime = TimeZoneInfo.ConvertTime(DateTime.Now, israelTz);
+            string lastUpdatedStr = israelTime.ToString("dd/MM/yyyy HH:mm:ss");
+
+            return Json(new
+            {
+                success = true,
+                updated = true,
+                count = alerts.Count,
+                lastUpdated = lastUpdatedStr
+            });
         }
         catch (Exception ex)
         {
@@ -358,7 +431,7 @@ public class AlertsController : Controller
                                 query_string = new
                                 {
                                     analyze_wildcard = true,
-                                    query = "mx_noc:Yes AND NOT (status:CLOSED OR BLACKOUT)"
+                                    query = "mx_noc:Yes AND NOT status:CLOSED AND NOT status:BLACKOUT"
                                 }
                             }
                         }
@@ -486,7 +559,11 @@ public class AlertsController : Controller
                             }
 
                             string id = GenerateStableId(source);
-                                        
+                            // *** תיקון: שמור מיפוי idHelix → id פנימי ***
+                            if (!string.IsNullOrEmpty(idHelix))
+                            {
+                                _helixIdToInternalId[idHelix] = id;
+                            }
                             string host = GetStringProperty(source, "mx_host");
                                         
                             string message = GetStringProperty(source, "msg");
@@ -506,6 +583,12 @@ public class AlertsController : Controller
                                                 GetStringProperty(source, "mx_ip") ?? "";
                                                 
                             string contacts = GetStringProperty(source, "mx_responsible_team") ?? "";
+
+                            // *** ניקוי: הסר תוספת "(Assigned to: ...)" אם קיימת מעדכונים קודמים ***
+                            if (contacts.Contains(" (Assigned to:"))
+                            {
+                                contacts = contacts.Substring(0, contacts.IndexOf(" (Assigned to:")).Trim();
+                            }
                                             
                             // קבל את ההערות המקוריות מהשרת
                             string originalNotes = GetStringProperty(source, "mx_notes") ?? 
@@ -537,16 +620,28 @@ public class AlertsController : Controller
                             var alertData = alertsData.ContainsKey(id) ? alertsData[id] : null;
 
                             // עדכן את הסטטוס אם קיים בקובץ המקומי
+                            string helixStatus = status;
+
+                            // עדכן מהמטמון המקומי רק אם Helix לא אומר CLOSED
                             if (alertData != null && !string.IsNullOrEmpty(alertData.Status))
                             {
-                                status = alertData.Status;
+                                // אם Helix אומר CLOSED - תמיד כבד את Helix, לא צריך הערות
+                                if (!string.Equals(helixStatus, "CLOSED", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    status = alertData.Status;
+                                }
+                                else
+                                {
+                                    // עדכן גם מקומית כדי שבפעם הבאה לא יהיה קונפליקט
+                                    UpdateAlertData(id, status: "CLOSED");
+                                }
                             }
 
                             // הוסף מידע על המשתמש שקיבל את ההקצאה אם קיים
-                            if (alertData != null && !string.IsNullOrEmpty(alertData.Assignee))
+                            /*if (alertData != null && !string.IsNullOrEmpty(alertData.Assignee))
                             {
                                 contacts = $"{contacts} (Assigned to: {alertData.Assignee})";
-                            }
+                            }*/
 
                             // יצירת רשימה מאוחדת של הערות
                             var combinedNotes = new List<NoteItem>();
@@ -559,6 +654,12 @@ public class AlertsController : Controller
                             {
                                 var serverNotes = await FetchEventNotes(client, idHelix);
                                 combinedNotes.AddRange(serverNotes);
+                                bool hasOverrideClosed = serverNotes.Any(n => n.IsOverrideClosed);
+                                if (hasOverrideClosed)
+                                {
+                                    status = "CLOSED";  // עדכן את הסטטוס המקומי
+                                    Console.WriteLine($"[OVERRIDE_CLOSED] Alert {idHelix} forced to CLOSED by note");
+                                }
                             }
 
                             // 2. הוסף הערות מקומיות אם קיימות (רק אם אינן כפולות)
@@ -697,7 +798,8 @@ public class AlertsController : Controller
                 {
                     // עדכון מקומי
                     UpdateAlertData(request.EventId, status: mappedStatus);
-                    
+                    await UpdateAlertInCache(request.EventId, mappedStatus);
+
                     return Json(new { 
                         success = true, 
                         message = $"Event status updated to {mappedStatus} successfully" 
@@ -768,35 +870,36 @@ public class AlertsController : Controller
                 
                 if (response.IsSuccessStatusCode)
                 {
-                    // עדכון מקומי
+                    string userName = "Helix";
+                    string noteText = request.Note ?? ""; // *** תיקון: null → ""
+
+                    if (!string.IsNullOrEmpty(request.Note) && request.Note.Contains(":"))
+                    {
+                        var parts = request.Note.Split(':', 2);
+                        userName = parts[0].Trim();
+                        noteText = parts[1].Trim();
+                    }
+
                     foreach (var eventId in request.EventIds)
                     {
-                        // חילוץ שם המשתמש מההערה
-                        string userName = "Helix";
-                        string noteText = request.Note;
-                        
-                        // אם ההערה מכילה ":", חלק אותה לשם משתמש והערה
-                        if (!string.IsNullOrEmpty(request.Note) && request.Note.Contains(":"))
-                        {
-                            var parts = request.Note.Split(':', 2);
-                            userName = parts[0].Trim();
-                            noteText = parts[1].Trim();
-                        }
-                        
-                        // עדכון הסטטוס
+                        // *** תיקון: עדכן סטטוס תמיד, ללא תלות בהערה ***
                         UpdateAlertData(eventId, status: "CLOSED");
-                        
-                        // הוספת ההערה בנפרד
+
+                        // הוספת ההערה רק אם קיימת
                         if (!string.IsNullOrEmpty(noteText))
                         {
                             UpdateAlertData(eventId, notes: noteText, userName: userName);
                         }
                     }
-                    
-                    return Json(new { 
-                        success = true, 
-                        message = "Events closed successfully" 
-                    });
+
+                    // *** תיקון: cacheTasks מחוץ ללולאה, עם noteText/userName הנכונים ***
+                    var cacheTasks = request.EventIds.Select(id =>
+                        UpdateAlertInCache(id, "CLOSED",
+                            string.IsNullOrEmpty(noteText) ? null : noteText,
+                            string.IsNullOrEmpty(noteText) ? null : userName));
+                    await Task.WhenAll(cacheTasks);
+
+                    return Json(new { success = true, message = "Events closed successfully" });
                 }
                 else
                 {
@@ -885,8 +988,10 @@ public class AlertsController : Controller
                         {
                             UpdateAlertData(eventId, notes: noteText, userName: userName);
                         }
+                        var cacheTasks = request.EventIds.Select(id => 
+                            UpdateAlertInCache(id, "ASSIGN", noteText, userName));
+                        await Task.WhenAll(cacheTasks);
                     }
-                    
                     return Json(new { 
                         success = true, 
                         message = $"Events assigned to {request.AssignedUser} successfully" 
@@ -917,83 +1022,82 @@ public class AlertsController : Controller
     }
 
     [HttpPost]
-    public async Task<IActionResult> AcknowledgeEvents([FromBody] AcknowledgeEventsRequest request)
+    public async Task<IActionResult> AcknowledgeEvents(
+        [FromBody] AcknowledgeEventsRequest request)
     {
         try
         {
-            // Filter invalid IDs
             var validEventIds = request.EventIds
                 .Where(id => !string.IsNullOrWhiteSpace(id) && id != "service")
                 .ToList();
-            
+
             if (validEventIds.Count == 0)
-            {
-                return Json(new { success = false, message = "No valid event IDs to acknowledge" });
-            }
-            
-            // Ensure valid token
+                return Json(new { success = false, 
+                    message = "No valid event IDs to acknowledge" });
+
             await EnsureValidToken();
-            
-            // שימוש ב-HttpClient מהפקטורי במקום ליצור חדש
-            var client = _httpClientFactory.CreateClient();
-            
-            // הגדרת הפרוקסי
+
             var handler = new HttpClientHandler
             {
                 Proxy = new System.Net.WebProxy(_proxyUrl),
                 UseProxy = true,
-                ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true
+                ServerCertificateCustomValidationCallback = 
+                    (sender, cert, chain, sslPolicyErrors) => true
             };
-            
+
             using (var httpClient = new HttpClient(handler))
             {
-                httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_jwtToken}");
+                httpClient.DefaultRequestHeaders.Add(
+                    "Authorization", $"Bearer {_jwtToken}");
                 httpClient.DefaultRequestHeaders.Add("tenantId", _tenantId);
                 httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
-                
-                int successCount = 0;
-                int failCount = 0;
-                int alreadyClosedCount = 0;
+
+                int successCount = 0, failCount = 0, alreadyClosedCount = 0;
                 var errors = new List<string>();
-                
-                // Build request body
+
                 var body = new { status = "ACK" };
                 var jsonBody = JsonSerializer.Serialize(body);
-                
-                // Loop through each event ID and update separately
+
                 foreach (var eventId in validEventIds)
                 {
                     try
                     {
-                        var content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
-                        
-                        // שימוש ב-PatchAsync במקום SendAsync
+                        var content = new StringContent(
+                            jsonBody, Encoding.UTF8, "application/json");
+
                         var response = await httpClient.PatchAsync(
-                            $"{_baseUrl}/events-service/api/v1.0/events/{eventId}", content);
-                        
-                        var responseContent = await response.Content.ReadAsStringAsync();
-                        
+                            $"{_baseUrl}/events-service/api/v1.0/events/{eventId}",
+                            content);
+
+                        var responseContent = 
+                            await response.Content.ReadAsStringAsync();
+
+                        Console.WriteLine(
+                            $"ACK {eventId}: HTTP {(int)response.StatusCode} " +
+                            $"- {responseContent.Substring(0, 
+                                Math.Min(200, responseContent.Length))}");
+
                         if (response.IsSuccessStatusCode)
                         {
                             successCount++;
-                            
-                            // Update local data
+                            // *** תיקון: UpdateAlertData מטפל במיפוי idHelix → id ***
                             UpdateAlertData(eventId, status: "ACK");
+                            await UpdateAlertInCache(eventId, "ACK");
                         }
                         else
                         {
-                            // בדיקה מדויקת יותר של תוכן התגובה, בדומה לקוד JavaScript
-                            if (responseContent.Contains("closed", StringComparison.OrdinalIgnoreCase) || 
-                                responseContent.Contains("blacked out", StringComparison.OrdinalIgnoreCase))
+                            if (responseContent.Contains("closed", 
+                                    StringComparison.OrdinalIgnoreCase) ||
+                                responseContent.Contains("blacked out", 
+                                    StringComparison.OrdinalIgnoreCase))
                             {
                                 alreadyClosedCount++;
-                                Console.WriteLine($"⊘ Event already closed/blacked out: {eventId}");
                             }
                             else
                             {
                                 failCount++;
-                                errors.Add($"Event {eventId}: {response.StatusCode}, Response: {responseContent}");
-                                Console.WriteLine($"✗ Failed to acknowledge event {eventId}. Status: {response.StatusCode}, Response: {responseContent}");
+                                errors.Add($"Event {eventId}: " +
+                                    $"{response.StatusCode} - {responseContent}");
                             }
                         }
                     }
@@ -1001,24 +1105,145 @@ public class AlertsController : Controller
                     {
                         failCount++;
                         errors.Add($"Event {eventId}: {ex.Message}");
-                        Console.Error.WriteLine($"✗ Error acknowledging event {eventId}: {ex.Message}");
+                        Console.Error.WriteLine(
+                            $"Error acknowledging {eventId}: {ex.Message}");
                     }
                 }
-                
-                return Json(new 
-                { 
-                    success = successCount > 0,
-                    message = $"Total: {validEventIds.Count}, Success: {successCount}, Already Closed: {alreadyClosedCount}, Failed: {failCount}",
-                    successCount = successCount,
-                    failCount = failCount,
-                    alreadyClosedCount = alreadyClosedCount,
+
+                // *** תיקון: success=true גם אם חלק נכשלו ***
+                bool overallSuccess = successCount > 0 || alreadyClosedCount > 0;
+
+                return Json(new
+                {
+                    success = overallSuccess,
+                    message = $"Total: {validEventIds.Count}, " +
+                        $"Success: {successCount}, " +
+                        $"Already Closed: {alreadyClosedCount}, " +
+                        $"Failed: {failCount}",
+                    successCount,
+                    failCount,
+                    alreadyClosedCount,
                     errors = errors.Count > 0 ? errors : null
                 });
             }
         }
         catch (Exception ex)
         {
+            Console.Error.WriteLine($"Error in AcknowledgeEvents: {ex.Message}");
             return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    private async Task UpdateAlertInCache(string helixId, string newStatus, 
+        string note = null, string userName = null)
+    {
+        try
+        {
+            if (!System.IO.File.Exists(_alertsCacheFilePath)) return;
+
+            string json;
+            lock (_fileLock)
+            {
+                json = System.IO.File.ReadAllText(_alertsCacheFilePath);
+            }
+
+            if (string.IsNullOrWhiteSpace(json)) return;
+
+            // פרסר את הקאש
+            using var doc = JsonDocument.Parse(json);
+            var alerts = doc.RootElement.EnumerateArray().ToList();
+
+            var updatedAlerts = new List<object>();
+            bool found = false;
+
+            foreach (var alertElement in alerts)
+            {
+                // בדוק אם זו ההתראה שצריך לעדכן
+                string alertHelixId = "";
+                if (alertElement.TryGetProperty("idHelix", out var helixProp))
+                    alertHelixId = helixProp.GetString() ?? "";
+
+                if (string.Equals(alertHelixId, helixId, 
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    found = true;
+
+                    // בנה אובייקט מעודכן
+                    var dict = new Dictionary<string, object>();
+
+                    foreach (var prop in alertElement.EnumerateObject())
+                    {
+                        dict[prop.Name] = prop.Name switch
+                        {
+                            "status" => newStatus ?? 
+                                JsonSerializer.Deserialize<object>(prop.Value.GetRawText()),
+                            "modified" => DateTimeOffset.UtcNow
+                                .ToUnixTimeMilliseconds(),
+                            _ => JsonSerializer.Deserialize<object>(
+                                prop.Value.GetRawText())
+                        };
+                    }
+
+                    // הוסף הערה אם יש
+                    if (!string.IsNullOrEmpty(note) && 
+                        !string.IsNullOrEmpty(userName))
+                    {
+                        var newNote = new
+                        {
+                            text = note,
+                            userName = userName,
+                            date = DateTime.UtcNow,
+                            time = DateTime.Now.ToString("HH:mm"),
+                            source = userName
+                        };
+
+                        // קבל הערות קיימות
+                        List<object> existingNotes = new List<object>();
+                        if (alertElement.TryGetProperty("notes", 
+                            out var notesProp) && 
+                            notesProp.ValueKind == JsonValueKind.Array)
+                        {
+                            existingNotes = notesProp.EnumerateArray()
+                                .Select(n => (object)JsonSerializer
+                                    .Deserialize<object>(n.GetRawText()))
+                                .ToList();
+                        }
+
+                        existingNotes.Insert(0, newNote);
+                        dict["notes"] = existingNotes;
+                    }
+
+                    updatedAlerts.Add(dict);
+                }
+                else
+                {
+                    updatedAlerts.Add(JsonSerializer.Deserialize<object>(
+                        alertElement.GetRawText()));
+                }
+            }
+
+            if (found)
+            {
+                lock (_fileLock)
+                {
+                    System.IO.File.WriteAllText(
+                        _alertsCacheFilePath,
+                        JsonSerializer.Serialize(updatedAlerts));
+                }
+                Console.WriteLine(
+                    $"✓ Cache updated for helixId={helixId}, " +
+                    $"newStatus={newStatus}");
+            }
+            else
+            {
+                Console.WriteLine(
+                    $"⚠ helixId={helixId} not found in cache");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(
+                $"Error updating cache for {helixId}: {ex.Message}");
         }
     }
 
@@ -1069,6 +1294,8 @@ public class AlertsController : Controller
             
             // עדכן את המידע המקומי
             UpdateAlertData(request.AlertId, notes: request.Note, userName: request.UserName ?? "משתמש");
+            await UpdateAlertInCache(request.EventId, null, 
+                request.Note, request.UserName ?? "משתמש");
             
             if (apiSuccess)
             {
@@ -1163,58 +1390,55 @@ public class AlertsController : Controller
     }
 
     // עדכון מידע על התראה
-    private void UpdateAlertData(string alertId, string status = null, string notes = null, string assignee = null, string userName = "Helix")
+    private void UpdateAlertData(string alertId, string status = null, 
+        string notes = null, string assignee = null, string userName = "Helix")
     {
         if (string.IsNullOrEmpty(alertId))
         {
-            Console.Error.WriteLine("Cannot update alert data: alertId is null or empty");
+            Console.Error.WriteLine("Error: Cannot update alert data: alertId is null or empty");
             return;
         }
-        
-        // קריאה ישירה מהקובץ
+
+        // *** תיקון: אם זה idHelix, המר למזהה פנימי ***
+        string internalId = alertId;
+        if (_helixIdToInternalId.TryGetValue(alertId, out var mappedId))
+        {
+            internalId = mappedId;
+            Console.WriteLine($"Mapped helixId {alertId} → internalId {internalId}");
+        }
+
         var alertsData = LoadAlertsData();
-        
-        // קבל את המידע הקיים או צור חדש
-        if (!alertsData.TryGetValue(alertId, out var alertData))
+
+        if (!alertsData.TryGetValue(internalId, out var alertData))
         {
             alertData = new AlertData();
-            alertsData[alertId] = alertData;
+            alertsData[internalId] = alertData;
         }
-        
-        // עדכן רק את השדות שהועברו
+
         if (status != null)
-        {
             alertData.Status = status;
-        }
-        
+
         if (notes != null)
         {
-            // יצירת הערה חדשה
             if (alertData.Notes == null)
-            {
                 alertData.Notes = new List<NoteItem>();
-            }
-            
+
             alertData.Notes.Insert(0, new NoteItem
             {
-            Text = notes,
-            UserName = userName,
-            Date = DateTime.UtcNow,
-            Time = DateTime.Now.ToString("HH:mm")
+                Text = notes,
+                UserName = userName,
+                Date = DateTime.UtcNow,
+                Time = DateTime.Now.ToString("HH:mm")
             });
         }
-        
+
         if (assignee != null)
-        {
             alertData.Assignee = assignee;
-        }
-        
-        // עדכן את זמן השינוי האחרון
+
         alertData.LastModified = DateTime.UtcNow;
-        
-        // שמור את המידע לקובץ
+
         SaveAlertsData(alertsData);
-    
+        Console.WriteLine($"✓ UpdateAlertData: id={internalId}, status={status ?? "unchanged"}");
     }
 
     // ==========================================
@@ -1447,6 +1671,292 @@ public class AlertsController : Controller
         }
     }
 
+    // ── עזר: שלוף התראות מהקאש לפי IDs ──────────────────────────────
+    private List<JsonElement> GetAlertsFromCacheByIds(List<string> ids)
+    {
+        var result = new List<JsonElement>();
+        try
+        {
+            if (!System.IO.File.Exists(_alertsCacheFilePath)) return result;
+
+            string json;
+            lock (_fileLock)
+            {
+                json = System.IO.File.ReadAllText(_alertsCacheFilePath);
+            }
+
+            using var doc = JsonDocument.Parse(json);
+            foreach (var el in doc.RootElement.EnumerateArray())
+            {
+                if (el.TryGetProperty("id", out var idProp) &&
+                    ids.Contains(idProp.GetString() ?? ""))
+                    result.Add(el.Clone());
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"GetAlertsFromCacheByIds: {ex.Message}");
+        }
+        return result;
+    }
+
+    // ── עזר: חלץ שדה מ-JsonElement ───────────────────────────────────
+    private string GetAlertField(JsonElement el, string field) =>
+        el.TryGetProperty(field, out var p) &&
+        p.ValueKind == JsonValueKind.String
+            ? p.GetString() ?? "-"
+            : "-";
+
+    // ────────────────────────────────────────────────────────────────────
+    //  SendAlertEmail - שליחת מייל התראה (יחידה או מרובה)
+    // ────────────────────────────────────────────────────────────────────
+    [HttpPost]
+    public async Task<IActionResult> SendAlertEmail(
+        [FromBody] SendAlertEmailRequest request)
+    {
+        try
+        {
+            // ── ולידציה ──────────────────────────────────────────────
+            if (request?.To == null || request.To.Count == 0)
+                return Json(new { success = false, error = "לא הוזנו נמענים" });
+
+            if (string.IsNullOrWhiteSpace(request.Subject))
+                return Json(new { success = false, error = "חסר נושא" });
+
+            // ── שלוף התראות מהקאש לפי IDs ───────────────────────────
+            var alerts = GetAlertsFromCacheByIds(request.AlertIds ?? new List<string>());
+
+            if (alerts.Count == 0)
+                return Json(new { success = false, error = "לא נמצאו התראות" });
+
+            // ── שעון ישראל ───────────────────────────────────────────
+            var israelTz = TimeZoneInfo.FindSystemTimeZoneById("Israel Standard Time");
+
+            // ── בנה שורות טבלה ───────────────────────────────────────
+            var rows = new System.Text.StringBuilder();
+
+            foreach (var a in alerts)
+            {
+                string host        = GetAlertField(a, "host");
+                string hostAddress = GetAlertField(a, "hostAddress");
+                string message     = GetAlertField(a, "message");
+                string severity    = GetAlertField(a, "severity");
+
+                // תאריך פתיחה
+                string openedDate = "-";
+                if (a.TryGetProperty("timestamp", out var tsProp) &&
+                    tsProp.ValueKind == JsonValueKind.Number)
+                {
+                    var dt = TimeZoneInfo.ConvertTime(
+                        DateTimeOffset.FromUnixTimeMilliseconds(
+                            tsProp.GetInt64()).UtcDateTime,
+                        israelTz);
+                    openedDate = dt.ToString("dd/MM/yyyy HH:mm");
+                }
+
+                // צבע severity
+                string bg = (severity?.ToUpper()) switch
+                {
+                    "CRITICAL" => "#e53e3e",
+                    "MAJOR"    => "#dd6b20",
+                    "UNKNOWN"  => "#805ad5",
+                    _          => "#718096"
+                };
+
+                rows.Append($@"
+    <tr>
+        <td style=""padding:8px 12px;border:1px solid #ddd;font-size:13px;
+                    text-align:center;vertical-align:middle;"">
+            {System.Web.HttpUtility.HtmlEncode(message)}
+        </td>
+        <td style=""padding:8px 12px;border:1px solid #ddd;font-size:13px;
+                    text-align:center;vertical-align:middle;"">
+            {System.Web.HttpUtility.HtmlEncode(hostAddress)}
+        </td>
+        <td style=""padding:8px 12px;border:1px solid #ddd;font-size:13px;
+                    text-align:center;vertical-align:middle;"">
+            {System.Web.HttpUtility.HtmlEncode(host)}
+        </td>
+        <td style=""padding:8px 12px;border:1px solid #ddd;
+                    text-align:center;vertical-align:middle;"">
+            <span style=""display:inline-block;padding:3px 10px;border-radius:12px;
+                        font-size:11px;font-weight:700;
+                        background:{bg};color:#fff;"">
+            {System.Web.HttpUtility.HtmlEncode(severity ?? "UNKNOWN")}
+            </span>
+        </td>
+        <td style=""padding:8px 12px;border:1px solid #ddd;font-size:13px;
+                    text-align:center;vertical-align:middle;white-space:nowrap;"">
+            {System.Web.HttpUtility.HtmlEncode(openedDate)}
+        </td>
+    </tr>");
+            }
+
+            // ── כותרת דינמית לפי מספר התראות ────────────────────────
+            bool isSingle   = alerts.Count == 1;
+            string introText = isSingle
+                ? "התראה זו פתוחה לטיפול במסך ההתראות:"
+                : "התראות אלו פתוחות לטיפול במסך ההתראות:";
+
+            string tableTitle = isSingle
+                ? "פרטי ההתראה:"
+                : "פרטי ההתראות:";
+
+            // ── חתימה ────────────────────────────────────────────────
+            var signaturePath = System.IO.Path.Combine(
+                AppDomain.CurrentDomain.BaseDirectory,
+                "wwwroot", "images", "noc_signature.png");
+            bool hasSignature = System.IO.File.Exists(signaturePath);
+
+            var signatureHtml = hasSignature
+                ? @"<img src=""cid:noc_signature"" alt=""NOC Team""
+                        style=""max-width:300px;height:auto;
+                                display:block;margin-top:8px;""/>"
+                : @"<p style=""margin:4px 0 0;font-size:13px;
+                            color:#64748B;"">חדר מחשב - NOC</p>";
+
+            // ── בנה HTML מלא ─────────────────────────────────────────
+            var htmlBody = $@"<!DOCTYPE html>
+    <html dir=""rtl"" lang=""he"">
+    <head><meta charset=""UTF-8""></head>
+    <body style=""font-family:Arial,Helvetica,sans-serif;direction:rtl;
+                font-size:14px;color:#333;line-height:1.7;
+                padding:20px;margin:0;"">
+
+    <p style=""margin:0 0 8px 0;"">היי,</p>
+    <p style=""margin:0 0 16px 0;"">
+        {introText}
+    </p>
+
+    <p style=""margin:0 0 8px 0;font-weight:700;color:#1e293b;"">
+        {tableTitle}
+    </p>
+
+    <table style=""width:100%;border-collapse:collapse;
+                direction:rtl;margin-bottom:24px;"">
+        <thead>
+        <tr style=""background:#320F5B;"">
+            <th style=""padding:10px 12px;border:1px solid #4a1a7a;
+                    color:#fff;font-size:13px;font-weight:700;
+                    text-align:center;vertical-align:middle;"">Message</th>
+            <th style=""padding:10px 12px;border:1px solid #4a1a7a;
+                    color:#fff;font-size:13px;font-weight:700;
+                    text-align:center;vertical-align:middle;"">IP Address</th>
+            <th style=""padding:10px 12px;border:1px solid #4a1a7a;
+                    color:#fff;font-size:13px;font-weight:700;
+                    text-align:center;vertical-align:middle;"">Host Name</th>
+            <th style=""padding:10px 12px;border:1px solid #4a1a7a;
+                    color:#fff;font-size:13px;font-weight:700;
+                    text-align:center;vertical-align:middle;"">Severity</th>
+            <th style=""padding:10px 12px;border:1px solid #4a1a7a;
+                    color:#fff;font-size:13px;font-weight:700;
+                    text-align:center;vertical-align:middle;direction:ltr;"">Date & Time</th>
+        </tr>
+        </thead>
+        <tbody>
+        {rows}
+        </tbody>
+    </table>
+
+    <br>
+    {signatureHtml}
+
+    </body>
+    </html>";
+
+            // ── שלח SMTP ─────────────────────────────────────────────
+            using var smtp = new System.Net.Mail.SmtpClient("172.22.28.25", 25)
+            {
+                EnableSsl             = false,
+                DeliveryMethod        = System.Net.Mail.SmtpDeliveryMethod.Network,
+                UseDefaultCredentials = false,
+                Credentials           = System.Net.CredentialCache.DefaultNetworkCredentials,
+                Timeout               = 10_000
+            };
+
+            using var mail = new System.Net.Mail.MailMessage
+            {
+                From       = new System.Net.Mail.MailAddress(
+                    "noc@menoramivt.co.il", "NOC Portal"),
+                Subject    = request.Subject,
+                IsBodyHtml = true
+            };
+
+            mail.SubjectEncoding = System.Text.Encoding.UTF8;
+            mail.BodyEncoding    = System.Text.Encoding.UTF8;
+            mail.HeadersEncoding = System.Text.Encoding.UTF8;
+
+            // ── נמענים (To) ──────────────────────────────────────────
+            foreach (var addr in request.To.Where(a =>
+                !string.IsNullOrWhiteSpace(a) && a.Contains('@')))
+                mail.To.Add(addr.Trim());
+
+            // ── עותק (CC) ────────────────────────────────────────────
+            foreach (var addr in (request.Cc ?? new List<string>()).Where(a =>
+                !string.IsNullOrWhiteSpace(a) && a.Contains('@')))
+                mail.CC.Add(addr.Trim());
+
+            // ── HTML View ────────────────────────────────────────────
+            var htmlView = System.Net.Mail.AlternateView
+                .CreateAlternateViewFromString(
+                    htmlBody, System.Text.Encoding.UTF8, "text/html");
+
+            if (hasSignature)
+            {
+                var sig = new System.Net.Mail.LinkedResource(
+                    signaturePath, "image/png")
+                {
+                    ContentId        = "noc_signature",
+                    TransferEncoding = System.Net.Mime.TransferEncoding.Base64
+                };
+                htmlView.LinkedResources.Add(sig);
+            }
+
+            mail.AlternateViews.Add(htmlView);
+            await smtp.SendMailAsync(mail);
+            _auditLog?.Log(new AuditLogEntry
+            {
+                EventType = AuditEventTypes.EmailSent,
+                Username  = "system",
+                IpAddress = "system",
+                Details   = $"[SendAlertEmail] Email sent | To={string.Join(", ", request.To)}",
+                Success   = true
+            });
+            Console.WriteLine(
+                $"[SendAlertEmail] נשלח אל {string.Join(", ", request.To)} | " +
+                $"alertIds: {string.Join(", ", request.AlertIds ?? new List<string>())}");
+
+            return Json(new { success = true, count = alerts.Count });
+        }
+        catch (System.Net.Mail.SmtpException ex)
+        {
+             _auditLog?.Log(new AuditLogEntry
+            {
+                EventType = AuditEventTypes.EmailFailed,
+                Username  = "system",
+                IpAddress = "system",
+                Details   = $"[SendAlertEmail] Email failed | To={string.Join(", ", request.To)} | Error={ex.Message}",
+                Success   = false
+            });
+            Console.Error.WriteLine($"[SendAlertEmail] SMTP: {ex.Message}");
+            return Json(new { success = false,
+                error = $"שגיאת שרת מייל: {ex.Message}" });
+        }
+        catch (Exception ex)
+        {
+             _auditLog?.Log(new AuditLogEntry
+            {
+                EventType = AuditEventTypes.EmailFailed,
+                Username  = "system",
+                IpAddress = "system",
+                Details   = $"[SendAlertEmail] Email failed | To={string.Join(", ", request.To)} | Error={ex.Message}",
+                Success   = false
+            });
+            Console.Error.WriteLine($"[SendAlertEmail] {ex.Message}");
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
     private async Task EnsureValidToken()
     {
         // בדוק אם הטוקן תקף
@@ -1539,45 +2049,13 @@ public class AlertsController : Controller
             case "WARNING":
             case "MINOR":
                 return "MAJOR";
+            case "OK":
+                return "OK";
             default:
                 return "UNKNOWN";
         }
     }
-
-    [HttpGet]
-    private List<object> GetMockAlertsList(int count)
-    {
-        var mockAlerts = new List<object>();
-        var now = DateTimeOffset.UtcNow;
-        var rand = new Random();
-
-        string[] hosts = { "srv-web-prod-01", "db-sql-cluster-02", "app-api-gateway" };
-        string[] ips = { "10.10.20.11", "10.10.40.55", "10.10.10.5" };
-        
-        for (int i = 1; i <= count; i++)
-        {
-            var alert = new
-            {
-                id = Guid.NewGuid().ToString("N").Substring(0, 16),
-                idHelix = $"bme_event_{1000000 + i}",
-                host = hosts[rand.Next(hosts.Length)],
-                message = "Mock Alert Error Description Code " + rand.Next(100, 999),
-                timestamp = now.AddMinutes(-rand.Next(5, 200)).ToUnixTimeMilliseconds(),
-                severity = rand.Next(2) == 0 ? "CRITICAL" : "MAJOR",
-                status = "OPEN",
-                hostAddress = ips[rand.Next(ips.Length)],
-                contacts = "DevOps Team",
-                notes = (object)null,
-                modified = (long?)null,
-                assignee = (string)null,
-                priority = rand.Next(1, 4)
-            };
-            mockAlerts.Add(alert);
-        }
-        
-        return mockAlerts.Cast<dynamic>().OrderByDescending(a => a.timestamp).ToList();
-    }
-
+    
     private string MapStatus(string status)
     {
         status = (status ?? "").ToUpper();
@@ -1601,6 +2079,16 @@ public class AlertsController : Controller
     }
 }
 
+
+// ── DTO מאוחד לשליחת מייל (יחיד ומרובה) ──────────────────────────
+public class SendAlertEmailRequest
+{
+    public List<string> AlertIds { get; set; } = new();
+    public List<string> To       { get; set; } = new();
+    public List<string> Cc       { get; set; } = new();
+    public string       Subject  { get; set; } = "";
+}
+
 // מחלקה לשמירת מידע על התראות
 public class AlertData
 {
@@ -1618,6 +2106,7 @@ public class NoteItem
     public DateTime Date { get; set; } = DateTime.UtcNow;
     public string Time { get; set; } = DateTime.Now.ToString("HH:mm");
     public string Source { get; set; } = "";
+    public bool IsOverrideClosed { get; set; } = false;
 }
 
 // מחלקות בקשה

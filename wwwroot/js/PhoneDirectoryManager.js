@@ -30,6 +30,10 @@ class PhoneDirectoryManager {
         this.refreshInterval = null;
         this.isModalOpen = false;
         this.AUTO_REFRESH_MINUTES = 5;
+        this.activeTab = 'all';
+        this.newUsersData = [];
+        this.changedUsersData = [];
+        this.duplicatesData = [];
     }
 
     async initialize() {
@@ -1106,4 +1110,1412 @@ window.openAddContactModal = function () {
 
 window.closeAddContactModal = function () {
     phoneDirectoryManager.closeAddContactModal();
+};
+
+
+// ═══════════════════════════════════════════════════════════════
+// ExcelImportManager - ייבוא אנשי קשר מ-Excel
+// סגנון זהה ל-ServersDashboard
+// ═══════════════════════════════════════════════════════════════
+class ExcelImportManager {
+    constructor() {
+        this.importedData = null;
+        this.selectedKeys = new Set();
+        this.newUsersData = [];
+    }
+
+    // ─── פתח מודל ────────────────────────────────────────────
+    openModal() {
+        // הסר מודל קיים
+        const existing = document.getElementById('phoneImportModal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'phoneImportModal';
+        modal.className = 'phone-import-modal-overlay';
+
+        modal.innerHTML = `
+            <div class="phone-import-modal">
+
+                <!-- ══ כותרת ══ -->
+                <div class="phone-import-modal-header">
+                    <div class="phone-import-modal-title-wrap">
+                        <i class="fas fa-file-excel"></i>
+                        <div>
+                            <div class="phone-import-modal-title">
+                                ייבוא אנשי קשר מ-Excel
+                            </div>
+                            <div class="phone-import-modal-subtitle">
+                                עמודות נדרשות:
+                                <code>EnglishName</code>
+                                <code>nameFromMail</code>
+                                <code>email</code>
+                                <code>phoneNum</code>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="phone-import-modal-close"
+                            id="phoneImportClose">
+                        &times;
+                    </button>
+                </div>
+
+                <!-- ══ אזור העלאה ══ -->
+                <div id="phoneImportUploadSection"
+                     class="phone-import-upload-section">
+                    <div class="phone-import-upload-area"
+                         id="phoneImportDropZone">
+                        <i class="fas fa-cloud-upload-alt
+                                  phone-import-upload-icon"></i>
+                        <p class="phone-import-upload-text">
+                            גרור קובץ Excel לכאן
+                        </p>
+                        <p class="phone-import-upload-sub">
+                            או
+                        </p>
+                        <label class="phone-import-file-label">
+                            <i class="fas fa-folder-open"></i>
+                            בחר קובץ
+                            <input type="file"
+                                   id="phoneImportFileInput"
+                                   accept=".xlsx,.xls"
+                                   style="display:none">
+                        </label>
+                        <span id="phoneImportFileName"
+                              class="phone-import-file-name">
+                            לא נבחר קובץ
+                        </span>
+                    </div>
+
+                    <div class="phone-import-upload-actions">
+                        <button id="phoneImportProcessBtn"
+                                class="phone-import-process-btn"
+                                style="display:none">
+                            <i class="fas fa-cogs"></i>
+                            עבד קובץ
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ══ תצוגה מקדימה ══ -->
+                <div id="phoneImportPreview"
+                     style="display:none">
+                </div>
+
+                <!-- ══ Footer ══ -->
+                <div class="phone-import-footer"
+                     id="phoneImportFooter"
+                     style="display:none">
+                    <div class="phone-import-footer-info"
+                         id="phoneImportFooterInfo">
+                    </div>
+                    <div class="phone-import-footer-btns">
+                        <button class="phone-import-cancel-btn"
+                                id="phoneImportCancelBtn">
+                            <i class="fas fa-times"></i>
+                            ביטול
+                        </button>
+                        <button class="phone-import-save-btn"
+                                id="phoneImportSaveBtn"
+                                disabled>
+                            <i class="fas fa-save"></i>
+                            שמור נבחרים
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        this._bindModalEvents(modal);
+    }
+
+    // ─── קשר אירועים למודל ───────────────────────────────────
+    _bindModalEvents(modal) {
+        // סגירה
+        const closeModal = () => {
+            modal.remove();
+            this.importedData = null;
+            this.selectedKeys.clear();
+            this.newUsersData = [];
+        };
+
+        document.getElementById('phoneImportClose')
+            .addEventListener('click', closeModal);
+        document.getElementById('phoneImportCancelBtn')
+            .addEventListener('click', closeModal);
+
+        // בחירת קובץ
+        const fileInput = document.getElementById(
+            'phoneImportFileInput'
+        );
+        fileInput.addEventListener('change', e => {
+            this._handleFileSelect(e.target.files[0]);
+        });
+
+        // Drag & Drop
+        const dropZone = document.getElementById(
+            'phoneImportDropZone'
+        );
+        dropZone.addEventListener('dragover', e => {
+            e.preventDefault();
+            dropZone.classList.add('phone-import-drag-over');
+        });
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('phone-import-drag-over');
+        });
+        dropZone.addEventListener('drop', e => {
+            e.preventDefault();
+            dropZone.classList.remove('phone-import-drag-over');
+            const file = e.dataTransfer.files[0];
+            if (file) this._handleFileSelect(file);
+        });
+
+        // עיבוד קובץ
+        document.getElementById('phoneImportProcessBtn')
+            .addEventListener('click', () => this._processFile());
+
+        // שמירה
+        document.getElementById('phoneImportSaveBtn')
+            .addEventListener('click', () => this._saveSelected());
+    }
+
+    // ─── הוסף כפתור ייצוא ל-Footer ───────────────────────
+    _addExportButton() {
+        // הסר כפתור קיים אם יש
+        const existing = document.getElementById('phoneImportExportBtn');
+        if (existing) existing.remove();
+
+        const footerBtns = document.querySelector(
+            '.phone-import-footer-btns'
+        );
+        if (!footerBtns) return;
+
+        const exportBtn = document.createElement('button');
+        exportBtn.id = 'phoneImportExportBtn';
+        exportBtn.className = 'phone-import-export-btn';
+        exportBtn.innerHTML = `
+        <i class="fas fa-file-excel"></i>
+        ייצא דוח לאקסל
+    `;
+        exportBtn.addEventListener('click', () => {
+            this._exportResultsToExcel();
+        });
+
+        // הכנס לפני כפתור הביטול
+        const cancelBtn = document.getElementById('phoneImportCancelBtn');
+        if (cancelBtn) {
+            footerBtns.insertBefore(exportBtn, cancelBtn);
+        } else {
+            footerBtns.appendChild(exportBtn);
+        }
+    }
+
+    // ─── טפל בבחירת קובץ ─────────────────────────────────────
+    _handleFileSelect(file) {
+        if (!file) return;
+
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (ext !== 'xlsx' && ext !== 'xls') {
+            this._showToast('יש להעלות קובץ Excel בלבד', 'error');
+            return;
+        }
+
+        document.getElementById('phoneImportFileName')
+            .textContent = file.name;
+
+        const processBtn = document.getElementById(
+            'phoneImportProcessBtn'
+        );
+        processBtn.style.display = 'inline-flex';
+        processBtn._file = file;
+    }
+
+    // ─── עבד קובץ ────────────────────────────────────────────
+    async _processFile() {
+        const processBtn = document.getElementById(
+            'phoneImportProcessBtn'
+        );
+        const file = processBtn._file;
+        if (!file) return;
+
+        // הצג loading
+        processBtn.disabled = true;
+        processBtn.innerHTML =
+            '<i class="fas fa-spinner fa-spin"></i> מעבד...';
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const response = await fetch(
+                '/PhoneDirectory/ImportFromExcel',
+                {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'Accept-Charset': 'utf-8'
+                    }
+                }
+            );
+            const result = await response.json();
+
+            if (result.success) {
+                this.importedData = result.data;
+                this.newUsersData = result.data.newUsers || [];
+                this._renderPreview(result);
+            } else {
+                this._showError(result.message);
+            }
+        } catch (err) {
+            console.error('Error processing file:', err);
+            this._showError('שגיאה בעיבוד הקובץ');
+        } finally {
+            processBtn.disabled = false;
+            processBtn.innerHTML =
+                '<i class="fas fa-cogs"></i> עבד קובץ';
+        }
+    }
+
+    // ─── ייצא תוצאות לאקסל ───────────────────────────────────
+    async _exportResultsToExcel() {
+        if (!this.importedData) {
+            this._showToast('אין נתונים לייצוא', 'warning');
+            return;
+        }
+
+        // ── טען ExcelJS ───────────────────────────────────────────
+        if (typeof ExcelJS === 'undefined') {
+            try {
+                await new Promise((res, rej) => {
+                    const s = document.createElement('script');
+                    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/' +
+                        'exceljs/4.3.0/exceljs.min.js';
+                    s.onload = res;
+                    s.onerror = () => rej(new Error('נכשלה טעינת ExcelJS'));
+                    document.head.appendChild(s);
+                });
+            } catch (err) {
+                this._showToast('שגיאה בטעינת ספריית Excel', 'error');
+                return;
+            }
+        }
+
+        // ── טען FileSaver ─────────────────────────────────────────
+        if (typeof saveAs === 'undefined') {
+            try {
+                await new Promise((res, rej) => {
+                    const s = document.createElement('script');
+                    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/' +
+                        'FileSaver.js/2.0.5/FileSaver.min.js';
+                    s.onload = res;
+                    s.onerror = () => rej(new Error('נכשלה טעינת FileSaver'));
+                    document.head.appendChild(s);
+                });
+            } catch (err) {
+                this._showToast('שגיאה בטעינת ספריית שמירה', 'error');
+                return;
+            }
+        }
+
+        const { newUsers, changedUsers, duplicates } = this.importedData;
+
+        const wb = new ExcelJS.Workbook();
+        wb.creator = 'PhoneDirectoryImport';
+        wb.created = new Date();
+        wb.modified = new Date();
+
+        // ══ צבעים (זהה ל-SystemsCatalogDashboard) ════════════════
+        const C = {
+            headerBg: 'FF320F5B',
+            headerText: 'FFFFFFFF',
+            headerBorder: 'FF7c3aed',
+            rowEven: 'FFFFFFFF',
+            rowOdd: 'FFF5F3FF',
+            rowBorder: 'FFe2e8f0',
+            newRowBg: 'FFf0fdf4',
+            newText: 'FF166534',
+            newAccent: 'FF22c55e',
+            changedRowBg: 'FFfffbeb',
+            changedText: 'FF92400e',
+            changedAccent: 'FFf59e0b',
+            dupRowBg: 'FFf9fafb',
+            dupText: 'FF6b7280',
+            dupAccent: 'FF9ca3af',
+        };
+
+        // ── עיצוב כותרת ──────────────────────────────────────────
+        const styleHeader = (row) => {
+            row.height = 26;
+            row.eachCell({ includeEmpty: true }, cell => {
+                cell.font = {
+                    name: 'Arial',
+                    size: 11,
+                    bold: true,
+                    color: { argb: C.headerText }
+                };
+                cell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: C.headerBg }
+                };
+                cell.alignment = {
+                    horizontal: 'center',
+                    vertical: 'middle',
+                    readingOrder: 2
+                };
+                cell.border = {
+                    bottom: {
+                        style: 'medium',
+                        color: { argb: C.headerBorder }
+                    }
+                };
+            });
+        };
+
+        // ── עיצוב שורת נתונים ────────────────────────────────────
+        const styleRow = (row, idx, bgOverride, textOverride, accentColor) => {
+            row.height = 18;
+            const bg = bgOverride
+                ? (idx % 2 === 0 ? bgOverride : bgOverride)
+                : (idx % 2 === 0 ? C.rowEven : C.rowOdd);
+
+            row.eachCell({ includeEmpty: true }, cell => {
+                cell.font = {
+                    name: 'Arial',
+                    size: 10,
+                    color: { argb: textOverride || 'FF1a1a2e' }
+                };
+                cell.fill = {
+                    type: 'pattern',
+                    pattern: 'solid',
+                    fgColor: { argb: bg }
+                };
+                cell.alignment = {
+                    horizontal: 'right',
+                    vertical: 'middle',
+                    readingOrder: 2,
+                    wrapText: false
+                };
+                cell.border = {
+                    bottom: {
+                        style: 'thin',
+                        color: { argb: accentColor || C.rowBorder }
+                    }
+                };
+            });
+
+            // ── צבע מיוחד לעמודת "סטטוס" (עמודה אחרונה) ─────────
+            if (accentColor) {
+                const lastCell = row.getCell(row.cellCount);
+                lastCell.font = {
+                    name: 'Arial',
+                    size: 10,
+                    bold: true,
+                    color: { argb: accentColor }
+                };
+            }
+        };
+
+        // ── בנה גיליון עם AutoFilter + Freeze ────────────────────
+        const buildSheet = (sheetName, columns) => {
+            const ws = wb.addWorksheet(sheetName, {
+                views: [{
+                    state: 'frozen',
+                    ySplit: 1,
+                    rightToLeft: true
+                }],
+                properties: { defaultRowHeight: 18 }
+            });
+
+            ws.columns = columns.map(c => ({
+                key: c.key,
+                width: c.width
+            }));
+
+            // כותרות
+            const hRow = ws.addRow(
+                columns.reduce((acc, c) => {
+                    acc[c.key] = c.header;
+                    return acc;
+                }, {})
+            );
+            styleHeader(hRow);
+
+            // AutoFilter
+            ws.autoFilter = {
+                from: { row: 1, column: 1 },
+                to: { row: 1, column: columns.length }
+            };
+
+            return ws;
+        };
+
+        // ══ גיליון 1: חדשים ══════════════════════════════════════
+        const wsNew = buildSheet('חדשים', [
+            { key: 'hebrewName', header: 'שם (עברית)', width: 24 },
+            { key: 'email', header: 'אימייל', width: 34 },
+            { key: 'phone', header: 'טלפון', width: 18 },
+            { key: 'extension', header: 'שלוחה', width: 12 },
+            { key: 'suggestedName', header: 'שם מוצע', width: 32 },
+            { key: 'selected', header: 'נבחר לייבוא', width: 16 },
+            { key: 'status', header: 'סטטוס', width: 12 },
+        ]);
+
+        (newUsers || []).forEach((user, idx) => {
+            const key = `new_${idx}`;
+            const isSelected = this.selectedKeys.has(key);
+
+            const row = wsNew.addRow({
+                hebrewName: user.hebrewName || '',
+                email: user.suggestedEmail || '',
+                phone: user.suggestedPhone || '',
+                extension: user.suggestedExtension || '',
+                suggestedName: user.suggestedFullName || user.englishName || '',
+                selected: isSelected ? '✓ כן' : '✗ לא',
+                status: 'חדש',
+            });
+
+            styleRow(row, idx, C.newRowBg, C.newText, C.newAccent);
+        });
+
+        // ══ גיליון 2: שינויים בקיים ══════════════════════════════
+        const wsChanged = buildSheet('שינויים בקיים', [
+            { key: 'importedHebrew', header: 'שם מיובא (עברית)', width: 24 },
+            { key: 'importedEmail', header: 'אימייל מיובא', width: 34 },
+            { key: 'importedPhone', header: 'טלפון מיובא', width: 18 },
+            { key: 'importedExt', header: 'שלוחה מיובאת', width: 12 },
+            { key: 'existingName', header: 'שם קיים', width: 28 },
+            { key: 'existingEmail', header: 'אימייל קיים', width: 34 },
+            { key: 'existingPhone', header: 'טלפון קיים', width: 18 },
+            { key: 'existingExt', header: 'שלוחה קיימת', width: 12 },
+            { key: 'changedFields', header: 'שדות שהשתנו', width: 24 },
+            { key: 'matchReason', header: 'סיבת התאמה', width: 16 },
+            { key: 'selected', header: 'נבחר לעדכון', width: 16 },
+            { key: 'status', header: 'סטטוס', width: 14 },
+        ]);
+
+        (changedUsers || []).forEach((user, idx) => {
+            const key = `changed_${idx}`;
+            const isSelected = this.selectedKeys.has(key);
+
+            const row = wsChanged.addRow({
+                importedHebrew: user.importedHebrewName || '',
+                importedEmail: user.importedEmail || '',
+                importedPhone: user.importedPhone || '',
+                importedExt: user.importedExtension || '',
+                existingName: user.existingFullName || '',
+                existingEmail: user.existingEmail || '',
+                existingPhone: user.existingPhone || '',
+                existingExt: user.existingExtension || '',
+                changedFields: (user.changedFields || []).join(', '),
+                matchReason: user.matchReason || '',
+                selected: isSelected ? '✓ כן' : '✗ לא',
+                status: 'שינוי בקיים',
+            });
+
+            styleRow(row, idx, C.changedRowBg, C.changedText, C.changedAccent);
+        });
+
+        // ══ גיליון 3: קיימים (זהים) ══════════════════════════════
+        const wsDup = buildSheet('קיימים', [
+            { key: 'hebrewName', header: 'שם (עברית)', width: 24 },
+            { key: 'email', header: 'אימייל', width: 34 },
+            { key: 'phone', header: 'טלפון', width: 18 },
+            { key: 'existingName', header: 'שם קיים', width: 28 },
+            { key: 'existingEmail', header: 'אימייל קיים', width: 34 },
+            { key: 'existingPhone', header: 'טלפון קיים', width: 18 },
+            { key: 'matchReason', header: 'סיבת התאמה', width: 16 },
+            { key: 'status', header: 'סטטוס', width: 14 },
+        ]);
+
+        (duplicates || []).forEach((dup, idx) => {
+            const row = wsDup.addRow({
+                hebrewName: dup.importedHebrewName || '',
+                email: dup.importedEmail || '',
+                phone: dup.importedPhone || '',
+                existingName: dup.existingFullName || '',
+                existingEmail: dup.existingEmail || '',
+                existingPhone: dup.existingPhone || '',
+                matchReason: dup.matchReason || '',
+                status: 'קיים - ללא שינוי',
+            });
+
+            styleRow(row, idx, C.dupRowBg, C.dupText, C.dupAccent);
+        });
+
+        // ══ גיליון 4: סיכום ══════════════════════════════════════
+        const wsSummary = wb.addWorksheet('סיכום', {
+            views: [{ rightToLeft: true }]
+        });
+
+        wsSummary.columns = [
+            { key: 'label', width: 28 },
+            { key: 'value', width: 16 },
+        ];
+
+        const summaryRows = [
+            { label: 'תאריך ייצוא', value: new Date().toLocaleDateString('he-IL') },
+            { label: 'שעת ייצוא', value: new Date().toLocaleTimeString('he-IL') },
+            { label: '', value: '' },
+            { label: 'סה"כ בקובץ', value: (newUsers?.length || 0) + (changedUsers?.length || 0) + (duplicates?.length || 0) },
+            { label: 'חדשים', value: newUsers?.length || 0 },
+            { label: 'שינויים בקיים', value: changedUsers?.length || 0 },
+            { label: 'קיימים (ללא שינוי)', value: duplicates?.length || 0 },
+            { label: '', value: '' },
+            { label: 'נבחרו לייבוא', value: this.selectedKeys.size },
+        ];
+
+        // כותרת גיליון סיכום
+        const summaryHeader = wsSummary.addRow({
+            label: 'סיכום ייבוא ספר טלפונים',
+            value: ''
+        });
+        summaryHeader.height = 28;
+        summaryHeader.getCell(1).font = {
+            name: 'Arial',
+            size: 13,
+            bold: true,
+            color: { argb: C.headerText }
+        };
+        summaryHeader.getCell(1).fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: C.headerBg }
+        };
+        summaryHeader.getCell(1).alignment = {
+            horizontal: 'center',
+            vertical: 'middle',
+            readingOrder: 2
+        };
+        wsSummary.mergeCells('A1:B1');
+
+        // שורות סיכום
+        summaryRows.forEach((r, idx) => {
+            const row = wsSummary.addRow(r);
+            row.height = 20;
+
+            if (!r.label && !r.value) return;
+
+            row.getCell(1).font = {
+                name: 'Arial',
+                size: 10,
+                bold: true,
+                color: { argb: 'FF4a1a8c' }
+            };
+            row.getCell(1).fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: idx % 2 === 0 ? C.rowEven : C.rowOdd }
+            };
+            row.getCell(1).alignment = {
+                horizontal: 'right', readingOrder: 2
+            };
+
+            row.getCell(2).font = {
+                name: 'Arial',
+                size: 10,
+                bold: true,
+                color: { argb: 'FF1a1a2e' }
+            };
+            row.getCell(2).fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: idx % 2 === 0 ? C.rowEven : C.rowOdd }
+            };
+            row.getCell(2).alignment = {
+                horizontal: 'center', vertical: 'middle'
+            };
+
+            // צבע מיוחד לשורות ספירה
+            if (r.label === 'חדשים') {
+                row.getCell(2).font = {
+                    name: 'Arial', size: 11,
+                    bold: true, color: { argb: C.newAccent }
+                };
+            }
+            if (r.label === 'שינויים בקיים') {
+                row.getCell(2).font = {
+                    name: 'Arial', size: 11,
+                    bold: true, color: { argb: C.changedAccent }
+                };
+            }
+            if (r.label === 'נבחרו לייבוא') {
+                row.getCell(2).font = {
+                    name: 'Arial', size: 12,
+                    bold: true, color: { argb: 'FF6366f1' }
+                };
+            }
+        });
+
+        // ══ הורד קובץ ════════════════════════════════════════════
+        try {
+            const buffer = await wb.xlsx.writeBuffer();
+            const blob = new Blob([buffer], {
+                type: 'application/vnd.openxmlformats-' +
+                    'officedocument.spreadsheetml.sheet'
+            });
+
+            const date = new Date()
+                .toLocaleDateString('he-IL')
+                .replace(/\//g, '-');
+
+            saveAs(blob, `ייבוא_ספר_טלפונים_${date}.xlsx`);
+
+            const total = (newUsers?.length || 0) +
+                (changedUsers?.length || 0) +
+                (duplicates?.length || 0);
+
+            this._showToast(
+                `📊 יוצאו ${total} רשומות ב-4 גיליונות`,
+                'success'
+            );
+
+        } catch (err) {
+            console.error('_exportResultsToExcel error:', err);
+            this._showToast('שגיאה בייצוא: ' + err.message, 'error');
+        }
+    }
+
+    // ─── הצג תצוגה מקדימה ────────────────────────────────────
+    _renderPreview(result) {
+        const { data, totalImported, skippedCount } = result;
+        const { newUsers, changedUsers, duplicates, summary } = data;
+
+        // שמור נתונים לשימוש מאוחר
+        this.newUsersData = newUsers || [];
+        this.changedUsersData = changedUsers || [];
+        this.duplicatesData = duplicates || [];
+
+        document.getElementById('phoneImportUploadSection').style.display = 'none';
+
+        const preview = document.getElementById('phoneImportPreview');
+        preview.style.display = 'block';
+
+        // ══ Stats Bar ══════════════════════════════════════════════
+        let html = `
+        <div class="phone-import-stats-bar">
+            <div class="phone-import-stat phone-import-stat-total">
+                <i class="fas fa-file-excel"></i>
+                <span>סה"כ בקובץ: <strong>${totalImported}</strong></span>
+            </div>
+            <div class="phone-import-stat phone-import-stat-new">
+                <i class="fas fa-user-plus"></i>
+                <span>חדשים: <strong>${summary.newCount}</strong></span>
+            </div>
+            <div class="phone-import-stat phone-import-stat-changed">
+                <i class="fas fa-user-edit"></i>
+                <span>שינויים: <strong>${summary.changedCount ?? 0}</strong></span>
+            </div>
+            <div class="phone-import-stat phone-import-stat-dup">
+                <i class="fas fa-user-check"></i>
+                <span>קיימים: <strong>${summary.duplicateCount}</strong></span>
+            </div>
+            ${skippedCount > 0 ? `
+            <div class="phone-import-stat phone-import-stat-skip">
+                <i class="fas fa-ban"></i>
+                <span>דולגו: <strong>${skippedCount}</strong></span>
+            </div>` : ''}
+        </div>
+    `;
+
+        // ══ 4 טאבים ═══════════════════════════════════════════════
+        html += `
+        <div class="phone-import-tabs">
+            <button class="phone-import-tab active"
+                    id="phoneImportTabAll"
+                    onclick="excelImportManager._switchTab('all')">
+                הכל (${totalImported})
+            </button>
+            <button class="phone-import-tab phone-import-tab-new"
+                    id="phoneImportTabNew"
+                    onclick="excelImportManager._switchTab('new')">
+                <i class="fas fa-user-plus"></i>
+                חדשים (${summary.newCount})
+            </button>
+            <button class="phone-import-tab phone-import-tab-changed"
+                    id="phoneImportTabChanged"
+                    onclick="excelImportManager._switchTab('changed')">
+                <i class="fas fa-user-edit"></i>
+                שינוי בקיים (${summary.changedCount ?? 0})
+            </button>
+            <button class="phone-import-tab phone-import-tab-dup"
+                    id="phoneImportTabDup"
+                    onclick="excelImportManager._switchTab('dup')">
+                <i class="fas fa-user-check"></i>
+                קיימים (${summary.duplicateCount})
+            </button>
+        </div>
+    `;
+
+        // ══ טבלה ══════════════════════════════════════════════════
+        html += `
+    <div class="phone-import-table-wrap">
+        <table class="phone-import-table">
+            <thead>
+                <tr>
+                    <th class="phone-import-th" style="width:36px">
+                        <input type="checkbox"
+                               id="phoneImportSelectAll"
+                               checked
+                               title="בחר/בטל הכל"
+                               style="accent-color:#22c55e;
+                                      width:14px;height:14px;
+                                      cursor:pointer">
+                    </th>
+                    <th class="phone-import-th">שם</th>
+                    <th class="phone-import-th">אימייל</th>
+                    <th class="phone-import-th">טלפון / שלוחה</th>
+                    <th class="phone-import-th">סטטוס</th>
+                </tr>
+            </thead>
+            <tbody id="phoneImportTbody">
+`;
+
+        // ══ שורות חדשים ═══════════════════════════════════════════
+        newUsers.forEach((user, index) => {
+            const key = `new_${index}`;
+
+            const hasValidEmail =
+                user.suggestedEmail &&
+                user.suggestedEmail !== 'NaN' &&
+                user.suggestedEmail !== '';
+
+            if (hasValidEmail) this.selectedKeys.add(key);
+
+            const phoneDisplay = user.suggestedPhone
+                ? `<span class="phone-import-badge-phone">
+                   <i class="fas fa-phone"></i>
+                   ${this._esc(user.suggestedPhone)}
+               </span>` : '';
+
+            const extDisplay = user.suggestedExtension
+                ? `<span class="phone-import-badge-ext">
+                   <i class="fas fa-phone-office"></i>
+                   שלוחה: ${this._esc(user.suggestedExtension)}
+               </span>` : '';
+
+            html += `
+    <tr class="phone-import-row phone-import-row-new
+               ${hasValidEmail ? '' : 'phone-import-row-deselected'}"
+        id="phone-import-row-${key}"
+        data-type="new"
+        onclick="excelImportManager._toggleRow('${key}')">
+        <td class="phone-import-td" onclick="event.stopPropagation()">
+            <input type="checkbox"
+                   id="phone-import-chk-${key}"
+                   class="phone-import-new-cb"
+                   data-key="${key}"
+                   ${hasValidEmail ? 'checked' : ''}
+                   onchange="excelImportManager
+                       ._onCheckboxChange('${key}', this.checked)">
+        </td>
+        <td class="phone-import-td phone-import-td-name">
+            ${this._esc(user.hebrewName || user.nameFromMail || '')}
+        </td>
+        <td class="phone-import-td">
+            <span class="phone-import-badge-email">
+                ${this._esc(user.suggestedEmail || '')}
+            </span>
+        </td>
+        <td class="phone-import-td">
+            ${phoneDisplay}${extDisplay}
+        </td>
+        <td class="phone-import-td">
+            <span class="phone-import-badge-new">
+                <i class="fas fa-plus-circle"></i> חדש
+            </span>
+        </td>
+    </tr>
+`;
+        });
+
+        // ══ שורות שינוי בקיים ═════════════════════════════════════
+        (changedUsers || []).forEach((user, index) => {
+            const key = `changed_${index}`;
+            // לא נבחר אוטומטית - המשתמש יחליט
+
+            const changedBadges = (user.changedFields || [])
+                .map(f => `<span class="phone-import-changed-field-badge">
+                           ${this._esc(f)}
+                       </span>`)
+                .join('');
+
+            const phoneNew = user.importedPhone
+                ? `<span class="phone-import-badge-phone">
+                   <i class="fas fa-phone"></i>
+                   ${this._esc(user.importedPhone)}
+               </span>` : '';
+
+            const extNew = user.importedExtension
+                ? `<span class="phone-import-badge-ext">
+                   <i class="fas fa-phone-office"></i>
+                   שלוחה: ${this._esc(user.importedExtension)}
+               </span>` : '';
+
+            const phoneOld = user.existingPhone
+                ? `<div class="phone-import-old-val">
+                   <i class="fas fa-arrow-left"
+                      style="font-size:0.55rem;color:#555"></i>
+                   ${this._esc(user.existingPhone)}
+               </div>` : '';
+
+            const extOld = user.existingExtension
+                ? `<div class="phone-import-old-val">
+                   <i class="fas fa-arrow-left"
+                      style="font-size:0.55rem;color:#555"></i>
+                   שלוחה: ${this._esc(user.existingExtension)}
+               </div>` : '';
+
+
+            // ── תצוגת טלפון חכמה לשורת שינוי ────────────────────────────
+            const buildPhoneDisplay = (user) => {
+                let html = '';
+
+                // ── טלפון נייד ────────────────────────────────────────────
+                if (user.suggestedPhone) {
+                    const isNew = !user.existingPhone;
+                    const isUpdated = user.existingPhone &&
+                        user.existingPhone !== user.suggestedPhone;
+                    const isSame = user.existingPhone === user.suggestedPhone;
+
+                    html += `<span class="phone-import-badge-phone">
+                     <i class="fas fa-phone"></i>
+                     ${this._esc(user.suggestedPhone)}
+                     ${isNew
+                            ? `<span class="phone-import-merge-tag new">+חדש</span>`
+                            : isUpdated
+                                ? `<span class="phone-import-merge-tag updated">עודכן</span>`
+                                : ''}
+                 </span>`;
+
+                    // הצג ישן אם עודכן
+                    if (isUpdated) {
+                        html += `<div class="phone-import-old-val">
+                         <i class="fas fa-arrow-left"
+                            style="font-size:0.55rem;color:#555"></i>
+                         היה: ${this._esc(user.existingPhone)}
+                     </div>`;
+                    }
+                } else if (user.existingPhone) {
+                    // יש נייד קיים, לא מיובא → שמור
+                    html += `<span class="phone-import-badge-phone"
+                       style="opacity:0.5"
+                       title="נשמר ללא שינוי">
+                     <i class="fas fa-phone"></i>
+                     ${this._esc(user.existingPhone)}
+                     <span class="phone-import-merge-tag kept">נשמר</span>
+                 </span>`;
+                }
+
+                // ── שלוחה ─────────────────────────────────────────────────
+                if (user.suggestedExtension) {
+                    const isNew = !user.existingExtension;
+                    const isUpdated = user.existingExtension &&
+                        user.existingExtension !== user.suggestedExtension;
+
+                    html += `<span class="phone-import-badge-ext">
+                     <i class="fas fa-phone-office"></i>
+                     שלוחה: ${this._esc(user.suggestedExtension)}
+                     ${isNew
+                            ? `<span class="phone-import-merge-tag new">+חדש</span>`
+                            : isUpdated
+                                ? `<span class="phone-import-merge-tag updated">עודכן</span>`
+                                : ''}
+                 </span>`;
+
+                    if (isUpdated) {
+                        html += `<div class="phone-import-old-val">
+                         <i class="fas fa-arrow-left"
+                            style="font-size:0.55rem;color:#555"></i>
+                         היה: ${this._esc(user.existingExtension)}
+                     </div>`;
+                    }
+                } else if (user.existingExtension) {
+                    // יש שלוחה קיימת, לא מיובאת → שמור
+                    html += `<span class="phone-import-badge-ext"
+                       style="opacity:0.5"
+                       title="נשמר ללא שינוי">
+                     <i class="fas fa-phone-office"></i>
+                     שלוחה: ${this._esc(user.existingExtension)}
+                     <span class="phone-import-merge-tag kept">נשמר</span>
+                 </span>`;
+                }
+
+                return html || '<span style="color:#555">—</span>';
+            };
+
+            html += `
+    <tr class="phone-import-row phone-import-row-changed
+               phone-import-row-deselected"
+        id="phone-import-row-${key}"
+        data-type="changed"
+        onclick="excelImportManager._toggleRow('${key}')">
+        <td class="phone-import-td" onclick="event.stopPropagation()">
+            <input type="checkbox"
+                   id="phone-import-chk-${key}"
+                   class="phone-import-changed-cb"
+                   data-key="${key}"
+                   onchange="excelImportManager
+                       ._onCheckboxChange('${key}', this.checked)">
+        </td>
+        <td class="phone-import-td phone-import-td-name">
+            <div style="font-weight:600">
+                ${this._esc(user.importedHebrewName || '')}
+            </div>
+            <div style="margin-top:3px">${changedBadges}</div>
+        </td>
+        <td class="phone-import-td">
+            ${user.importedEmail
+                    ? `<span class="phone-import-badge-email">
+                       ${this._esc(user.importedEmail)}
+                   </span>` : ''}
+        </td>
+        <td class="phone-import-td">
+            ${buildPhoneDisplay(user)}
+        </td>
+        <td class="phone-import-td">
+            <span class="phone-import-badge-changed-status">
+                <i class="fas fa-edit"></i> שינוי
+            </span>
+        </td>
+    </tr>
+`;
+        });
+
+        // ══ שורות קיימים (זהים לחלוטין) ══════════════════════════
+        (duplicates || []).forEach((dup, index) => {
+            const key = `dup_${index}`;
+            // קיימים לא נבחרים ולא ניתן לבחור אותם
+
+            html += `
+    <tr class="phone-import-row phone-import-row-dup
+               phone-import-row-identical"
+        id="phone-import-row-${key}"
+        data-type="dup"
+        style="opacity:0.45;cursor:default"
+        title="זהה לחלוטין - אין צורך בעדכון">
+        <td class="phone-import-td" onclick="event.stopPropagation()">
+            <input type="checkbox"
+                   id="phone-import-chk-${key}"
+                   class="phone-import-dup-cb"
+                   data-key="${key}"
+                   disabled
+                   style="opacity:0.3;cursor:not-allowed">
+        </td>
+        <td class="phone-import-td phone-import-td-name"
+            style="color:#666">
+            ${this._esc(dup.importedHebrewName || '')}
+        </td>
+        <td class="phone-import-td" style="color:#555">
+            ${this._esc(dup.importedEmail || '')}
+        </td>
+        <td class="phone-import-td" style="color:#555">
+            ${dup.importedPhone
+                    ? `<span style="font-size:0.75rem;color:#555">
+                       ${this._esc(dup.importedPhone)}
+                   </span>` : ''}
+        </td>
+        <td class="phone-import-td">
+            <span class="phone-import-badge-dup">
+                <i class="fas fa-check-double"></i> קיים
+            </span>
+        </td>
+    </tr>
+`;
+        });
+
+        html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+
+        preview.innerHTML = html;
+
+        // ══ Footer ════════════════════════════════════════════════
+        const footer = document.getElementById('phoneImportFooter');
+        footer.style.display = 'flex';
+
+        this._updateFooterInfo(newUsers.length, summary);
+        this._updateSaveBtn();
+        this._addExportButton();
+
+        // ══ "בחר הכל" ════════════════════════════════════════════
+        const selectAll = document.getElementById('phoneImportSelectAll');
+        if (selectAll) {
+            selectAll.addEventListener('change', () => {
+                if (selectAll.checked) {
+                    this._selectAll();
+                } else {
+                    this._deselectAll();
+                }
+            });
+        }
+    }
+
+    // ─── החלף טאב ────────────────────────────────────────────
+    _switchTab(tab) {
+        this.activeTab = tab;
+
+        // ── עדכן כפתורי טאב ──────────────────────────────────────
+        ['All', 'New', 'Changed', 'Dup'].forEach(t => {
+            const btn = document.getElementById(`phoneImportTab${t}`);
+            if (btn) btn.classList.remove('active');
+        });
+
+        const tabMap = {
+            all: 'All',
+            new: 'New',
+            changed: 'Changed',
+            dup: 'Dup'
+        };
+
+        const activeBtn = document.getElementById(
+            `phoneImportTab${tabMap[tab]}`
+        );
+        if (activeBtn) activeBtn.classList.add('active');
+
+        // ── הצג/הסתר שורות ───────────────────────────────────────
+        const tbody = document.getElementById('phoneImportTbody');
+        if (!tbody) return;
+
+        tbody.querySelectorAll('tr.phone-import-row').forEach(row => {
+            const type = row.dataset.type;
+
+            if (tab === 'all') {
+                row.style.display = '';
+            } else if (tab === 'new') {
+                row.style.display = type === 'new' ? '' : 'none';
+            } else if (tab === 'changed') {
+                row.style.display = type === 'changed' ? '' : 'none';
+            } else if (tab === 'dup') {
+                row.style.display = type === 'dup' ? '' : 'none';
+            }
+        });
+
+        this._updateSelectAllState();
+    }
+
+    // ─── בחר/בטל שורה ────────────────────────────────────────
+    _toggleRow(key) {
+        const chk = document.getElementById(
+            `phone-import-chk-${key}`
+        );
+        const row = document.getElementById(
+            `phone-import-row-${key}`
+        );
+
+        if (this.selectedKeys.has(key)) {
+            this.selectedKeys.delete(key);
+            if (chk) chk.checked = false;
+            if (row) row.classList.add(
+                'phone-import-row-deselected'
+            );
+        } else {
+            this.selectedKeys.add(key);
+            if (chk) chk.checked = true;
+            if (row) row.classList.remove(
+                'phone-import-row-deselected'
+            );
+        }
+
+        this._updateSelectAllState();
+        this._updateSaveBtn();
+    }
+
+    // ─── שינוי checkbox ───────────────────────────────────────
+    _onCheckboxChange(key, isChecked) {
+        const row = document.getElementById(
+            `phone-import-row-${key}`
+        );
+
+        if (isChecked) {
+            this.selectedKeys.add(key);
+            if (row) row.classList.remove(
+                'phone-import-row-deselected'
+            );
+        } else {
+            this.selectedKeys.delete(key);
+            if (row) row.classList.add(
+                'phone-import-row-deselected'
+            );
+        }
+
+        this._updateSelectAllState();
+        this._updateSaveBtn();
+    }
+
+    // ─── בחר הכל ─────────────────────────────────────────
+    _selectAll() {
+        const tab = this.activeTab;
+
+        if (tab === 'all' || tab === 'new') {
+            this.newUsersData.forEach((_, i) => {
+                const key = `new_${i}`;
+                this.selectedKeys.add(key);
+                const chk = document.getElementById(`phone-import-chk-${key}`);
+                if (chk) chk.checked = true;
+                const row = document.getElementById(`phone-import-row-${key}`);
+                if (row) row.classList.remove('phone-import-row-deselected');
+            });
+        }
+
+        if (tab === 'all' || tab === 'changed') {
+            (this.changedUsersData || []).forEach((_, i) => {
+                const key = `changed_${i}`;
+                this.selectedKeys.add(key);
+                const chk = document.getElementById(`phone-import-chk-${key}`);
+                if (chk) chk.checked = true;
+                const row = document.getElementById(`phone-import-row-${key}`);
+                if (row) row.classList.remove('phone-import-row-deselected');
+            });
+        }
+
+        // dup לא נבחרים לעולם (disabled)
+
+        this._updateSaveBtn();
+    }
+
+    // ─── בטל הכל ─────────────────────────────────────────
+    _deselectAll() {
+        const tab = this.activeTab;
+
+        if (tab === 'all' || tab === 'new') {
+            this.newUsersData.forEach((_, i) => {
+                const key = `new_${i}`;
+                this.selectedKeys.delete(key);
+                const chk = document.getElementById(`phone-import-chk-${key}`);
+                if (chk) chk.checked = false;
+                const row = document.getElementById(`phone-import-row-${key}`);
+                if (row) row.classList.add('phone-import-row-deselected');
+            });
+        }
+
+        if (tab === 'all' || tab === 'changed') {
+            (this.changedUsersData || []).forEach((_, i) => {
+                const key = `changed_${i}`;
+                this.selectedKeys.delete(key);
+                const chk = document.getElementById(`phone-import-chk-${key}`);
+                if (chk) chk.checked = false;
+                const row = document.getElementById(`phone-import-row-${key}`);
+                if (row) row.classList.add('phone-import-row-deselected');
+            });
+        }
+
+        this._updateSaveBtn();
+    }
+
+    // ─── עדכן מצב "בחר הכל" ──────────────────────────────────
+    _updateSelectAllState() {
+        const selectAll = document.getElementById('phoneImportSelectAll');
+        if (!selectAll) return;
+
+        const tab = this.activeTab;
+        let relevantCheckboxes;
+
+        if (tab === 'new') {
+            relevantCheckboxes = document.querySelectorAll('.phone-import-new-cb');
+        } else if (tab === 'changed') {
+            relevantCheckboxes = document.querySelectorAll('.phone-import-changed-cb');
+        } else if (tab === 'dup') {
+            // dup תמיד disabled - הסתר את "בחר הכל"
+            selectAll.style.display = 'none';
+            return;
+        } else {
+            // all - רק new + changed (לא dup שהם disabled)
+            relevantCheckboxes = document.querySelectorAll(
+                '.phone-import-new-cb, .phone-import-changed-cb'
+            );
+        }
+
+        selectAll.style.display = '';
+        const total = relevantCheckboxes.length;
+        const checked = [...relevantCheckboxes].filter(chk => chk.checked).length;
+
+        selectAll.checked = checked === total && total > 0;
+        selectAll.indeterminate = checked > 0 && checked < total;
+    }
+
+    // ─── עדכן כפתור שמירה ────────────────────────────────────
+    _updateSaveBtn() {
+        const saveBtn = document.getElementById(
+            'phoneImportSaveBtn'
+        );
+        if (!saveBtn) return;
+
+        const count = this.selectedKeys.size;
+        saveBtn.disabled = count === 0;
+        saveBtn.innerHTML = count > 0
+            ? `<i class="fas fa-save"></i> שמור ${count} אנשי קשר`
+            : `<i class="fas fa-save"></i> שמור נבחרים`;
+    }
+
+    // ─── עדכן מידע Footer ────────────────────────────────────
+    _updateFooterInfo(newCount, summary) {
+        const info = document.getElementById(
+            'phoneImportFooterInfo'
+        );
+        if (!info) return;
+
+        if (newCount > 0) {
+            info.innerHTML = `
+                <i class="fas fa-info-circle"
+                   style="color:#6366f1"></i>
+                יתווספו
+                <strong id="phoneImportSelectedCount"
+                        style="color:#22c55e">
+                    ${newCount}
+                </strong>
+                אנשי קשר חדשים
+                ${summary.duplicateCount > 0
+                    ? `(${summary.duplicateCount} כבר קיימים)`
+                    : ''}
+            `;
+        } else {
+            info.innerHTML = `
+                <i class="fas fa-info-circle"
+                   style="color:#888"></i>
+                אין אנשי קשר חדשים לייבוא
+            `;
+        }
+    }
+
+    // ─── שמור נבחרים ─────────────────────────────────────────
+    async _saveSelected() {
+        if (this.selectedKeys.size === 0) {
+            this._showToast('לא נבחרו אנשי קשר', 'warning');
+            return;
+        }
+
+        const contactsToSave = [];
+
+        this.selectedKeys.forEach(key => {
+            // ── חדשים ────────────────────────────────────────────
+            if (key.startsWith('new_')) {
+                const index = parseInt(key.replace('new_', ''));
+                const user = this.newUsersData[index];
+                if (!user) return;
+
+                contactsToSave.push({
+                    fullName: user.suggestedFullName || user.englishName,
+                    role: '',
+                    domain: '',
+                    department: '',
+                    team: '',
+                    phoneNumber: user.suggestedPhone || '',
+                    extension: user.suggestedExtension || '',
+                    email: user.suggestedEmail || ''
+                });
+            }
+
+            // ── שינוי בקיים ──────────────────────────────────────
+            if (key.startsWith('changed_')) {
+                const index = parseInt(key.replace('changed_', ''));
+                const user = (this.changedUsersData || [])[index];
+                if (!user) return;
+
+                contactsToSave.push({
+                    // שלח id כדי לעדכן את הקיים
+                    id: user.existingId || null,
+                    fullName: user.suggestedFullName || user.importedEnglishName,
+                    role: '',
+                    domain: '',
+                    department: '',
+                    team: '',
+                    phoneNumber: user.suggestedPhone || '',
+                    extension: user.suggestedExtension || '',
+                    email: user.suggestedEmail || ''
+                });
+            }
+        });
+
+        if (contactsToSave.length === 0) return;
+
+        const saveBtn = document.getElementById('phoneImportSaveBtn');
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.innerHTML =
+                '<i class="fas fa-spinner fa-spin"></i> שומר...';
+        }
+
+        try {
+            const response = await fetch(
+                '/PhoneDirectory/SaveImportedContacts',
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contacts: contactsToSave })
+                }
+            );
+
+            const result = await response.json();
+
+            if (result.success) {
+                this._showToast(result.message, 'success');
+                document.getElementById('phoneImportModal')?.remove();
+
+                if (typeof phoneDirectoryManager !== 'undefined')
+                    await phoneDirectoryManager.loadPhoneDirectory();
+            } else {
+                this._showToast(result.message || 'שגיאה בשמירה', 'error');
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML =
+                        `<i class="fas fa-save"></i>
+                     שמור ${this.selectedKeys.size} אנשי קשר`;
+                }
+            }
+        } catch (err) {
+            console.error('Error saving contacts:', err);
+            this._showToast('שגיאה בשמירת אנשי קשר', 'error');
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML =
+                    `<i class="fas fa-save"></i>
+                 שמור ${this.selectedKeys.size} אנשי קשר`;
+            }
+        }
+    }
+
+    // ─── הצג שגיאה בתוך המודל ────────────────────────────────
+    _showError(msg) {
+        const preview = document.getElementById(
+            'phoneImportPreview'
+        );
+        if (preview) {
+            preview.style.display = 'block';
+            preview.innerHTML = `
+                <div class="phone-import-error-msg">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <p>${this._esc(msg)}</p>
+                </div>
+            `;
+        }
+    }
+
+    // ─── Toast ───────────────────────────────────────────────
+    _showToast(msg, type = 'info') {
+        if (typeof NotificationManager !== 'undefined') {
+            NotificationManager.show(msg, type);
+        } else {
+            alert(msg);
+        }
+    }
+
+    // ─── Escape HTML ─────────────────────────────────────────
+    _esc(text) {
+        const div = document.createElement('div');
+        div.textContent = text || '';
+        return div.innerHTML;
+    }
+}
+
+// ─── Instance גלובלי ─────────────────────────────────────────
+const excelImportManager = new ExcelImportManager();
+
+// ─── פונקציות גלובליות ───────────────────────────────────────
+window.openExcelImportModal = function () {
+    excelImportManager.openModal();
 };

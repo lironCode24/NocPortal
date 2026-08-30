@@ -11,6 +11,7 @@ class ProceduresManager {
         this.refreshInterval = null;
         this.isModalOpen = false;
         this.AUTO_REFRESH_MINUTES = 5;
+        this.quickProcedures = [];
     }
 
     // Switch between folder and grid view
@@ -354,7 +355,14 @@ class ProceduresManager {
             clearBtn.style.display = 'none';
         }
 
-        // Reset to show all procedures
+        // שחזר כפתור נהלים מהירים
+        const btn = document.querySelector('.quick-procedure-btn');
+        if (btn) {
+            btn.classList.remove('has-search-results');
+            btn.innerHTML = '<i class="fas fa-bolt"></i> נהלים מהירים';
+            btn.onclick = () => this.openQuickProceduresModal();
+        }
+
         this.searchProcedures('');
     }
 
@@ -362,47 +370,46 @@ class ProceduresManager {
     searchProcedures(searchTerm) {
         this.currentPage = 1;
 
-        // Show/hide clear button
         const clearBtn = document.getElementById('clearSearchBtn');
         if (clearBtn) {
             clearBtn.style.display = searchTerm !== '' ? 'block' : 'none';
         }
 
+        // עדכן כפתור נהלים מהירים
+        this._checkQuickProceduresForSearch(searchTerm);
+
         if (searchTerm === '') {
-            // When clearing search, close all folders and show all procedures
+            // שחזר כפתור
+            const btn = document.querySelector('.quick-procedure-btn');
+            if (btn) {
+                btn.classList.remove('has-search-results');
+                btn.innerHTML = '<i class="fas fa-bolt"></i> נהלים מהירים';
+                btn.onclick = () => this.openQuickProceduresModal();
+            }
+
             this.collapsedFolders.clear();
             this.displayProcedures(this.allProcedures);
 
-            // Remove expanded class from all folders after display
             setTimeout(() => {
                 document.querySelectorAll('.procedure-folder').forEach(folder => {
                     folder.classList.remove('expanded');
                 });
                 this.updateCollapseAllButton();
             }, 0);
+
         } else {
-            // Filter procedures
             const filteredProcedures = this.allProcedures.filter(procedure =>
                 procedure.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 procedure.fileName.toLowerCase().includes(searchTerm.toLowerCase())
             );
 
-            // Open ALL folders when searching (in folder view)
             if (this.currentView === 'folder') {
-                // Get ALL unique folders from ALL procedures (not just filtered)
-                const allFolders = new Set(
-                    this.allProcedures.map(p => p.folder || '')
-                );
-
-                // Open all folders
-                allFolders.forEach(folder => {
-                    this.collapsedFolders.add(folder);
-                });
+                const allFolders = new Set(this.allProcedures.map(p => p.folder || ''));
+                allFolders.forEach(folder => this.collapsedFolders.add(folder));
             }
 
             this.displayProcedures(filteredProcedures);
 
-            // Add expanded class to all folders after display
             if (this.currentView === 'folder') {
                 setTimeout(() => {
                     document.querySelectorAll('.procedure-folder').forEach(folder => {
@@ -411,6 +418,61 @@ class ProceduresManager {
                     this.updateCollapseAllButton();
                 }, 0);
             }
+        }
+    }
+
+    // בדוק אם יש תוצאות בנהלים מהירים
+    async _checkQuickProceduresForSearch(searchTerm) {
+        const btn = document.querySelector('.quick-procedure-btn');
+        if (!btn) return;
+
+        // נקה מצב קודם
+        btn.classList.remove('has-search-results');
+        btn.querySelector('span') && (btn.querySelector('span').textContent = 'נהלים מהירים');
+
+        // שחזר טקסט מקורי אם אין חיפוש
+        if (!searchTerm || searchTerm.trim() === '') {
+            btn.innerHTML = '<i class="fas fa-bolt"></i> נהלים מהירים';
+            return;
+        }
+
+        // טען נהלים מהירים אם צריך
+        if (!this.quickProcedures || this.quickProcedures.length === 0) {
+            try {
+                await this.loadQuickProcedures();
+            } catch (e) {
+                return;
+            }
+        }
+
+        const term = searchTerm.trim().toLowerCase();
+        const matches = this.quickProcedures.filter(proc =>
+            proc.title.toLowerCase().includes(term) ||
+            (proc.content || '').toLowerCase().includes(term)
+        );
+
+        if (matches.length > 0) {
+            // שנה כפתור - הצג תוצאות
+            btn.classList.add('has-search-results');
+            btn.innerHTML = `<i class="fas fa-bolt"></i> נמצאו ${matches.length} נהלים מהירים`;
+
+            // בלחיצה - פתח מודל עם החיפוש
+            btn.onclick = () => {
+                this.openQuickProceduresModal().then(() => {
+                    const internalInput = document.getElementById('quickProceduresSearchInput');
+                    if (internalInput) {
+                        internalInput.value = searchTerm;
+                        internalInput.dispatchEvent(new Event('input'));
+                    }
+                });
+            };
+        } else {
+            // אין תוצאות - שחזר כפתור רגיל
+            btn.classList.remove('has-search-results');
+            btn.innerHTML = '<i class="fas fa-bolt"></i> נהלים מהירים';
+
+            // שחזר onclick מקורי
+            btn.onclick = () => this.openQuickProceduresModal();
         }
     }
 
@@ -435,10 +497,13 @@ class ProceduresManager {
         // Include folder path in the URL if provided
         const encodedFileName = encodeURIComponent(fileName);
         const encodedFolderPath = folderPath ? encodeURIComponent(folderPath) : '';
+        const cacheBuster = this._refreshTimestamp || Date.now();
         const viewUrl = folderPath ?
-            `/Procedures/ViewFile?fileName=${encodedFileName}&folderPath=${encodedFolderPath}` :
-            `/Procedures/ViewFile?fileName=${encodedFileName}`;
+            `/Procedures/ViewFile?fileName=${encodedFileName}&folderPath=${encodedFolderPath}&t=${cacheBuster}` :
+            `/Procedures/ViewFile?fileName=${encodedFileName}&t=${cacheBuster}`;
 
+        // אפס את ה-timestamp אחרי שימוש
+        this._refreshTimestamp = null;
         const iframe = document.getElementById('simpleDocumentFrame');
         const loader = document.getElementById('documentLoader');
 
@@ -1010,6 +1075,10 @@ class ProceduresManager {
                                     <i class="fas fa-download"></i>
                                     הורד קובץ
                                 </button>
+                                <button class="header-btn" onclick="refreshDocument()" id="refreshDocBtn">
+                                    <i class="fas fa-sync-alt"></i>
+                                    רענן מסמך
+                                </button>
                             </div>
                         </div>
                         <div class="path-display" id="pathDisplay">${fullPath}</div>
@@ -1181,6 +1250,14 @@ class ProceduresManager {
                                 action: 'download',
                                 fileName: '${fileName}',
                                 folderPath: '${folderPath}'
+                            }, '*');
+                        }
+                        function refreshDocument() {
+                            // שלח הודעה לאב - הכפתור יוחלף ממילא כשה-iframe ייטען מחדש
+                            parent.postMessage({
+                                action: 'refresh',
+                                fileName: '${fileName}',
+                                folderPath: '${folderPath || ''}'
                             }, '*');
                         }
                     </script>
@@ -1401,6 +1478,10 @@ class ProceduresManager {
                         <i class="fas fa-download"></i>
                         הורד קובץ
                     </button>
+                    <button class="header-btn" onclick="refreshDocument()" id="refreshDocBtn">
+                        <i class="fas fa-sync-alt"></i>
+                        רענן מסמך
+                    </button>
                 </div>
             </div>
             <div class="path-display" id="pathDisplay">${fullPath}</div>
@@ -1454,6 +1535,14 @@ class ProceduresManager {
                     folderPath: '${folderPath}'
                 }, '*');
             }
+            function refreshDocument() {
+                // שלח הודעה לאב - הכפתור יוחלף ממילא כשה-iframe ייטען מחדש
+                parent.postMessage({
+                    action: 'refresh',
+                    fileName: '${fileName}',
+                    folderPath: '${folderPath || ''}'
+                }, '*');
+            }
         </script>
     </body>
     </html>
@@ -1476,6 +1565,9 @@ class ProceduresManager {
                     this.downloadProcedure(fileName, folderPath || '');
                 } else if (action === 'edit') {
                     this.editProcedure(fileName, folderPath || '');
+                } else if (action === 'refresh') {
+                    // ריענון - קרא ישירות ללא await
+                    this.refreshCurrentProcedure();
                 }
             }
         };
@@ -1514,11 +1606,6 @@ class ProceduresManager {
         if (this.messageListener) {
             window.removeEventListener('message', this.messageListener);
             this.messageListener = null;
-        }
-
-        // Delete cached PDF if it was a Word/Excel file
-        if (currentFileName) {
-            this.deleteCachedPdf(currentFileName, currentFolder);
         }
     }
 
@@ -1680,6 +1767,67 @@ class ProceduresManager {
                 });
         } else {
             this.renderPdfWithHeader(viewUrl, iframe, fileName, loader, fullPath, folderPath);
+        }
+    }
+
+    // ==========================================
+    // 4. הוסף פונקציה חדשה: refreshCurrentProcedure
+    // מחיקת קאש וטעינה מחדש של המסמך הנוכחי
+    // ==========================================
+    async refreshCurrentProcedure() {
+        const titleElement = document.getElementById('simpleDocumentTitle');
+        const fileName = titleElement.getAttribute('data-filename');
+        const folderPath = titleElement.getAttribute('data-folder') || '';
+
+        if (!fileName) return;
+
+        // עדכן כפתור ריענון חיצוני (מחוץ ל-iframe) אם קיים
+        const refreshBtn = document.getElementById('refreshProcedureBtn');
+        if (refreshBtn) {
+            refreshBtn.disabled = true;
+            refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            refreshBtn.title = 'מרענן...';
+        }
+
+        try {
+            // מחק קאש PDF אם קיים
+            const extension = fileName.split('.').pop().toLowerCase();
+            if (['doc', 'docx', 'xls', 'xlsx'].includes(extension)) {
+                const encodedFileName = encodeURIComponent(fileName);
+                const encodedFolderPath = folderPath ? encodeURIComponent(folderPath) : '';
+                const deleteUrl = folderPath
+                    ? `/Procedures/DeleteCachedPdf?fileName=${encodedFileName}&folderPath=${encodedFolderPath}`
+                    : `/Procedures/DeleteCachedPdf?fileName=${encodedFileName}`;
+
+                const deleteResult = await fetch(deleteUrl, { method: 'DELETE' });
+                const deleteData = await deleteResult.json();
+
+                // *** תיקון: המתן לאחר מחיקת הקאש ***
+                if (deleteData.success) {
+                    // המתן 500ms לוודא שהשרת סיים את המחיקה
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+            }
+
+            // *** תיקון: הוסף cache-busting parameter לכתובת ***
+            // על ידי שמירת timestamp ושימוש בו בטעינה
+            this._refreshTimestamp = Date.now();
+
+            this.viewProcedureInModal(fileName, folderPath);
+
+            NotificationManager.show('המסמך רוענן בהצלחה', 'success');
+
+        } catch (error) {
+            console.error('Error refreshing procedure:', error);
+            NotificationManager.show('שגיאה בריענון המסמך', 'error');
+
+        } finally {
+            // שחזר כפתור חיצוני
+            if (refreshBtn) {
+                refreshBtn.disabled = false;
+                refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i>';
+                refreshBtn.title = 'רענן מסמך';
+            }
         }
     }
 
@@ -1898,6 +2046,10 @@ class ProceduresManager {
                             <i class="fas fa-download"></i>
                             הורד קובץ
                         </button>
+                        <button class="header-btn" onclick="refreshDocument()" id="refreshDocBtn">
+                            <i class="fas fa-sync-alt"></i>
+                            רענן מסמך
+                        </button>
                     </div>
                 </div>
             </div>
@@ -1994,6 +2146,14 @@ class ProceduresManager {
                         folderPath: '${folderPath || ''}'
                     }, '*');
                 }
+                function refreshDocument() {
+                    // שלח הודעה לאב - הכפתור יוחלף ממילא כשה-iframe ייטען מחדש
+                    parent.postMessage({
+                        action: 'refresh',
+                        fileName: '${fileName}',
+                        folderPath: '${folderPath || ''}'
+                    }, '*');
+                }
             </script>
         </body>
         </html>
@@ -2074,15 +2234,772 @@ class ProceduresManager {
         });
     }
 
+    // עדכון - פתיחה עם הכל מורחב
+    async openQuickProceduresModal() {
+        this.isModalOpen = true;
+        const modal = document.getElementById('quickProceduresModal');
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+
+        document.getElementById('quickProceduresContainer').innerHTML = `
+        <div class="quick-procedures-loading">
+            <i class="fas fa-spinner fa-spin"></i>
+            <span>טוען נהלים מהירים...</span>
+        </div>
+    `;
+
+        await this.loadQuickProcedures();
+
+        // פתיחה עם allExpanded = true
+        this.renderQuickProcedures('', true);
+        this._initQuickSearch();
+
+        if (this.employees.length === 0) {
+            await this.loadEmployees();
+        }
+        this.populateEmployeeSelect('aqpUserName');
+
+        // עדכון כפתורים - מצב מורחב ראשוני
+        setTimeout(() => this._updateExpandCollapseButtons(true), 100);
+    }
+
+    // סגור מודל נהלים מהירים
+    closeQuickProceduresModal() {
+        this.isModalOpen = false;
+        document.getElementById('quickProceduresModal').style.display = 'none';
+
+        // סגור גם מודל הוספה אם פתוח
+        this.closeAddQuickProcedureModal();
+
+        document.body.style.overflow = 'auto';
+    }
+
+    // טען נהלים מהירים מהשרת
+    async loadQuickProcedures() {
+        try {
+            const response = await fetch('/Procedures/GetQuickProcedures');
+            const data = await response.json();
+            if (data.error) {
+                console.error('Error loading quick procedures:', data.error);
+                return;
+            }
+            this.quickProcedures = data;
+        } catch (error) {
+            console.error('Error fetching quick procedures:', error);
+            this.quickProcedures = [];
+        }
+    }
+
+    // הצג נהלים מהירים כפתקים
+    renderQuickProcedures(filterTerm = '', allExpanded = true) {
+        const container = document.getElementById('quickProceduresContainer');
+
+        if (!this.quickProcedures || this.quickProcedures.length === 0) {
+            container.innerHTML = `
+            <div class="quick-procedures-empty">
+                <i class="fas fa-sticky-note"></i>
+                <p>אין נהלים מהירים עדיין</p>
+                <small>לחץ על "הוסף נוהל מהיר" כדי להתחיל</small>
+            </div>
+        `;
+            return;
+        }
+
+        const colors = [
+            '#fff9c4', '#fce4ec', '#e8f5e9', '#e3f2fd',
+            '#f3e5f5', '#fff3e0', '#e0f7fa', '#fbe9e7'
+        ];
+
+        const term = filterTerm.trim().toLowerCase();
+        // אם יש חיפוש - תמיד מורחב; אחרת לפי הפרמטר
+        const shouldExpand = term !== '' || allExpanded;
+
+        let html = '<div class="quick-procedures-grid">';
+        let visibleCount = 0;
+
+        this.quickProcedures.forEach((proc, index) => {
+            const color = colors[index % colors.length];
+
+            const titleMatch = term && proc.title.toLowerCase().includes(term);
+            const contentMatch = term && (proc.content || '').toLowerCase().includes(term);
+            const isMatch = !term || titleMatch || contentMatch;
+            if (!isMatch) return;
+            visibleCount++;
+
+            const highlightedTitle = term
+                ? this._highlight(proc.title, term)
+                : this._escapeHtml(proc.title);
+
+            const previewText = this._getPreviewText(proc.content, 30);
+
+            let displayContent = proc.content || '';
+            if (term) {
+                displayContent = this._highlightInHtml(displayContent, term);
+            }
+
+            displayContent = displayContent.replace(
+                /<img([^>]*)>/gi,
+                (match, attrs) => {
+                    attrs = attrs.replace(/\s*onclick="[^"]*"/gi, '');
+                    return `<img${attrs} onclick="proceduresManager.openImageLightbox(this.src)" style="cursor:pointer;">`;
+                }
+            );
+
+            const hasImages = /<img/i.test(proc.content || '');
+            const isLongContent = (proc.content || '').length > 500;
+
+            // שימוש ב-shouldExpand במקום isSearchActive
+            html += `
+            <div class="quick-procedure-note ${shouldExpand ? 'note-expanded' : ''}"
+                style="background-color: ${color}; --note-bg: ${color};"
+                data-id="${proc.id}"
+                ondblclick="proceduresManager.openQuickProcedureViewer('${proc.id}')">
+                 
+                <div class="quick-note-header">
+                    <h4 class="quick-note-title">${highlightedTitle}</h4>
+                    <div class="quick-note-actions">
+                        <button class="quick-note-btn expand-btn"
+                                onclick="proceduresManager.toggleNoteExpand('${proc.id}')"
+                                title="הרחב/כווץ">
+                            <i class="fas fa-chevron-${shouldExpand ? 'up' : 'down'}"></i>
+                        </button>
+                        ${hasImages || isLongContent ? `
+                            <button class="quick-note-btn view"
+                                    onclick="proceduresManager.openQuickProcedureViewer('${proc.id}')"
+                                    title="צפה בנוהל">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            ` : ''}
+                        <button class="quick-note-btn edit"
+                                onclick="proceduresManager.editQuickProcedure('${proc.id}')"
+                                title="ערוך">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="quick-note-btn delete"
+                                onclick="proceduresManager.deleteQuickProcedure('${proc.id}')"
+                                title="מחק">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- תצוגה מקוצרת -->
+                <div class="quick-note-preview" 
+                     style="display: ${shouldExpand ? 'none' : 'block'}">
+                    ${previewText}
+                </div>
+
+                <!-- תוכן מלא -->
+                <div class="quick-note-content ${shouldExpand ? '' : 'collapsed-content'}" 
+                     id="qnc-${proc.id}">
+                    ${displayContent}
+                </div>
+
+                <div class="quick-note-footer">
+                    <span class="quick-note-date">
+                        <i class="fas fa-calendar"></i>
+                        ${proc.lastModified || ''}
+                    </span>
+                    ${proc.modifiedBy ? `
+                        <span class="quick-note-author">
+                            <i class="fas fa-user"></i>
+                            ${proc.modifiedBy}
+                        </span>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+        });
+
+        html += '</div>';
+
+        if (term && visibleCount === 0) {
+            html = `
+            <div class="quick-procedures-empty">
+                <i class="fas fa-search"></i>
+                <p>לא נמצאו נהלים מהירים עבור "<strong>${this._escapeHtml(term)}</strong>"</p>
+            </div>
+        `;
+        }
+
+        container.innerHTML = html;
+        this._checkNotesOverflow();
+    }
+
+    openQuickProcedureViewer(id) {
+        const proc = this.quickProcedures.find(p => p.id == id);
+
+        if (!proc) return;
+
+        document.getElementById('quickProcedureViewerTitle').textContent =
+            proc.title;
+
+        document.getElementById('quickProcedureViewerContent').innerHTML =
+            proc.content;
+
+        document.getElementById('quickProcedureViewerModal').style.display = 'flex';
+    }
+
+    closeQuickProcedureViewer() {
+        document.getElementById('quickProcedureViewerModal').style.display = 'none';
+    }
+
+    // הוסף פונקציה חדשה - הרחב הכל
+    expandAllNotes() {
+        document.querySelectorAll('.quick-procedure-note').forEach(note => {
+            const id = note.getAttribute('data-id');
+            const content = document.getElementById(`qnc-${id}`);
+            const preview = note.querySelector('.quick-note-preview');
+            const btn = note.querySelector('.expand-btn i');
+
+            note.classList.add('note-expanded');
+            if (content) content.classList.remove('collapsed-content');
+            if (preview) preview.style.display = 'none';
+            if (btn) btn.className = 'fas fa-chevron-up';
+        });
+        this._updateExpandCollapseButtons(true);
+    }
+
+    // הוסף פונקציה חדשה - כווץ הכל
+    collapseAllNotes() {
+        document.querySelectorAll('.quick-procedure-note').forEach(note => {
+            const id = note.getAttribute('data-id');
+            const content = document.getElementById(`qnc-${id}`);
+            const preview = note.querySelector('.quick-note-preview');
+            const btn = note.querySelector('.expand-btn i');
+
+            note.classList.remove('note-expanded');
+            if (content) content.classList.add('collapsed-content');
+            if (preview) preview.style.display = 'block';
+            if (btn) btn.className = 'fas fa-chevron-down';
+        });
+        this._updateExpandCollapseButtons(false);
+    }
+
+    // עדכון מצב כפתורי הרחב/כווץ הכל
+    _updateExpandCollapseButtons(isExpanded) {
+        const expandAllBtn = document.getElementById('expandAllNotesBtn');
+        const collapseAllBtn = document.getElementById('collapseAllNotesBtn');
+        if (expandAllBtn) expandAllBtn.style.display = isExpanded ? 'none' : 'inline-flex';
+        if (collapseAllBtn) collapseAllBtn.style.display = isExpanded ? 'inline-flex' : 'none';
+    }
+
+    _getPreviewText(htmlContent, maxChars) {
+        // הסר תגי HTML לתצוגה מקוצרת
+        const temp = document.createElement('div');
+        temp.innerHTML = htmlContent || '';
+        const text = temp.textContent || temp.innerText || '';
+        return text.length > maxChars
+            ? this._escapeHtml(text.substring(0, maxChars)) + '...'
+            : this._escapeHtml(text);
+    }
+
+    toggleNoteExpand(id) {
+        const note = document.querySelector(`[data-id="${id}"]`);
+        if (!note) return;
+        const content = document.getElementById(`qnc-${id}`);
+        const preview = note.querySelector('.quick-note-preview');
+        const btn = note.querySelector('.expand-btn i');
+
+        const isExpanded = note.classList.contains('note-expanded');
+
+        if (isExpanded) {
+            note.classList.remove('note-expanded');
+            content.classList.add('collapsed-content');
+            preview.style.display = 'block';
+            btn.className = 'fas fa-chevron-down';
+        } else {
+            note.classList.add('note-expanded');
+            content.classList.remove('collapsed-content');
+            preview.style.display = 'none';
+            btn.className = 'fas fa-chevron-up';
+        }
+    }
+
+    // הדגש טקסט בתוך HTML מבלי לשבור תגים
+    _highlightInHtml(html, term) {
+        if (!term) return html;
+        const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // הדגש רק טקסט שאינו בתוך תגי HTML
+        return html.replace(
+            new RegExp(`(?![^<]*>)(${escapedTerm})`, 'gi'),
+            '<mark class="quick-highlight">$1</mark>'
+        );
+    }
+
+    // בדוק אם תוכן הכרטיס גולש ועדכן class
+    _checkNotesOverflow() {
+        document.querySelectorAll('.quick-note-content').forEach(el => {
+            if (el.scrollHeight > el.clientHeight + 5) {
+                el.classList.add('has-overflow');
+                // קבל צבע רקע מהכרטיס האב
+                const card = el.closest('.quick-procedure-note');
+                if (card) {
+                    const bg = card.style.backgroundColor || 'white';
+                    el.style.setProperty('--note-bg', bg);
+                }
+            } else {
+                el.classList.remove('has-overflow');
+            }
+        });
+    }
+
+    // מחק נוהל מהיר
+    async deleteQuickProcedure(id) {
+        if (!confirm('האם אתה בטוח שברצונך למחוק נוהל מהיר זה?')) return;
+
+        try {
+            const response = await fetch(
+                `/Procedures/DeleteQuickProcedure?id=${encodeURIComponent(id)}`,
+                { method: 'DELETE' }
+            );
+            const result = await response.json();
+
+            if (result.success) {
+                NotificationManager.show('הנוהל המהיר נמחק בהצלחה', 'success');
+                await this.loadQuickProcedures();
+                this.renderQuickProcedures();
+            } else {
+                NotificationManager.show(result.error || 'שגיאה במחיקה', 'error');
+            }
+        } catch (error) {
+            console.error('Error deleting quick procedure:', error);
+            NotificationManager.show('שגיאה במחיקת הנוהל המהיר', 'error');
+        }
+    }
+
+    // Escape HTML
+    _escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    // הדגש מונח חיפוש
+    _highlight(text, term) {
+        if (!term) return this._escapeHtml(text);
+        const escaped = this._escapeHtml(text);
+        const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return escaped.replace(
+            new RegExp(`(${escapedTerm})`, 'gi'),
+            '<mark class="quick-highlight">$1</mark>'
+        );
+    }
+
+    // אתחל חיפוש פנימי במודל
+    // עדכון - שמירת מצב הרחבה
+    _initQuickSearch() {
+        const input = document.getElementById('quickProceduresSearchInput');
+        const clearBtn = document.getElementById('clearQuickSearch');
+        if (!input) return;
+
+        input.value = '';
+        if (clearBtn) clearBtn.classList.remove('visible');
+
+        input.oninput = () => {
+            const term = input.value.trim();
+            if (clearBtn) clearBtn.classList.toggle('visible', term !== '');
+            // בחיפוש - תמיד מורחב; ללא חיפוש - שמור מצב נוכחי
+            const isCurrentlyExpanded = document.querySelector('.quick-procedure-note.note-expanded') !== null;
+            this.renderQuickProcedures(term, term !== '' ? true : isCurrentlyExpanded);
+        };
+
+        if (clearBtn) {
+            clearBtn.onclick = () => {
+                input.value = '';
+                clearBtn.classList.remove('visible');
+                // בניקוי חיפוש - שמור מצב מורחב
+                this.renderQuickProcedures('', true);
+                input.focus();
+            };
+        }
+    }
+
+    // ערוך נוהל מהיר
+    editQuickProcedure(id) {
+        const proc = this.quickProcedures.find(p => p.id === id);
+        if (!proc) return;
+
+        this.openAddQuickProcedureModal(proc);
+    }
+
+    // החלף בין מצב קובץ למצב נוהל מהיר
+    toggleQuickProcedureMode() {
+        const isQuick = document.getElementById('isQuickProcedure').checked;
+        const fileSection = document.getElementById('fileUploadSection');
+        const quickSection = document.getElementById('quickProcedureSection');
+        const uploadBtn = document.getElementById('uploadProcedureBtn');
+        const modalTitle = document.querySelector('#uploadProcedureModal .modal-title');
+
+        if (isQuick) {
+            if (fileSection) fileSection.style.display = 'none';
+            if (quickSection) quickSection.style.display = 'block';
+            if (uploadBtn) uploadBtn.innerHTML = '<i class="fas fa-bolt"></i> שמור נוהל מהיר';
+            if (modalTitle) modalTitle.textContent = 'הוסף נוהל מהיר';
+        } else {
+            if (fileSection) fileSection.style.display = 'block';
+            if (quickSection) quickSection.style.display = 'none';
+            if (uploadBtn) uploadBtn.innerHTML = '<i class="fas fa-upload"></i> העלה נוהל';
+            if (modalTitle) modalTitle.textContent = 'העלה נוהל חדש';
+        }
+    }
+
+    // פתח מודל הוספה/עריכה של נוהל מהיר
+    openAddQuickProcedureModal(existingProc = null) {
+        const modal = document.getElementById('addQuickProcedureModal');
+        if (!modal) return;
+
+        // אפס שדות
+        const titleInput = document.getElementById('aqpTitle');
+        const editor = document.getElementById('aqpEditor');
+        const saveBtn = document.getElementById('aqpSaveBtn');
+        const modalTitle = modal.querySelector('.add-quick-modal-header h3');
+
+        if (existingProc) {
+            // מצב עריכה
+            if (titleInput) titleInput.value = existingProc.title || '';
+            if (editor) editor.innerHTML = existingProc.content || '';
+            if (modalTitle) modalTitle.innerHTML = '<i class="fas fa-edit"></i> ערוך נוהל מהיר';
+            if (saveBtn) saveBtn.innerHTML = '<i class="fas fa-save"></i> שמור שינויים';
+            modal.setAttribute('data-edit-id', existingProc.id);
+        } else {
+            // מצב הוספה
+            if (titleInput) titleInput.value = '';
+            if (editor) editor.innerHTML = '';
+            if (modalTitle) modalTitle.innerHTML = '<i class="fas fa-bolt"></i> הוסף נוהל מהיר';
+            if (saveBtn) saveBtn.innerHTML = '<i class="fas fa-save"></i> שמור';
+            modal.removeAttribute('data-edit-id');
+        }
+
+        this._updateAqpCharCounter();
+        modal.classList.add('open');
+        document.body.style.overflow = 'hidden';
+
+        // פוקוס על שדה הכותרת
+        setTimeout(() => { if (titleInput) titleInput.focus(); }, 100);
+
+        // הגדר paste listener לתמונות
+        this._setupAqpPasteListener();
+    }
+
+    // סגור מודל נוהל מהיר עצמאי
+    closeAddQuickProcedureModal() {
+        const modal = document.getElementById('addQuickProcedureModal');
+        if (!modal) return;
+        modal.classList.remove('open');
+        modal.removeAttribute('data-edit-id');
+
+        // הסר paste listener
+        if (this._aqpPasteHandler) {
+            document.removeEventListener('paste', this._aqpPasteHandler);
+            this._aqpPasteHandler = null;
+        }
+
+        // אם מודל הנהלים המהירים פתוח - אל תשחרר overflow
+        const quickModal = document.getElementById('quickProceduresModal');
+        if (!quickModal || quickModal.style.display === 'none') {
+            document.body.style.overflow = 'auto';
+        }
+    }
+
+    // שמור נוהל מהיר מהמודל העצמאי
+    async saveAddQuickProcedureModal() {
+        const modal = document.getElementById('addQuickProcedureModal');
+        const titleInput = document.getElementById('aqpTitle');
+        const editor = document.getElementById('aqpEditor');
+        const saveBtn = document.getElementById('aqpSaveBtn');
+        const userSelect = document.getElementById('aqpUserName');
+
+        const title = titleInput ? titleInput.value.trim() : '';
+        const content = editor ? editor.innerHTML.trim() : '';
+        const editId = modal.getAttribute('data-edit-id') || null;
+        const userName = userSelect ? userSelect.value : '';
+
+        if (!title) {
+            NotificationManager.show('אנא הכנס כותרת לנוהל המהיר', 'error');
+            if (titleInput) titleInput.focus();
+            return;
+        }
+
+        if (!content || content === '<br>') {
+            NotificationManager.show('אנא הכנס תוכן לנוהל המהיר', 'error');
+            if (editor) editor.focus();
+            return;
+        }
+
+        // בדוק גודל (כולל תמונות base64)
+        const textOnly = editor ? (editor.innerText || editor.textContent || '') : '';
+        if (textOnly.length > 2000) {
+            NotificationManager.show('התוכן ארוך מדי (מקסימום 2000 תווים)', 'error');
+            return;
+        }
+
+        const originalHtml = saveBtn ? saveBtn.innerHTML : '';
+        try {
+            if (saveBtn) {
+                saveBtn.disabled = true;
+                saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> שומר...';
+            }
+
+            const payload = {
+                title: title,
+                content: content,
+                userName: userName,
+                id: editId
+            };
+
+            const response = await fetch('/Procedures/SaveQuickProcedure', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                NotificationManager.show(
+                    editId ? 'הנוהל המהיר עודכן בהצלחה' : 'הנוהל המהיר נשמר בהצלחה',
+                    'success'
+                );
+                this.closeAddQuickProcedureModal();
+
+                // רענן את הרשימה אם המודל פתוח
+                const quickModal = document.getElementById('quickProceduresModal');
+                if (quickModal && quickModal.style.display !== 'none') {
+                    await this.loadQuickProcedures();
+                    this.renderQuickProcedures();
+                }
+            } else {
+                NotificationManager.show(result.error || 'שגיאה בשמירה', 'error');
+            }
+        } catch (error) {
+            console.error('Error saving quick procedure:', error);
+            NotificationManager.show('שגיאה בשמירת הנוהל המהיר', 'error');
+        } finally {
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = originalHtml;
+            }
+        }
+    }
+
+    // עדכן מונה תווים
+    _updateAqpCharCounter() {
+        const editor = document.getElementById('aqpEditor');
+        const counter = document.getElementById('aqpCharCount');
+        if (!editor || !counter) return;
+
+        const text = editor.innerText || editor.textContent || '';
+        const len = text.length;
+        counter.textContent = `${len} תווים`;
+        counter.parentElement.classList.toggle('warning', len > 1800);
+    }
+
+    // הגדר paste listener לתמונות
+    _setupAqpPasteListener() {
+        // הסר listener קיים
+        if (this._aqpPasteHandler) {
+            document.removeEventListener('paste', this._aqpPasteHandler);
+        }
+
+        this._aqpPasteHandler = (e) => {
+            const editor = document.getElementById('aqpEditor');
+            if (!editor) return;
+
+            // בדוק אם הפוקוס בתוך העורך
+            if (!editor.contains(document.activeElement) && document.activeElement !== editor) {
+                return;
+            }
+
+            const items = e.clipboardData && e.clipboardData.items;
+            if (!items) return;
+
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) {
+                    e.preventDefault();
+                    const blob = items[i].getAsFile();
+                    if (!blob) continue;
+
+                    const reader = new FileReader();
+                    reader.onload = (evt) => {
+                        const img = document.createElement('img');
+                        img.src = evt.target.result;
+                        img.style.maxWidth = '100%';
+                        img.style.borderRadius = '8px';
+                        img.style.margin = '6px 0';
+                        img.style.display = 'block';
+
+                        // הכנס בנקודת הסמן
+                        const sel = window.getSelection();
+                        if (sel && sel.rangeCount > 0) {
+                            const range = sel.getRangeAt(0);
+                            range.deleteContents();
+                            range.insertNode(img);
+                            range.setStartAfter(img);
+                            range.collapse(true);
+                            sel.removeAllRanges();
+                            sel.addRange(range);
+                        } else {
+                            editor.appendChild(img);
+                        }
+
+                        this._updateAqpCharCounter();
+                        NotificationManager.show('התמונה הוכנסה בהצלחה', 'success');
+                    };
+                    reader.readAsDataURL(blob);
+                    return;
+                }
+            }
+        };
+
+        document.addEventListener('paste', this._aqpPasteHandler);
+    }
+
+    // הכנס תמונה מקובץ
+    insertImageFromFile() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            if (file.size > 2 * 1024 * 1024) {
+                NotificationManager.show('התמונה גדולה מדי (מקסימום 2MB)', 'error');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                const editor = document.getElementById('aqpEditor');
+                if (!editor) return;
+
+                editor.focus();
+                const img = document.createElement('img');
+                img.src = evt.target.result;
+                img.style.maxWidth = '100%';
+                img.style.borderRadius = '8px';
+                img.style.margin = '6px 0';
+                img.style.display = 'block';
+
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount > 0) {
+                    const range = sel.getRangeAt(0);
+                    range.deleteContents();
+                    range.insertNode(img);
+                    range.setStartAfter(img);
+                    range.collapse(true);
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                } else {
+                    editor.appendChild(img);
+                }
+
+                this._updateAqpCharCounter();
+            };
+            reader.readAsDataURL(file);
+        };
+        input.click();
+    }
+
+    // פתח lightbox לתמונה
+    openImageLightbox(src) {
+        const lb = document.getElementById('quickImageLightbox');
+        const img = document.getElementById('quickLightboxImg');
+        if (!lb || !img) return;
+        img.src = src;
+        lb.classList.add('open');
+    }
+
+    // סגור lightbox
+    closeImageLightbox() {
+        const lb = document.getElementById('quickImageLightbox');
+        if (lb) lb.classList.remove('open');
+    }
+
+    // עדכן מונה תווים
+    updateCharCounter() {
+        const content = document.getElementById('quickProcedureContent');
+        const counter = document.getElementById('quickProcedureCharCount');
+        if (content && counter) {
+            counter.textContent = `${content.value.length} / 500 תווים`;
+            counter.style.color = content.value.length > 450 ? '#e74c3c' : '#666';
+        }
+    }
+
+
+    // הוסף פונקציה חדשה לשמירת נוהל מהיר:
+    async saveQuickProcedure() {
+        const title = document.getElementById('quickProcedureTitle').value.trim();
+        const content = document.getElementById('quickProcedureContent').value.trim();
+        const userNameSelect = document.getElementById('procedureUploadUserName');
+        const userName = userNameSelect ? userNameSelect.value : '';
+        const editId = document.getElementById('uploadProcedureModal').getAttribute('data-edit-id');
+
+        if (!title) {
+            NotificationManager.show('אנא הכנס כותרת לנוהל המהיר', 'error');
+            document.getElementById('quickProcedureTitle').focus();
+            return;
+        }
+
+        if (!content) {
+            NotificationManager.show('אנא הכנס תוכן לנוהל המהיר', 'error');
+            document.getElementById('quickProcedureContent').focus();
+            return;
+        }
+
+        const uploadBtn = document.getElementById('uploadProcedureBtn');
+        const originalText = uploadBtn.innerHTML;
+
+        try {
+            uploadBtn.disabled = true;
+            uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> שומר...';
+
+            const payload = {
+                title: title,
+                content: content,
+                userName: userName,
+                id: editId || null
+            };
+
+            const response = await fetch('/Procedures/SaveQuickProcedure', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                NotificationManager.show(
+                    editId ? 'הנוהל המהיר עודכן בהצלחה' : 'הנוהל המהיר נשמר בהצלחה',
+                    'success'
+                );
+                this.closeUploadModal();
+            } else {
+                NotificationManager.show(result.error || 'שגיאה בשמירה', 'error');
+            }
+        } catch (error) {
+            console.error('Error saving quick procedure:', error);
+            NotificationManager.show('שגיאה בשמירת הנוהל המהיר', 'error');
+        } finally {
+            uploadBtn.disabled = false;
+            uploadBtn.innerHTML = originalText;
+        }
+    }
+
+
     // Close upload modal
     closeUploadModal() {
         this.isModalOpen = false;
         document.getElementById('uploadProcedureModal').style.display = 'none';
         document.body.style.overflow = 'auto';
+
+        // איפוס שדות קובץ
         document.getElementById('procedureFileInput').value = '';
         document.getElementById('procedureUploadPreview').style.display = 'none';
-
-        // Reset folder selection
         document.getElementById('procedureFolderSelect').value = '';
         document.getElementById('newFolderGroup').style.display = 'none';
         document.getElementById('newFolderNameInput').value = '';
@@ -2295,6 +3212,12 @@ class ProceduresManager {
 
     // Upload procedure file
     async uploadProcedureFile() {
+        // *** בדוק אם זה נוהל מהיר ***
+        const isQuick = document.getElementById('isQuickProcedure')?.checked;
+        if (isQuick) {
+            await this.saveQuickProcedure();
+            return;
+        }
         const fileInput = document.getElementById('procedureFileInput');
         const folderSelect = document.getElementById('procedureFolderSelect');
         const newFolderInput = document.getElementById('newFolderNameInput');

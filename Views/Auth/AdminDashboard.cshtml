@@ -1,0 +1,201 @@
+@{
+    Layout = "~/Views/Shared/_AdminLayout.cshtml";
+    ViewData["Title"] = "לוח בקרה - ניהול";
+    var allUsers        = ViewBag.AllUsers        as List<NocPortal.Models.AppUser>;
+    var unapprovedUsers = ViewBag.UnapprovedUsers as List<NocPortal.Models.AppUser>;
+    var pendingCount    = unapprovedUsers?.Count ?? 0;
+    var totalUsers      = allUsers?.Count ?? 0;
+    var approvedCount   = allUsers?.Count(u => u.IsApproved) ?? 0;
+    var adminCount      = allUsers?.Count(u => u.Role == NocPortal.Models.UserRole.Admin) ?? 0;
+    var nocCount        = allUsers?.Count(u => u.Role == NocPortal.Models.UserRole.NOC) ?? 0;
+    var dashCount       = allUsers?.Count(u => u.Role == NocPortal.Models.UserRole.Dashboard) ?? 0;
+}
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>@ViewData["Title"]</title>
+    <link rel="icon" type="image/x-icon"
+          href="https://www.menoramivt.co.il/customers-homepage/static/img/favicon.ico">
+    <link rel="stylesheet" href="https://cdn.menoramivt.co.il/public/fonts/fonts.css">
+    <link rel="stylesheet" href="/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="~/css/admin-panel.css">
+</head>
+<body>
+
+<!-- ============ MAIN CONTENT ============ -->
+<div class="admin-content">
+
+    <!-- הודעות TempData -->
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success">
+            <i class="fas fa-check-circle"></i>
+            @TempData["Success"]
+        </div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-error">
+            <i class="fas fa-exclamation-circle"></i>
+            @TempData["Error"]
+        </div>
+    }
+
+    <!-- Welcome Banner -->
+    <div class="welcome-banner">
+        <h2>
+            שלום, @User.FindFirst("DisplayName")?.Value
+        </h2>
+        <p>בחר פעולה מלוח הבקרה למטה</p>
+    </div>
+
+    <!-- התראת ממתינים לאישור -->
+    @if (pendingCount > 0)
+    {
+        <div class="pending-alert" style="margin: 1.5rem 12rem 0;">
+            <i class="fas fa-bell"></i>
+            יש <strong style="margin: 0 4px">@pendingCount משתמשים</strong> הממתינים לאישור
+            <a asp-action="Users" asp-controller="Auth">
+                <i class="fas fa-arrow-left"></i> טפל עכשיו
+            </a>
+        </div>
+    }
+
+    <!-- Mini Stats Bar -->
+    <div class="dashboard-stats">
+        <div class="mini-stat">
+            <i class="fas fa-users" style="color:#4a9eff"></i>
+            <strong>@totalUsers</strong> משתמשים
+        </div>
+        <div class="mini-stat">
+            <i class="fas fa-user-check" style="color:#34d399"></i>
+            <strong>@approvedCount</strong> מאושרים
+        </div>
+        <div class="mini-stat">
+            <i class="fas fa-user-clock" style="color:#f0a500"></i>
+            <strong>@pendingCount</strong> ממתינים
+        </div>
+        <div class="mini-stat">
+            <i class="fas fa-user-shield" style="color:#f87171"></i>
+            <strong>@adminCount</strong> מנהלים
+        </div>
+        <div class="mini-stat">
+            <i class="fas fa-headset" style="color:#a78bfa"></i>
+            <strong>@nocCount</strong> NOC
+        </div>
+        <div class="mini-stat">
+            <i class="fas fa-chart-bar" style="color:#f59e0b"></i>
+            <strong>@dashCount</strong> Dashboard
+        </div>
+    </div>
+
+    <!-- Section Title -->
+    <div class="section-title">
+        <i class="fas fa-th-large"></i>
+        אפשרויות ניהול
+    </div>
+
+    <!-- ============ NAVIGATION CARDS GRID ============ -->
+    <div class="admin-dashboard-grid">
+
+        <!-- כרטיסייה: ניהול משתמשים -->
+        <a asp-action="Users" asp-controller="Auth"
+           class="admin-nav-card card-users">
+            @if (pendingCount > 0)
+            {
+                <span class="nav-card-badge">@pendingCount</span>
+            }
+            <div class="nav-card-icon icon-users">
+                <i class="fas fa-users-cog"></i>
+            </div>
+            <div class="nav-card-title">ניהול משתמשים</div>
+            <div class="nav-card-desc">
+                אישור משתמשים חדשים, שינוי תפקידים,<br>
+                מחיקה ועדכון פרטים
+            </div>
+        </a>
+
+        <!-- כרטיסייה: לוג פעילות -->
+        <a asp-action="AuditLog" asp-controller="Auth"
+           class="admin-nav-card card-audit">
+            <div class="nav-card-icon icon-audit">
+                <i class="fas fa-clipboard-list"></i>
+            </div>
+            <div class="nav-card-title">לוג פעילות</div>
+            <div class="nav-card-desc">
+                מעקב אחר פעולות משתמשים,<br>
+                כניסות ויציאות מהמערכת
+            </div>
+        </a>
+
+        <!-- כרטיסייה: הודעות מערכת -->
+        <a asp-action="Index" asp-controller="UserMessages"
+           class="admin-nav-card card-messages">
+            <div class="nav-card-icon icon-messages">
+                <i class="fas fa-bell"></i>
+            </div>
+            <div class="nav-card-title">הודעות מערכת</div>
+            <div class="nav-card-desc">
+                ניהול הודעות ועדכונים<br>
+                למשתמשי המערכת
+            </div>
+        </a>
+
+        <!-- כרטיסייה: שינויים - ספר טלפונים -->
+        <a asp-action="Index" asp-controller="PhoneDirectoryChanges"
+           class="admin-nav-card card-phonechange">
+            <div class="nav-card-icon icon-phonechange">
+                <i class="fas fa-exchange-alt"></i>
+            </div>
+            <div class="nav-card-title">שינויים - ספר טלפונים</div>
+            <div class="nav-card-desc">
+                ניהול ומעקב אחר שינויים<br>
+                בספר הטלפונים
+            </div>
+        </a>
+
+        <!-- כרטיסייה: דשבורדים -->
+        <a href="/dashboards"
+           class="admin-nav-card card-dashboards">
+            <div class="nav-card-icon icon-dashboards">
+                <i class="fas fa-chart-bar"></i>
+            </div>
+            <div class="nav-card-title">דשבורדים</div>
+            <div class="nav-card-desc">
+                מעבר לתצוגת הדשבורדים<br>
+                של מערכת NOC
+            </div>
+        </a>
+
+        <!-- כרטיסייה: פורטל -->
+        <a href="/Home"
+           class="admin-nav-card card-portal">
+            <div class="nav-card-icon icon-portal">
+                <i class="fas fa-home"></i>
+            </div>
+            <div class="nav-card-title">פורטל ראשי</div>
+            <div class="nav-card-desc">
+                חזרה לדף הבית<br>
+                של NOC Portal
+            </div>
+        </a>
+
+    </div>
+</div>
+
+<script>
+
+    document.addEventListener('click', function(e) {
+        const wrapper = document.querySelector('.back-dropdown-wrapper');
+        if (wrapper && !wrapper.contains(e.target)) {
+            document.getElementById('backDropdownMenu')?.classList.remove('open');
+            const chevron = document.getElementById('backChevron');
+            if (chevron) chevron.style.transform = 'rotate(0deg)';
+        }
+    });
+</script>
+
+</body>
+</html

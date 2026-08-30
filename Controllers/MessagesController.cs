@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
 using System.IO;
@@ -11,34 +10,39 @@ using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using System.Text.RegularExpressions;
+using NocPortal.Services;
 
 public class MessagesController : Controller
 {
-    private readonly IWebHostEnvironment _env;
-    private readonly string _filesRootPath;
-    private readonly string _uploadsRelativePath;
-    private readonly string _messagesFilePath;
-    private readonly string _uploadsPath;
-    private readonly string _emailCachePath; // הוסף שדה חדש לשמירת נתיב תיקיית המטמון
+    private readonly string _messagesFilePath = @"R:\USERS\TASHTIT\NOC\Portal\files\messages.txt";
+    private readonly string _uploadsPath = @"R:\USERS\TASHTIT\NOC\Portal\files\messagesUploads";
+    private readonly string _emailCachePath = @"R:\USERS\TASHTIT\NOC\Portal\files\emailCache"; // הוסף שדה חדש לשמירת נתיב תיקיית המטמון
+    private readonly string _dailyReportsPath = @"R:\USERS\TASHTIT\NOC\Control-M Files\DAILY_REPORTS";
+    private readonly string _jobsContactsPath = @"R:\USERS\TASHTIT\NOC\Control-M Files\JOBS_CONTACTS";
+    private readonly string _permanentAccessListPath = @"R:\USERS\TASHTIT\NOC\Portal\files\permanent_access_list.json";
 
     // הוסף שדה חדש לשמירת נתיב קובץ מיפוי מיילים
-    private readonly string _emailMappingFilePath;
-
-    public MessagesController(IWebHostEnvironment env)
-    {
-        _env = env;
-        _filesRootPath = env.WebRootPath;
-        _messagesFilePath = Path.Combine(_filesRootPath, "assets", "files", "messages.txt");
-        _uploadsPath = Path.Combine(_filesRootPath, "assets", "files", "messagesUploads");
-        _emailCachePath = Path.Combine(_filesRootPath, "assets", "files", "emailCache");
-        _emailMappingFilePath = Path.Combine(_filesRootPath, "assets", "files", "email_mapping.csv");
-        _uploadsRelativePath = Path.Combine(_filesRootPath, "assets", "files", "messagesUploads");
-    }
+    private readonly string _emailMappingFilePath = @"R:\USERS\TASHTIT\NOC\Portal\files\email_mapping.csv";
     
     private static DateTime _lastCacheCleanupTime = DateTime.MinValue;
     private static DateTime _lastFullCacheCleanupTime = DateTime.MinValue;
     private static readonly TimeSpan _fullCacheCleanupInterval = TimeSpan.FromDays(2); // אחת ליומיים
     private static readonly TimeSpan _cacheFileMaxAge = TimeSpan.FromDays(7); // שמירת קבצים עד 7 ימים
+
+    // ===== שדות לטיימר יומי =====
+    private static System.Threading.Timer _dailyPermitEmailTimer = null;
+    private static bool _dailyEmailTimerInitialized = false;
+    private static readonly object _timerLock = new object();
+
+    private HashSet<int> _dateStyleIndices = null;
+    private static AuditLogService _auditLog;
+
+    public MessagesController(AuditLogService auditLog)
+    {
+        _auditLog = auditLog;
+        // הפעל טיימר יומי בפעם הראשונה שהקונטרולר נוצר
+        EnsureDailyPermitEmailTimerStarted();
+    }
 
     [HttpGet]
     public IActionResult GetMessages()
@@ -133,7 +137,7 @@ public class MessagesController : Controller
             }
 
             // החזרת נתיב יחסי
-            var relativePath = Path.Combine(_uploadsRelativePath, messageId, csvFileName);
+            var relativePath = Path.Combine(_uploadsPath, messageId, csvFileName);
 
             return Json(new 
             { 
@@ -144,7 +148,7 @@ public class MessagesController : Controller
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"שגיאה: {ex.Message}");
+            Console.WriteLine($"Error: {ex.Message}");
             return Json(new { success = false, error = "שגיאה בקריאת הנתונים מהקובץ. נסה להעלות קובץ זה כCSV" });
         }
         finally
@@ -241,7 +245,7 @@ public class MessagesController : Controller
             }
 
             // שמור נתיב יחסי במקום מוחלט
-            var relativePath = Path.Combine(_uploadsRelativePath, messageId, fileName);
+            var relativePath = Path.Combine(_uploadsPath, messageId, fileName);
 
             return Json(new { success = true, filePath = relativePath });
         }
@@ -354,7 +358,7 @@ public class MessagesController : Controller
         }
         catch (Exception ex)
         {
-            return Json(new { success = false, error = $"שגיאה: {ex.Message}" });
+            return Json(new { success = false, error = $"Error: {ex.Message}" });
         }
     }
 
@@ -394,7 +398,7 @@ public class MessagesController : Controller
             else
             {
                 // אם זה נתיב יחסי - בנה נתיב מוחלט
-                fullPath = Path.Combine(_filesRootPath, decodedPath);
+                fullPath = Path.Combine(@"R:\USERS\TASHTIT\NOC\Portal\files", decodedPath);
             }
 
             // נרמל את הנתיב (תקן slashes)
@@ -413,7 +417,7 @@ public class MessagesController : Controller
                     }
                     else
                     {
-                        alternativePath = Path.Combine(_filesRootPath, filePath);
+                        alternativePath = Path.Combine(@"R:\USERS\TASHTIT\NOC\Portal\files", filePath);
                     }
                     
                     alternativePath = Path.GetFullPath(alternativePath);
@@ -442,7 +446,7 @@ public class MessagesController : Controller
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = $"שגיאה: {ex.Message}" });
+            return BadRequest(new { error = $"Error: {ex.Message}" });
         }
     }
 
@@ -460,28 +464,16 @@ public class MessagesController : Controller
         };
     }
 
-    private string ResolveFilePath(string filePath)
-    {
-        if (string.IsNullOrEmpty(filePath))
-            return filePath;
-
-        if (Path.IsPathRooted(filePath))
-            return filePath;
-
-        return Path.GetFullPath(Path.Combine(_filesRootPath, filePath));
-    }
-
     [HttpGet]
     public IActionResult GetCsvFile(string filePath)
     {
-        var fullPath = ResolveFilePath(filePath);
-        if (string.IsNullOrEmpty(fullPath) || !System.IO.File.Exists(fullPath))
+        if (string.IsNullOrEmpty(filePath) || !System.IO.File.Exists(filePath))
         {
             return NotFound();
         }
 
-        var fileBytes = System.IO.File.ReadAllBytes(fullPath);
-        return File(fileBytes, "text/csv", Path.GetFileName(fullPath));
+        var fileBytes = System.IO.File.ReadAllBytes(filePath);
+        return File(fileBytes, "text/csv", Path.GetFileName(filePath));
     }
     
     [HttpGet]
@@ -489,14 +481,13 @@ public class MessagesController : Controller
     {
         try
         {
-            var fullPath = ResolveFilePath(filePath);
-            if (string.IsNullOrEmpty(fullPath) || !System.IO.File.Exists(fullPath))
+            if (string.IsNullOrEmpty(filePath) || !System.IO.File.Exists(filePath))
             {
                 return Json(new { success = false, error = "File not found" });
             }
 
             // קריאה לפונקציה הפרטית שכבר מטפלת נכון בפסיקים
-            var result = await ParseCsvFile(fullPath);
+            var result = await ParseCsvFile(filePath);
             return Json(result);
         }
         catch (Exception ex)
@@ -670,6 +661,33 @@ public class MessagesController : Controller
             {
                 case "בקשות וביצוע":
                     newMessage["jobs"] = request.Jobs ?? new List<ExecutionJob>();
+                    // טיפול בקבצים מצורפים
+                    if (request.Attachments != null && request.Attachments.Count > 0)
+                    {
+                        foreach (var attachmentPath in request.Attachments)
+                        {
+                            if (attachmentPath.Contains("temp"))
+                            {
+                                MoveFilesFromTemp("temp", newMessageId);
+                                break;
+                            }
+                        }
+                        
+                        List<string> updatedAttachmentPaths = new List<string>();
+                        foreach (var attachmentPath in request.Attachments)
+                        {
+                            if (!string.IsNullOrEmpty(attachmentPath))
+                            {
+                                string updatedPath = attachmentPath.Replace("temp", newMessageId);
+                                updatedAttachmentPaths.Add(updatedPath.Replace("\\", "/"));
+                            }
+                        }
+                        
+                        if (updatedAttachmentPaths.Count > 0)
+                        {
+                            newMessage["attachments"] = updatedAttachmentPaths;
+                        }
+                    }
                     // שמירת מערך המיילים או מייל בודד
                     if (request.AttachedEmails != null && request.AttachedEmails.Count > 0)
                     {
@@ -725,6 +743,11 @@ public class MessagesController : Controller
                         newMessage["csvFilePath"] = request.CsvFilePath.Replace("\\", "/");
                     }
                     newMessage["tableData"] = request.TableData;
+                    newMessage["alwaysShow"] = request.AlwaysShow;
+                    if (!request.AlwaysShow && !string.IsNullOrEmpty(request.EndDate))
+                    {
+                        newMessage["endDate"] = request.EndDate;
+                    }
                     break;
 
                 case "דוחות UC4":
@@ -733,6 +756,12 @@ public class MessagesController : Controller
                         newMessage["csvFilePath"] = request.CsvFilePath.Replace("\\", "/");
                     }
                     newMessage["tableData"] = request.TableData;
+                    
+                    // ← הוסף שמירת Control-M:
+                    if (request.ControlMTableData != null && request.ControlMTableData.Count > 0)
+                    {
+                        newMessage["controlMTableData"] = request.ControlMTableData;
+                    }
                     break;
                 case "סיכומי משמרת":
                     newMessage["incidents"] = request.Incidents;
@@ -742,6 +771,10 @@ public class MessagesController : Controller
                     newMessage["generalInfo"] = request.GeneralInfo;
                     newMessage["openItems"] = request.OpenItems;
                     
+                    if (request.DailyTasksSummary != null)
+                    {
+                        newMessage["dailyTasksSummary"] = request.DailyTasksSummary;
+                    }
                     // טיפול בקבצים מצורפים
                     if (request.Attachments != null && request.Attachments.Count > 0)
                     {
@@ -1106,7 +1139,7 @@ public class MessagesController : Controller
         }
         catch (Exception ex)
         {
-            return Json(new { success = false, error = $"שגיאה: {ex.Message}" });
+            return Json(new { success = false, error = $"Error: {ex.Message}" });
         }
     }
 
@@ -1118,12 +1151,14 @@ public class MessagesController : Controller
             // המר את הנתונים למודל באופן ידני
             var jsonElement = (JsonElement)requestData;
             
-            if (!jsonElement.TryGetProperty("MessageId", out var messageIdElement) || messageIdElement.ValueKind != JsonValueKind.String ||
-                !jsonElement.TryGetProperty("Jobs", out var jobsElement) || jobsElement.ValueKind != JsonValueKind.Array)
+            if (!jsonElement.TryGetProperty("MessageId", out var messageIdElement) || 
+                messageIdElement.ValueKind != JsonValueKind.String ||
+                !jsonElement.TryGetProperty("Jobs", out var jobsElement) ||
+                jobsElement.ValueKind != JsonValueKind.Array)
             {
                 return Json(new { success = false, error = "נתונים חסרים או לא תקינים" });
             }
-
+            
             string messageId = messageIdElement.GetString();
             
             // טען את כל ההודעות
@@ -1134,38 +1169,43 @@ public class MessagesController : Controller
             {
                 return Json(new { success = false, error = "הודעה לא נמצאה" });
             }
-
+            
             if (message.Jobs == null)
             {
                 return Json(new { success = false, error = "אין משימות בהודעה זו" });
             }
-
+            
             // עדכן את המשימות
             foreach (var jobElement in jobsElement.EnumerateArray())
             {
-                if (!jobElement.TryGetProperty("JobIndex", out var jobIndexElement) || jobIndexElement.ValueKind != JsonValueKind.Number)
+                if (!jobElement.TryGetProperty("JobIndex", out var jobIndexElement) ||
+                    jobIndexElement.ValueKind != JsonValueKind.Number)
                 {
                     continue;
                 }
-
+                
                 int jobIndex = jobIndexElement.GetInt32();
+                
                 if (jobIndex < 0 || jobIndex >= message.Jobs.Count)
                 {
                     continue;
                 }
-
+                
                 // עדכן את סטטוס הביצוע
-                if (jobElement.TryGetProperty("IsCompleted", out var isCompletedElement) && isCompletedElement.ValueKind == JsonValueKind.True)
+                if (jobElement.TryGetProperty("IsCompleted", out var isCompletedElement) &&
+                    isCompletedElement.ValueKind == JsonValueKind.True)
                 {
                     message.Jobs[jobIndex].IsCompleted = true;
                     
                     // עדכן את פרטי המבצע
-                    if (jobElement.TryGetProperty("CompletedBy", out var completedByElement) && completedByElement.ValueKind == JsonValueKind.String)
+                    if (jobElement.TryGetProperty("CompletedBy", out var completedByElement) &&
+                        completedByElement.ValueKind == JsonValueKind.String)
                     {
                         message.Jobs[jobIndex].CompletedBy = completedByElement.GetString();
                     }
                     
-                    if (jobElement.TryGetProperty("CompletedDate", out var completedDateElement) && completedDateElement.ValueKind == JsonValueKind.String)
+                    if (jobElement.TryGetProperty("CompletedDate", out var completedDateElement) &&
+                        completedDateElement.ValueKind == JsonValueKind.String)
                     {
                         message.Jobs[jobIndex].CompletedDate = completedDateElement.GetString();
                     }
@@ -1173,7 +1213,7 @@ public class MessagesController : Controller
                     {
                         message.Jobs[jobIndex].CompletedDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
                     }
-
+                    
                     // אם מסומן כבוצע, וודא שלא מסומן גם כבריצה
                     message.Jobs[jobIndex].IsRunning = false;
                     message.Jobs[jobIndex].RunningBy = null;
@@ -1184,19 +1224,22 @@ public class MessagesController : Controller
                     message.Jobs[jobIndex].IsCompleted = false;
                     message.Jobs[jobIndex].CompletedBy = null;
                     message.Jobs[jobIndex].CompletedDate = null;
-
+                    
                     // עדכן את סטטוס הריצה
-                    if (jobElement.TryGetProperty("IsRunning", out var isRunningElement) && isRunningElement.ValueKind == JsonValueKind.True)
+                    if (jobElement.TryGetProperty("IsRunning", out var isRunningElement) &&
+                        isRunningElement.ValueKind == JsonValueKind.True)
                     {
                         message.Jobs[jobIndex].IsRunning = true;
                         
                         // עדכן את פרטי המריץ
-                        if (jobElement.TryGetProperty("RunningBy", out var runningByElement) && runningByElement.ValueKind == JsonValueKind.String)
+                        if (jobElement.TryGetProperty("RunningBy", out var runningByElement) &&
+                            runningByElement.ValueKind == JsonValueKind.String)
                         {
                             message.Jobs[jobIndex].RunningBy = runningByElement.GetString();
                         }
                         
-                        if (jobElement.TryGetProperty("RunningDate", out var runningDateElement) && runningDateElement.ValueKind == JsonValueKind.String)
+                        if (jobElement.TryGetProperty("RunningDate", out var runningDateElement) &&
+                            runningDateElement.ValueKind == JsonValueKind.String)
                         {
                             message.Jobs[jobIndex].RunningDate = runningDateElement.GetString();
                         }
@@ -1213,19 +1256,19 @@ public class MessagesController : Controller
                     }
                 }
             }
-
+            
             // עדכן את זמן העדכון האחרון
             message.LastModified = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-
+            
             // שמור את השינויים
             SaveMessages(messages);
-
+            
             return Json(new { success = true });
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error in UpdateAllJobStatuses: {ex.Message}");
-            return Json(new { success = false, error = $"שגיאה: {ex.Message}" });
+            return Json(new { success = false, error = $"Error: {ex.Message}" });
         }
     }
 
@@ -1240,16 +1283,20 @@ public class MessagesController : Controller
             }
 
             var messages = ReadMessagesFromFile();
+            
             for (int i = 0; i < messages.Count; i++)
             {
                 var messageJson = JsonSerializer.Serialize(messages[i]);
                 var messageObj = JsonSerializer.Deserialize<JsonElement>(messageJson);
+                
                 string messageId = messageObj.TryGetProperty("id", out var idProp) ? idProp.GetString() : null;
-
+                
                 if (messageId == request.Id)
                 {
-                    string originalDate = messageObj.TryGetProperty("date", out var dateProp) ? dateProp.GetString() : DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
-
+                    string originalDate = messageObj.TryGetProperty("date", out var dateProp) 
+                        ? dateProp.GetString() 
+                        : DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                    
                     // בדוק אם יש קבצים כלשהם בתיקיית temp שצריך להעביר
                     bool needToMoveFiles = false;
                     
@@ -1284,13 +1331,13 @@ public class MessagesController : Controller
                     {
                         needToMoveFiles = true;
                     }
-
+                    
                     // העבר קבצים אם צריך
                     if (needToMoveFiles)
                     {
                         Console.WriteLine($"Moving files from temp to {request.Id} for edit operation");
                         MoveFilesFromTemp("temp", request.Id);
-
+                        
                         // עדכן את נתיבי התמונות של ההתראות
                         if (request.AlertItems != null)
                         {
@@ -1303,7 +1350,7 @@ public class MessagesController : Controller
                                 }
                             }
                         }
-
+                        
                         // עדכן את נתיבי הקבצים המצורפים
                         if (request.Attachments != null)
                         {
@@ -1316,7 +1363,7 @@ public class MessagesController : Controller
                                 }
                             }
                         }
-
+                        
                         // עדכן את נתיב קובץ ה-CSV
                         if (request.CsvFilePath != null && request.CsvFilePath.Contains("temp"))
                         {
@@ -1343,6 +1390,33 @@ public class MessagesController : Controller
                     {
                         case "בקשות וביצוע":
                             updatedMessage["jobs"] = request.Jobs ?? new List<ExecutionJob>();
+                            // שמירת קבצים מצורפים
+                            if (request.Attachments != null && request.Attachments.Count > 0)
+                            {
+                                foreach (var attachmentPath in request.Attachments)
+                                {
+                                    if (attachmentPath.Contains("temp"))
+                                    {
+                                        MoveFilesFromTemp("temp", messageId);
+                                        break;
+                                    }
+                                }
+                                
+                                List<string> updatedAttachmentPaths = new List<string>();
+                                foreach (var attachmentPath in request.Attachments)
+                                {
+                                    if (!string.IsNullOrEmpty(attachmentPath))
+                                    {
+                                        string updatedPath = attachmentPath.Replace("temp", messageId);
+                                        updatedAttachmentPaths.Add(updatedPath.Replace("\\", "/"));
+                                    }
+                                }
+                                
+                                if (updatedAttachmentPaths.Count > 0)
+                                {
+                                    updatedMessage["attachments"] = updatedAttachmentPaths;
+                                }
+                            }
                             // שמירת מערך המיילים או מייל בודד
                             if (request.AttachedEmails != null && request.AttachedEmails.Count > 0)
                             {
@@ -1381,6 +1455,7 @@ public class MessagesController : Controller
                             
                         case "בקשות":
                             updatedMessage["content"] = request.Content;
+                            
                             // שמירת מערך המיילים או מייל בודד
                             if (request.AttachedEmails != null && request.AttachedEmails.Count > 0)
                             {
@@ -1418,15 +1493,23 @@ public class MessagesController : Controller
                             break;
                             
                         case "רשימות":
-                            updatedMessage["csvFilePath"] = request.CsvFilePath.Replace("\\", "/");
+                            updatedMessage["csvFilePath"] =  request.CsvFilePath.Replace("\\", "/");
                             updatedMessage["tableData"] = request.TableData;
+                            updatedMessage["endDate"] = request.EndDate;
+                            updatedMessage["alwaysShow"] = request.AlwaysShow;
                             break;
                             
                         case "דוחות UC4":
-                            updatedMessage["csvFilePath"] = request.CsvFilePath.Replace("\\", "/");
+                            updatedMessage["csvFilePath"] = request.CsvFilePath?.Replace("\\", "/") ?? "";
                             updatedMessage["tableData"] = request.TableData;
-                            break;
                             
+                            // ← הוסף שמירת Control-M:
+                            if (request.ControlMTableData != null && request.ControlMTableData.Count > 0)
+                            {
+                                updatedMessage["controlMTableData"] = request.ControlMTableData;
+                            }
+                            break;
+
                         case "סיכומי משמרת":
                             updatedMessage["incidents"] = request.Incidents;
                             updatedMessage["openAlerts"] = request.OpenAlerts;
@@ -1434,7 +1517,10 @@ public class MessagesController : Controller
                             updatedMessage["specialActions"] = request.SpecialActions;
                             updatedMessage["generalInfo"] = request.GeneralInfo;
                             updatedMessage["openItems"] = request.OpenItems;
-                            
+                            if (request.DailyTasksSummary != null)
+                            {
+                                updatedMessage["dailyTasksSummary"] = request.DailyTasksSummary;
+                            }
                             // טיפול בקבצים מצורפים
                             if (request.Attachments != null && request.Attachments.Count > 0)
                             {
@@ -1502,14 +1588,13 @@ public class MessagesController : Controller
                                 ManageCache(request.AttachedEmail);
                             }
                             break;
-                            
                         case "כללי":
                         case "דחוף":
                         default:
                             updatedMessage["content"] = request.Content;
                             break;
                     }
-
+                    
                     // טיפול באישורי כניסה
                     if (request.IsEntryPermit && request.EntryPermitData != null)
                     {
@@ -1518,15 +1603,15 @@ public class MessagesController : Controller
 
                     messages[i] = updatedMessage;
                     WriteMessagesToFile(messages);
-
+                    
                     if (!string.IsNullOrEmpty(request.AttachedEmail))
                     {
                         ManageCache(request.AttachedEmail);
                     }
-
                     return Json(new { success = true, message = updatedMessage });
                 }
             }
+
             return Json(new { success = false, error = "הודעה לא נמצאה" });
         }
         catch (Exception ex)
@@ -1549,23 +1634,22 @@ public class MessagesController : Controller
 
             // המר נתיב יחסי לנתיב מוחלט
             string fullPath;
+            
             if (Path.IsPathRooted(filePath))
             {
                 fullPath = filePath;
             }
             else
             {
-                // Replaced the hardcoded absolute path with relative Path.Combine using _filesRootPath
-                fullPath = Path.Combine(_filesRootPath, "assets", "files", filePath);
+                fullPath = Path.Combine(@"R:\USERS\TASHTIT\NOC\Portal\files", filePath);
             }
 
-            // נרמל את הנתיב (will be completed with the rest of your system rules)
+            // נרמל את הנתיב
             fullPath = Path.GetFullPath(fullPath);
-            
-            // Note: Rest of the internal controller definitions continue here...
+
             if (!System.IO.File.Exists(fullPath))
             {
-                return Json(new { success = false, error = "הקובץ לא נמצא" });
+                return Json(new { success = false, error = $"הקובץ לא נמצא: {Path.GetFileName(fullPath)}" });
             }
 
             // קרא את הקובץ כמערך בייטים
@@ -1658,7 +1742,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(_filesRootPath, "assets", "files",filePath);
+                fullPath = Path.Combine(@"R:\USERS\TASHTIT\NOC\Portal\files", filePath);
             }
 
             // נרמל את הנתיב
@@ -1692,7 +1776,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(_filesRootPath, "assets", "files", filePath);
+                fullPath = Path.Combine(@"R:\USERS\TASHTIT\NOC\Portal\files", filePath);
             }
 
             // נרמל את הנתיב
@@ -1749,7 +1833,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(_filesRootPath, "assets", "files", filePath);
+                fullPath = Path.Combine(@"R:\USERS\TASHTIT\NOC\Portal\files", filePath);
             }
 
             // נרמל את הנתיב
@@ -1780,7 +1864,7 @@ public class MessagesController : Controller
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = $"שגיאה: {ex.Message}" });
+            return BadRequest(new { error = $"Error: {ex.Message}" });
         }
     }
 
@@ -1834,7 +1918,7 @@ public class MessagesController : Controller
         }
         catch (Exception ex)
         {
-            return BadRequest(new { error = $"שגיאה: {ex.Message}" });
+            return BadRequest(new { error = $"Error: {ex.Message}" });
         }
     }
 
@@ -1852,7 +1936,7 @@ public class MessagesController : Controller
             return filePath;
             
         // Otherwise, combine with base path
-        return Path.Combine(_filesRootPath, "assets", "files", filePath);
+        return Path.Combine(@"R:\USERS\TASHTIT\NOC\Portal\files", filePath);
     }
 
     private string ConvertWordToPdf(string wordFilePath)
@@ -2007,7 +2091,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(_filesRootPath, "assets", "files", filePath);
+                fullPath = Path.Combine(@"R:\USERS\TASHTIT\NOC\Portal\files", filePath);
             }
 
             // נרמל את הנתיב
@@ -2142,7 +2226,7 @@ public class MessagesController : Controller
         }
         catch (Exception ex)
         {
-            return Json(new { success = false, error = $"שגיאה: {ex.Message}" });
+            return Json(new { success = false, error = $"Error: {ex.Message}" });
         }
     }
 
@@ -2268,7 +2352,20 @@ public class MessagesController : Controller
                     {
                         await semaphore.WaitAsync(); // השג אישור לעיבוד
                         
-                        string fullPath = ResolveFilePath(emailPath);
+                        // המר נתיב יחסי לנתיב מוחלט
+                        string fullPath;
+                        
+                        if (Path.IsPathRooted(emailPath))
+                        {
+                            fullPath = emailPath;
+                        }
+                        else
+                        {
+                            fullPath = Path.Combine(@"R:\USERS\TASHTIT\NOC\Portal\files", emailPath);
+                        }
+                        
+                        // נרמל את הנתיב
+                        fullPath = Path.GetFullPath(fullPath);
                         
                         if (!System.IO.File.Exists(fullPath))
                         {
@@ -2392,7 +2489,7 @@ public class MessagesController : Controller
             else
             {
                 // אם זה נתיב יחסי - בנה נתיב מוחלט
-                fullPath = Path.Combine(_filesRootPath, "assets", "files", decodedPath);
+                fullPath = Path.Combine(@"R:\USERS\TASHTIT\NOC\Portal\files", decodedPath);
             }
 
             // נרמל את הנתיב (תקן slashes)
@@ -2411,7 +2508,7 @@ public class MessagesController : Controller
                     }
                     else
                     {
-                        alternativePath = Path.Combine(_filesRootPath, "assets", "files", filePath);
+                        alternativePath = Path.Combine(@"R:\USERS\TASHTIT\NOC\Portal\files", filePath);
                     }
                     
                     alternativePath = Path.GetFullPath(alternativePath);
@@ -2493,7 +2590,7 @@ public class MessagesController : Controller
         {
             Console.WriteLine($"Error in ConvertEmailToHtml: {ex.Message}");
             Console.WriteLine($"Stack trace: {ex.StackTrace}");
-            return Json(new { success = false, error = $"שגיאה: {ex.Message}" });
+            return Json(new { success = false, error = $"Error: {ex.Message}" });
         }
     }
 
@@ -2583,7 +2680,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(_filesRootPath, "assets", "files", emailPath);
+                fullPath = Path.Combine(@"R:\USERS\TASHTIT\NOC\Portal\files", emailPath);
             }
 
             // נרמל את הנתיב
@@ -3451,10 +3548,1564 @@ public class MessagesController : Controller
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"ERROR in GetPendingAlarms: {ex.Message}");
+            Console.WriteLine($"Error in GetPendingAlarms: {ex.Message}");
             Console.WriteLine($"Stack trace: {ex.StackTrace}");
             return Json(new { success = false, error = ex.Message });
         }
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetUC4DailyReport()
+    {
+        try
+        {
+            // 1. מצא קבצי דוח - סנן קבצי נעילה (~$)
+            if (!Directory.Exists(_dailyReportsPath))
+                return Json(new { success = false, error = "תיקיית הדוחות לא נמצאה" });
+
+            var reportFiles = Directory.GetFiles(_dailyReportsPath, "*.xlsx")
+                .Concat(Directory.GetFiles(_dailyReportsPath, "*.xls"))
+                .Concat(Directory.GetFiles(_dailyReportsPath, "*.csv"))
+                .Where(f => !Path.GetFileName(f).StartsWith("~$")) // ← סנן קבצי נעילה
+                .Where(f => !Path.GetFileName(f).StartsWith("."))   // ← סנן קבצים נסתרים
+                .OrderByDescending(f => System.IO.File.GetLastWriteTime(f))
+                .ToList();
+
+            if (!reportFiles.Any())
+                return Json(new { success = false, error = "לא נמצאו קבצי דוח" });
+
+            var latestReportFile = reportFiles.First();
+
+            // *** בדיקה שהקובץ הוא מהיום ***
+            var fileDate = System.IO.File.GetLastWriteTime(latestReportFile).Date;
+            var today = DateTime.Now.Date;
+
+            if (fileDate < today)
+            {
+                return Json(new
+                {
+                    success = false,
+                    error = $"קובץ הדוח האחרון הוא מתאריך " +
+                            $"{fileDate:dd/MM/yyyy} ולא מהיום ({today:dd/MM/yyyy}). " +
+                            $"יש לוודא שהדוח עודכן היום.",
+                    fileDate = fileDate.ToString("dd/MM/yyyy"),
+                    today = today.ToString("dd/MM/yyyy")
+                });
+            }
+
+            // 2. מצא קבצי אנשי קשר - סנן קבצי נעילה (~$)
+            if (!Directory.Exists(_jobsContactsPath))
+                return Json(new { success = false, error = "תיקיית אנשי הקשר לא נמצאה" });
+
+            var contactFiles = Directory.GetFiles(_jobsContactsPath, "*.xlsx")
+                .Concat(Directory.GetFiles(_jobsContactsPath, "*.xls"))
+                .Concat(Directory.GetFiles(_jobsContactsPath, "*.csv"))
+                .Where(f => !Path.GetFileName(f).StartsWith("~$")) // ← סנן קבצי נעילה
+                .Where(f => !Path.GetFileName(f).StartsWith("."))   // ← סנן קבצים נסתרים
+                .OrderByDescending(f => System.IO.File.GetLastWriteTime(f))
+                .ToList();
+
+            if (!contactFiles.Any())
+                return Json(new { success = false, error = "לא נמצאו קבצי אנשי קשר" });
+
+            var latestContactFile = contactFiles.First();
+
+            // 3. קרא את קובץ הדוח
+            var failedJobsData = await ParseFailedJobsReport(latestReportFile);
+            
+            // 4. קרא את קובץ אנשי הקשר
+            var contactsData = await ParseContactsFile(latestContactFile);
+
+            // 5. בנה את הטבלה המאוחדת
+            var result = await BuildJobsContactsTableAsync(failedJobsData, contactsData);
+
+            return Json(new { 
+                success = true, 
+                data = result,
+                reportFile = Path.GetFileName(latestReportFile),
+                contactFile = Path.GetFileName(latestContactFile),
+                generatedAt = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss")
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in GetUC4DailyReport: {ex.Message}");
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    [HttpGet]
+    public IActionResult GetPermanentAccessList()
+    {
+        try
+        {
+            if (!System.IO.File.Exists(_permanentAccessListPath))
+            {
+                // החזר רשימה ריקה אם הקובץ לא קיים
+                return Json(new { success = true, persons = new List<object>() });
+            }
+
+            var json = System.IO.File.ReadAllText(_permanentAccessListPath, 
+                Encoding.UTF8);
+            var persons = JsonSerializer.Deserialize<List<PermanentAccessPerson>>(json);
+            
+            return Json(new { success = true, persons = persons });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    [HttpPost]
+    public IActionResult SavePermanentAccessList(
+        [FromBody] SavePermanentAccessRequest request)
+    {
+        try
+        {
+            if (request?.Persons == null)
+                return Json(new { success = false, error = "נתונים חסרים" });
+
+            var directory = Path.GetDirectoryName(_permanentAccessListPath);
+            if (!Directory.Exists(directory))
+                Directory.CreateDirectory(directory);
+
+            var json = JsonSerializer.Serialize(request.Persons, 
+                new JsonSerializerOptions { WriteIndented = true });
+            System.IO.File.WriteAllText(_permanentAccessListPath, json, 
+                Encoding.UTF8);
+
+            return Json(new { success = true });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    [HttpDelete]
+    public IActionResult DeletePermanentAccessPerson(string id)
+    {
+        try
+        {
+            if (!System.IO.File.Exists(_permanentAccessListPath))
+                return Json(new { success = false, error = "הרשימה לא קיימת" });
+
+            var json = System.IO.File.ReadAllText(_permanentAccessListPath, 
+                Encoding.UTF8);
+            var persons = JsonSerializer.Deserialize<List<PermanentAccessPerson>>(json);
+            
+            var personToRemove = persons?.FirstOrDefault(p => p.Id == id);
+            if (personToRemove == null)
+                return Json(new { success = false, error = "האדם לא נמצא" });
+
+            persons.Remove(personToRemove);
+
+            var updatedJson = JsonSerializer.Serialize(persons, 
+                new JsonSerializerOptions { WriteIndented = true });
+            System.IO.File.WriteAllText(_permanentAccessListPath, updatedJson, 
+                Encoding.UTF8);
+
+            return Json(new { success = true });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> ParseExcelForPermanentAccess(IFormFile file)
+    {
+        try
+        {
+            if (file == null || file.Length == 0)
+                return Json(new { success = false, error = "לא נבחר קובץ" });
+
+            var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+            var allowedExtensions = new[] { ".xls", ".xlsx", ".csv" };
+
+            if (!allowedExtensions.Contains(extension))
+                return Json(new { success = false, error = "סוג קובץ לא נתמך. יש להעלות XLS, XLSX או CSV" });
+
+            List<List<string>> data;
+
+            if (extension == ".csv")
+            {
+                var tempPath = Path.GetTempFileName();
+                using (var stream = new FileStream(tempPath, FileMode.Create))
+                {
+                    await file.CopyToAsync(stream);
+                }
+
+                var result = await ParseCsvFile(tempPath);
+                data = result.data as List<List<string>>;
+
+                try { System.IO.File.Delete(tempPath); } catch { }
+            }
+            else
+            {
+                var tempPath = Path.GetTempFileName() + extension;
+                using (var stream = new FileStream(tempPath, FileMode.Create))
+                {
+                    await file.CopyToAsync(stream);
+                }
+
+                try
+                {
+                    data = await ParseExcelToList(tempPath);
+                }
+                finally
+                {
+                    try { System.IO.File.Delete(tempPath); } catch { }
+                }
+            }
+
+            if (data == null || data.Count == 0)
+                return Json(new { success = false, error = "הקובץ ריק" });
+
+            // *** חדש: זיהוי פורמט רשימת שמות (עמודה אחת) ***
+            var detectedFormat = DetectExcelFormat(data);
+            
+            if (detectedFormat == "name_list")
+            {
+                // המר לפורמט טבלאי סטנדרטי
+                data = ConvertNameListToTableFormat(data);
+            }
+
+            return Json(new { success = true, data, detectedFormat });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in ParseExcelForPermanentAccess: {ex.Message}");
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> SendEntryPermitEmail(
+        [FromBody] EntryPermitEmailRequest request)
+    {
+        try
+        {
+            if (request == null ||
+                string.IsNullOrEmpty(request.Subject) ||
+                request.ToAddresses == null ||
+                !request.ToAddresses.Any())
+            {
+                return Json(new { success = false, error = "נתונים חסרים" });
+            }
+
+            // *** שימוש בפונקציה הסטטית המשותפת ***
+            await Task.Run(() => SendPermitEmailSmtp(
+                subject:     request.Subject,
+                body:        request.Body,
+                toAddresses: request.ToAddresses,
+                ccAddresses: request.CcAddresses ?? new List<string>()
+            ));
+
+            Console.WriteLine(
+                $"Entry permit email sent to: " +
+                $"{string.Join(", ", request.ToAddresses)}");
+
+            return Json(new { success = true });
+        }
+        catch (System.Net.Mail.SmtpException ex)
+        {
+            Console.WriteLine($"SMTP Error: {ex.Message}");
+            return Json(new { success = false, error = $"שגיאת שרת מייל: {ex.Message}" });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error sending entry permit email: {ex.Message}");
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    private string BuildEntryPermitHtmlEmail(string plainBody)
+    {
+        if (string.IsNullOrEmpty(plainBody))
+            return "<html><body></body></html>";
+
+        var lines = plainBody.Split('\n');
+        var htmlLines = new System.Text.StringBuilder();
+
+        foreach (var line in lines)
+        {
+            var trimmed = line.TrimEnd('\r').Trim();
+
+            if (string.IsNullOrEmpty(trimmed))
+            {
+                htmlLines.Append(
+                    "<div style=\"height:10px;line-height:10px;\">&nbsp;</div>");
+                continue;
+            }
+
+            // שורות עם נקודותיים - שדות נתונים
+            if (trimmed.Contains(':'))
+            {
+                int colonIdx = trimmed.IndexOf(':');
+                string label = trimmed.Substring(0, colonIdx).Trim();
+                string value = trimmed.Substring(colonIdx + 1).Trim();
+
+                var knownLabels = new[]
+                {
+                    "שם", "שמות", "חברה", "מס' רכב",
+                    "ת.ז.", "מלווה", "טלפון"
+                };
+
+                bool isKnown = knownLabels.Any(l =>
+                    label.Trim() == l);
+
+                if (isKnown)
+                {
+                    htmlLines.Append($@"
+    <div style=""padding:4px 0;line-height:1.6;"">
+    <span style=""font-weight:bold;color:#444;
+                display:inline-block;min-width:90px;"">
+        {System.Net.WebUtility.HtmlEncode(label)}:
+    </span>
+    <span style=""color:#222;margin-right:8px;"">
+        {System.Net.WebUtility.HtmlEncode(value)}
+    </span>
+    </div>");
+                    continue;
+                }
+            }
+
+            // שורה רגילה
+            htmlLines.Append($@"
+    <div style=""padding:4px 0;color:#333;line-height:1.6;"">
+    {System.Net.WebUtility.HtmlEncode(trimmed)}
+    </div>");
+        }
+
+        return $@"<!DOCTYPE html>
+    <html dir=""rtl"" lang=""he"">
+    <head>
+    <meta charset=""UTF-8"">
+    <meta http-equiv=""Content-Type"" content=""text/html; charset=UTF-8"">
+    </head>
+    <body style=""margin:0;padding:25px 30px;
+                font-family:Arial,sans-serif;
+                direction:rtl;font-size:14px;
+                color:#333;line-height:1.8;
+                background:#ffffff;"">
+    <div style=""max-width:600px;"">
+        {htmlLines}
+    </div>
+    </body>
+    </html>";
+    }
+
+    // *** חדש: זיהוי פורמט הקובץ ***
+    private string DetectExcelFormat(List<List<string>> data)
+    {
+        if (data == null || data.Count == 0) return "unknown";
+
+        // בדוק אם זה פורמט רשימת שמות:
+        // - עמודה אחת בעיקר
+        // - מכיל שורת כותרת עם "מורשי כניסה" או דומה
+        // - שמות בפורמט "שם משפחה, שם פרטי"
+        
+        int singleColumnRows = 0;
+        int nameFormatRows = 0;
+        bool hasAccessHeader = false;
+
+        foreach (var row in data)
+        {
+            // בדוק שורות עם תוכן בעמודה הראשונה בלבד
+            var nonEmptyCells = row.Count(c => !string.IsNullOrWhiteSpace(c));
+            
+            if (nonEmptyCells <= 1)
+            {
+                singleColumnRows++;
+                
+                var cellValue = row.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c)) ?? "";
+                
+                // בדוק אם זה כותרת של רשימת גישה
+                if (cellValue.Contains("מורשי כניסה") || 
+                    cellValue.Contains("Access Level") ||
+                    cellValue.Contains("Cardholder"))
+                {
+                    hasAccessHeader = true;
+                }
+                
+                // בדוק אם זה שם בפורמט "שם משפחה, שם פרטי"
+                if (cellValue.Contains(",") && 
+                    !cellValue.Contains("@") && 
+                    !cellValue.Contains("=") &&
+                    cellValue.Length < 60)
+                {
+                    nameFormatRows++;
+                }
+            }
+        }
+
+        // אם רוב השורות הן עמודה אחת ויש שמות בפורמט הנכון
+        double singleColRatio = (double)singleColumnRows / data.Count;
+        
+        if ((hasAccessHeader || singleColRatio > 0.7) && nameFormatRows > 2)
+        {
+            return "name_list";
+        }
+
+        return "standard_table";
+    }
+
+    // *** חדש: המרת רשימת שמות לפורמט טבלאי ***
+    private List<List<string>> ConvertNameListToTableFormat(List<List<string>> data)
+    {
+        var result = new List<List<string>>();
+        
+        // הוסף שורת כותרות
+        result.Add(new List<string> 
+        { 
+            "שם מלא", 
+            "חברה", 
+            "אתרים מורשים",
+            "מס' רכב",
+            "ת\"ז",
+            "טלפון",
+            "הערות"
+        });
+
+        // זיהוי שם הארגון/מבנה מהכותרת
+        string organization = "";
+        string building = "";
+        
+        foreach (var row in data)
+        {
+            var cellValue = row.FirstOrDefault(c => !string.IsNullOrWhiteSpace(c))?.Trim() ?? "";
+            
+            if (string.IsNullOrWhiteSpace(cellValue)) continue;
+            
+            // דלג על שורות מיוחדות
+            if (cellValue.StartsWith("===") || 
+                cellValue.StartsWith("---") ||
+                cellValue.Contains("Access Level") ||
+                cellValue.Contains("Cardholder Report"))
+                continue;
+            
+            // זיהוי שם הארגון/מבנה
+            if (cellValue.Contains("מורשי כניסה") || 
+                cellValue.Contains("חדר מחשב") ||
+                cellValue.Contains("מבנה"))
+            {
+                organization = cellValue;
+                
+                // חלץ שם מבנה
+                if (cellValue.Contains("מבנה"))
+                {
+                    building = cellValue;
+                }
+                continue;
+            }
+            
+            // בדוק אם זה שם בפורמט "שם משפחה, שם פרטי"
+            if (cellValue.Contains(","))
+            {
+                string fullName = ParseHebrewName(cellValue);
+                
+                if (!string.IsNullOrEmpty(fullName))
+                {
+                    // קבע אתרים מורשים - ברירת מחדל: שני האתרים
+                    string allowedSites = DetermineAllowedSites(organization, building);
+                    
+                    result.Add(new List<string>
+                    {
+                        fullName,           // שם מלא
+                        "",                 // חברה (ריק - יש למלא ידנית)
+                        allowedSites,       // אתרים מורשים
+                        "",                 // מס' רכב
+                        "",                 // ת"ז
+                        "",                 // טלפון
+                        organization        // הערות - שם הארגון המקורי
+                    });
+                }
+            }
+        }
+
+        return result;
+    }
+
+    // *** חדש: פרסור שם עברי מפורמט "שם משפחה, שם פרטי" ***
+    private string ParseHebrewName(string nameString)
+    {
+        if (string.IsNullOrWhiteSpace(nameString)) return "";
+        
+        nameString = nameString.Trim();
+        
+        // פורמט: "שם משפחה, שם פרטי"
+        var parts = nameString.Split(',');
+        
+        if (parts.Length >= 2)
+        {
+            string lastName = parts[0].Trim();
+            string firstName = parts[1].Trim();
+            
+            // וודא שזה שם עברי תקין (לא מספרים, לא תווים מיוחדים)
+            if (IsValidHebrewName(lastName) && IsValidHebrewName(firstName))
+            {
+                // החזר בפורמט "שם פרטי שם משפחה"
+                return $"{firstName} {lastName}";
+            }
+        }
+        
+        // אם אין פסיק, בדוק אם זה שם תקין כמו שהוא
+        if (IsValidHebrewName(nameString) && !nameString.Contains("="))
+        {
+            return nameString;
+        }
+        
+        return "";
+    }
+
+    // *** חדש: בדיקה אם מחרוזת היא שם עברי תקין ***
+    private bool IsValidHebrewName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return false;
+        if (name.Length < 2 || name.Length > 50) return false;
+        
+        // בדוק שמכיל לפחות אות עברית אחת
+        bool hasHebrew = name.Any(c => c >= '\u05D0' && c <= '\u05EA');
+        
+        // בדוק שלא מכיל תווים אסורים
+        bool hasInvalidChars = name.Any(c => 
+            c == '=' || c == '<' || c == '>' || 
+            c == '{' || c == '}' || c == '[' || c == ']' ||
+            char.IsDigit(c));
+        
+        return hasHebrew && !hasInvalidChars;
+    }
+
+    // *** חדש: קביעת אתרים מורשים לפי שם הארגון ***
+    private string DetermineAllowedSites(string organization, string building)
+    {
+        if (string.IsNullOrEmpty(organization) && string.IsNullOrEmpty(building))
+        {
+            // ברירת מחדל: שני האתרים
+            return "ר\"ג,פ\"ת";
+        }
+        
+        string combined = (organization + " " + building).ToLower();
+        
+        // בדוק אם מוזכר אתר ספציפי
+        bool hasRG = combined.Contains("ר\"ג") || combined.Contains("רמת גן") || 
+                    combined.Contains("ramat");
+        bool hasPT = combined.Contains("פ\"ת") || combined.Contains("פתח תקווה") || 
+                    combined.Contains("petah");
+        
+        if (hasRG && hasPT) return "ר\"ג,פ\"ת";
+        if (hasRG) return "ר\"ג";
+        if (hasPT) return "פ\"ת";
+        
+        // ברירת מחדל: שני האתרים
+        return "ר\"ג,פ\"ת";
+    }
+
+    private string FormatDateTimeString(string dateTimeStr)
+    {
+        if (string.IsNullOrEmpty(dateTimeStr)) return dateTimeStr;
+        
+        if (TryParseDateTime(dateTimeStr, out DateTime parsed))
+        {
+            return parsed.ToString("dd.MM.yyyy HH:mm:ss");
+        }
+        
+        return dateTimeStr; // אם הפרסור נכשל, החזר את המחרוזת המקורית
+    }
+
+    private async Task<List<FailedJobEntry>> ParseFailedJobsReport(string filePath)
+    {
+        var failedJobs = new List<FailedJobEntry>();
+        
+        var extension = Path.GetExtension(filePath).ToLowerInvariant();
+        List<List<string>> tableData;
+
+        if (extension == ".csv")
+        {
+            var result = await ParseCsvFile(filePath);
+            tableData = result.data as List<List<string>>;
+        }
+        else
+        {
+            tableData = await ParseExcelToList(filePath);
+        }
+
+        if (tableData == null || tableData.Count < 2)
+            return failedJobs;
+
+        var headers = tableData[0];
+        
+        int folderIdx         = headers.IndexOf("Folder");
+        int jobNameIdx        = headers.IndexOf("Job Name");
+        int startTimeIdx      = headers.IndexOf("Start Time");
+        int applicationIdx    = headers.IndexOf("Application");
+        int subApplicationIdx = headers.IndexOf("Sub Application Name");
+        int runTimeIdx        = headers.IndexOf("Run Time (Sec.)");
+        int endTimeIdx        = headers.IndexOf("End Time");
+        int hostIdx           = headers.IndexOf("Host");
+        int runIdIdx          = headers.IndexOf("Run ID");
+        int runAsUserIdx      = headers.IndexOf("Run as user");
+
+        if (folderIdx    == -1) folderIdx    = headers.FindIndex(h => h?.Contains("Folder")   == true);
+        if (jobNameIdx   == -1) jobNameIdx   = headers.FindIndex(h => h?.Contains("Job")      == true && h?.Contains("Name") == true);
+        if (startTimeIdx == -1) startTimeIdx = headers.FindIndex(h => h?.Contains("Start")    == true);
+        if (runTimeIdx   == -1) runTimeIdx   = headers.FindIndex(h => h?.Contains("Run Time") == true);
+        if (endTimeIdx   == -1) endTimeIdx   = headers.FindIndex(h => h?.Contains("End Time") == true);
+        if (hostIdx      == -1) hostIdx      = headers.FindIndex(h => h?.Equals("Host", StringComparison.OrdinalIgnoreCase) == true);
+        if (runIdIdx     == -1) runIdIdx     = headers.FindIndex(h => h?.Contains("Run ID")   == true);
+        if (runAsUserIdx == -1) runAsUserIdx = headers.FindIndex(h => h?.Contains("Run as")   == true);
+
+        var jobFailureCounts = new Dictionary<string, FailedJobEntry>();
+
+        for (int i = 1; i < tableData.Count; i++)
+        {
+            var row = tableData[i];
+            if (row == null || row.Count == 0) continue;
+
+            string jobName       = jobNameIdx    >= 0 && jobNameIdx    < row.Count ? row[jobNameIdx]?.Trim()    : "";
+            string folder        = folderIdx     >= 0 && folderIdx     < row.Count ? row[folderIdx]?.Trim()     : "";
+            string startTimeStr  = startTimeIdx  >= 0 && startTimeIdx  < row.Count ? row[startTimeIdx]?.Trim()  : "";
+            string application   = applicationIdx >= 0 && applicationIdx < row.Count ? row[applicationIdx]?.Trim() : "";
+            string subApplication = subApplicationIdx >= 0 && subApplicationIdx < row.Count ? row[subApplicationIdx]?.Trim() : "";
+            
+            string runTime   = runTimeIdx   >= 0 && runTimeIdx   < row.Count ? row[runTimeIdx]?.Trim()   : "";
+            
+            // *** תיקון: פרסור זמן סיום לפורמט אחיד ***
+            string endTimeRaw = endTimeIdx >= 0 && endTimeIdx < row.Count ? row[endTimeIdx]?.Trim() : "";
+            string endTime    = FormatDateTimeString(endTimeRaw);
+            
+            string host      = hostIdx      >= 0 && hostIdx      < row.Count ? row[hostIdx]?.Trim()      : "";
+            string runId     = runIdIdx     >= 0 && runIdIdx     < row.Count ? row[runIdIdx]?.Trim()     : "";
+            string runAsUser = runAsUserIdx >= 0 && runAsUserIdx < row.Count ? row[runAsUserIdx]?.Trim() : "";
+
+            if (string.IsNullOrEmpty(jobName)) continue;
+
+            DateTime startTime;
+            bool timeValid = TryParseDateTime(startTimeStr, out startTime);
+
+            if (!string.IsNullOrEmpty(jobName))
+            {
+                string key = $"{folder}|{jobName}";
+                
+                if (!jobFailureCounts.ContainsKey(key))
+                {
+                    jobFailureCounts[key] = new FailedJobEntry
+                    {
+                        Folder         = folder,
+                        JobName        = jobName,
+                        Application    = application,
+                        SubApplication = subApplication,
+                        FailureCount   = 0,
+                        LastFailureTime = startTime,
+                        RunTime        = runTime,
+                        EndTime        = endTime,   // ← כבר מפורסר
+                        Host           = host,
+                        RunId          = runId,
+                        RunAsUser      = runAsUser
+                    };
+                }
+                
+                jobFailureCounts[key].FailureCount++;
+                if (startTime > jobFailureCounts[key].LastFailureTime)
+                {
+                    jobFailureCounts[key].LastFailureTime = startTime;
+                    jobFailureCounts[key].RunTime   = runTime;
+                    jobFailureCounts[key].EndTime   = endTime;   // ← כבר מפורסר
+                    jobFailureCounts[key].Host      = host;
+                    jobFailureCounts[key].RunId     = runId;
+                    jobFailureCounts[key].RunAsUser = runAsUser;
+                }
+            }
+        }
+
+        return jobFailureCounts.Values.OrderByDescending(j => j.FailureCount).ToList();
+    }
+
+    // פונקציה חדשה לקריאת styles.xml
+    private HashSet<int> LoadDateStyleIndices(System.IO.Compression.ZipArchive archive)
+    {
+        var dateIndices = new HashSet<int>();
+        
+        // מספרי פורמט מובנים של Excel שהם תאריכים
+        var builtInDateFormats = new HashSet<int> 
+        { 
+            14, 15, 16, 17, 18, 19, 20, 21, 22,  // תאריכים
+            45, 46, 47,                            // זמנים
+            164, 165, 166, 167, 168, 169, 170      // פורמטים מותאמים אישית
+        };
+        
+        var stylesEntry = archive.GetEntry("xl/styles.xml");
+        if (stylesEntry == null) return dateIndices;
+        
+        using (var stream = stylesEntry.Open())
+        using (var reader = new System.IO.StreamReader(stream))
+        {
+            var xml = reader.ReadToEnd();
+            
+            // קרא את numFmts המותאמים אישית
+            var customDateFormats = new HashSet<int>();
+            var numFmtMatches = System.Text.RegularExpressions.Regex.Matches(
+                xml, 
+                @"<numFmt\s+numFmtId=""(\d+)""\s+formatCode=""([^""]+)""",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase
+            );
+            
+            foreach (System.Text.RegularExpressions.Match m in numFmtMatches)
+            {
+                if (int.TryParse(m.Groups[1].Value, out int fmtId))
+                {
+                    string formatCode = m.Groups[2].Value.ToLower();
+                    
+                    // בדוק אם הפורמט מכיל תווי תאריך/שעה
+                    bool isDateFormat = 
+                        (formatCode.Contains("y") || formatCode.Contains("d") || 
+                        formatCode.Contains("h") || formatCode.Contains("m")) &&
+                        !formatCode.Contains("0") &&      // ← מספרים רגילים מכילים "0"
+                        !formatCode.Contains("#") &&      // ← מספרים רגילים מכילים "#"
+                        !formatCode.Contains("general");  // ← General אינו תאריך
+                        
+                    if (isDateFormat)
+                        customDateFormats.Add(fmtId);
+                }
+            }
+            
+            // קרא את xf (cell formats) ומצא אילו styles הם תאריכים
+            var xfSection = System.Text.RegularExpressions.Regex.Match(
+                xml, @"<cellXfs>(.*?)</cellXfs>",
+                System.Text.RegularExpressions.RegexOptions.Singleline
+            );
+            
+            if (xfSection.Success)
+            {
+                var xfMatches = System.Text.RegularExpressions.Regex.Matches(
+                    xfSection.Groups[1].Value,
+                    @"<xf\s[^>]*numFmtId=""(\d+)""[^>]*/?>",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                );
+                
+                int styleIndex = 0;
+                foreach (System.Text.RegularExpressions.Match xf in xfMatches)
+                {
+                    if (int.TryParse(xf.Groups[1].Value, out int numFmtId))
+                    {
+                        if (builtInDateFormats.Contains(numFmtId) || 
+                            customDateFormats.Contains(numFmtId))
+                        {
+                            dateIndices.Add(styleIndex);
+                        }
+                    }
+                    styleIndex++;
+                }
+            }
+        }
+        
+        return dateIndices;
+    }
+
+    private bool TryParseDateTime(string dateTimeStr, out DateTime result)
+    {
+        result = DateTime.MinValue;
+        if (string.IsNullOrEmpty(dateTimeStr)) return false;
+
+        string normalizedStr = dateTimeStr.Trim();
+        
+        // *** תיקון הלוגיקה של AM/PM ***
+        // הבעיה: "May 30, 2026 1:19:43 PM" - שעה 1 עם PM = 13:00
+        // הקוד הישן הסיר את ה-PM בטעות כי hours < 12
+        
+        var amPmMatch = System.Text.RegularExpressions.Regex.Match(
+            normalizedStr, 
+            @"(\d{1,2}:\d{2}:\d{2})\s*(AM|PM)$", 
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase
+        );
+        
+        if (amPmMatch.Success)
+        {
+            string timePart = amPmMatch.Groups[1].Value;
+            string amPm = amPmMatch.Groups[2].Value.ToUpper();
+            
+            if (TimeSpan.TryParse(timePart, out TimeSpan ts))
+            {
+                // *** תיקון: המר ל-24 שעות לפי AM/PM בצורה נכונה ***
+                int hours = ts.Hours;
+                
+                if (amPm == "PM" && hours < 12)
+                {
+                    // PM + שעה < 12 → הוסף 12 (1 PM = 13:00, 2 PM = 14:00)
+                    hours += 12;
+                }
+                else if (amPm == "AM" && hours == 12)
+                {
+                    // 12 AM = חצות = 0:00
+                    hours = 0;
+                }
+                // שאר המקרים: AM עם שעה < 12 → נשאר כמו שהוא
+                // PM עם שעה >= 12 (12 PM = 12:00) → נשאר כמו שהוא
+                
+                // בנה מחרוזת עם שעה מתוקנת ב-24 שעות (ללא AM/PM)
+                string correctedTime = $"{hours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2}";
+                
+                // החלף את החלק של השעה במחרוזת המקורית
+                normalizedStr = System.Text.RegularExpressions.Regex.Replace(
+                    normalizedStr,
+                    @"\d{1,2}:\d{2}:\d{2}\s*(AM|PM)$",
+                    correctedTime,
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                ).Trim();
+            }
+        }
+
+        // פורמטים לניסיון - מהספציפי לכללי
+        string[] formats = {
+            // פורמט הקובץ: "May 30, 2026 13:19:43" (אחרי המרה)
+            "MMM d, yyyy H:mm:ss",
+            "MMM dd, yyyy H:mm:ss",
+            "MMM d, yyyy HH:mm:ss",
+            "MMM dd, yyyy HH:mm:ss",
+            // פורמטים נוספים
+            "MM/dd/yyyy HH:mm:ss",
+            "dd/MM/yyyy HH:mm:ss",
+            "yyyy-MM-dd HH:mm:ss",
+            "dd.MM.yyyy HH:mm:ss",
+            "MM/dd/yyyy H:mm:ss",
+            "dd/MM/yyyy H:mm:ss",
+        };
+
+        // נסה עם InvariantCulture
+        foreach (var format in formats)
+        {
+            if (DateTime.TryParseExact(
+                normalizedStr, 
+                format, 
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, 
+                out result))
+            {
+                return true;
+            }
+        }
+
+        // נסה פרסור כללי
+        if (DateTime.TryParse(
+            normalizedStr, 
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None,
+            out result))
+        {
+            return true;
+        }
+
+        Console.WriteLine($"[TryParseDateTime] FAILED to parse: '{dateTimeStr}'");
+        return false;
+    }
+
+    private async Task<List<ContactEntry>> ParseContactsFile(string filePath)
+    {
+        var contacts = new List<ContactEntry>();
+        
+        var extension = Path.GetExtension(filePath).ToLowerInvariant();
+        List<List<string>> tableData;
+
+        if (extension == ".csv")
+        {
+            var result = await ParseCsvFile(filePath);
+            tableData = result.data as List<List<string>>;
+        }
+        else
+        {
+            tableData = await ParseExcelToList(filePath);
+        }
+
+        if (tableData == null || tableData.Count < 2)
+            return contacts;
+
+        var headers = tableData[0];
+        
+        // מצא עמודות רלוונטיות בקובץ אנשי הקשר
+        // לפי מבנה RESPONSIBLE_USERS_LIST.xlsx: Job Name | Mail User | User Name
+        int jobNameIdx = headers.FindIndex(h => h?.Contains("Job") == true);
+        int mailIdx = headers.FindIndex(h => h?.Contains("Mail") == true || h?.Contains("Email") == true || h?.Contains("mail") == true);
+        int userNameIdx = headers.FindIndex(h => h?.Contains("User Name") == true || h?.Contains("UserName") == true);
+
+        if (jobNameIdx == -1) jobNameIdx = 0;
+        if (mailIdx == -1) mailIdx = 1;
+        if (userNameIdx == -1) userNameIdx = 2;
+
+        for (int i = 1; i < tableData.Count; i++)
+        {
+            var row = tableData[i];
+            if (row == null || row.Count == 0) continue;
+
+            string jobName = jobNameIdx < row.Count ? row[jobNameIdx]?.Trim() : "";
+            string email = mailIdx < row.Count ? row[mailIdx]?.Trim() : "";
+            string userName = userNameIdx < row.Count ? row[userNameIdx]?.Trim() : "";
+
+            if (string.IsNullOrEmpty(jobName)) continue;
+
+            contacts.Add(new ContactEntry
+            {
+                JobName = jobName,
+                Email = email,
+                UserName = userName
+            });
+        }
+
+        return contacts;
+    }
+
+    // ─── חיפוש מייל עם fallback: JOBS_CONTACTS → ספר טלפונים → עץ ארגוני ───
+    private async Task<ContactResolutionResult> ResolveContactEmail(
+        string userName,
+        List<ContactEntry> jobsContacts)
+    {
+        if (string.IsNullOrWhiteSpace(userName))
+            return new ContactResolutionResult 
+            { 
+                UserName = userName, 
+                Email = "", 
+                Source = "empty",
+                ManagerName = null
+            };
+
+        // ─── שלב 1: חפש בקובץ JOBS_CONTACTS ─────────────────────────
+        var directContact = jobsContacts.FirstOrDefault(c =>
+            string.Equals(c.UserName?.Trim(), userName.Trim(),
+                StringComparison.OrdinalIgnoreCase));
+
+        if (directContact != null && 
+            !string.IsNullOrEmpty(directContact.Email))
+        {
+            return new ContactResolutionResult
+            {
+                UserName = userName,
+                Email    = directContact.Email,
+                Source   = "jobs_contacts"
+            };
+        }
+
+        // ─── שלב 2: חפש בספר הטלפונים ───────────────────────────────
+        var phoneCsvPath = 
+            @"R:\USERS\TASHTIT\NOC\Portal\files\phone_directory.csv";
+
+        if (System.IO.File.Exists(phoneCsvPath))
+        {
+            var phoneLines = System.IO.File.ReadAllLines(
+                phoneCsvPath, Encoding.UTF8);
+
+            // חיפוש מדויק תחילה
+            for (int i = 1; i < phoneLines.Length; i++)
+            {
+                var cols = phoneLines[i].Split(',');
+                if (cols.Length < 8) continue;
+
+                var fullName = cols[0]?.Trim() ?? "";
+                var email    = cols[7]?.Trim() ?? "";
+
+                if (string.Equals(fullName, userName.Trim(),
+                        StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrEmpty(email))
+                {
+                    return new ContactResolutionResult
+                    {
+                        UserName = userName,
+                        Email    = email,
+                        Source   = "phone_directory"
+                    };
+                }
+            }
+
+            // חיפוש חלקי
+            for (int i = 1; i < phoneLines.Length; i++)
+            {
+                var cols = phoneLines[i].Split(',');
+                if (cols.Length < 8) continue;
+
+                var fullName = cols[0]?.Trim() ?? "";
+                var email    = cols[7]?.Trim() ?? "";
+
+                if (!string.IsNullOrEmpty(email) &&
+                    (fullName.Contains(userName.Trim(),
+                        StringComparison.OrdinalIgnoreCase) ||
+                    userName.Trim().Contains(fullName,
+                        StringComparison.OrdinalIgnoreCase)))
+                {
+                    return new ContactResolutionResult
+                    {
+                        UserName = userName,
+                        Email    = email,
+                        Source   = "phone_directory_partial"
+                    };
+                }
+            }
+        }
+
+        // ─── שלב 3: חפש בעץ הארגוני ─────────────────────────────────
+        var treeFolder = 
+            @"R:\USERS\TASHTIT\NOC\Portal\Helix_Employees_Export\BuildTree";
+
+        if (Directory.Exists(treeFolder))
+        {
+            var treeFiles = Directory.GetFiles(treeFolder, "*.csv")
+                .OrderByDescending(f => 
+                    System.IO.File.GetLastWriteTime(f))
+                .ToList();
+
+            if (treeFiles.Any())
+            {
+                var treeLines = System.IO.File.ReadAllLines(
+                    treeFiles.First(), Encoding.UTF8);
+
+                // מצא את העובד בעץ
+                string? employeeId   = null;
+                string? managerId    = null;
+                string? employeeName = null;
+
+                for (int i = 1; i < treeLines.Length; i++)
+                {
+                    var cols = treeLines[i].Split(',');
+                    if (cols.Length < 2) continue;
+
+                    var empId   = cols[0]?.Trim() ?? "";
+                    var empName = cols[1]?.Trim() ?? "";
+                    var mgrId   = cols.Length > 2 
+                        ? cols[2]?.Trim() : "";
+
+                    if (string.Equals(empName, userName.Trim(),
+                            StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(empId, userName.Trim(),
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        employeeId   = empId;
+                        managerId    = mgrId;
+                        employeeName = empName;
+                        break;
+                    }
+                }
+
+                // ─── נמצא עובד - חפש את המנהל שלו ───────────────────
+                if (!string.IsNullOrEmpty(managerId))
+                {
+                    // מצא שם המנהל מהעץ
+                    string? managerName = null;
+                    for (int i = 1; i < treeLines.Length; i++)
+                    {
+                        var cols = treeLines[i].Split(',');
+                        if (cols.Length < 2) continue;
+
+                        if (string.Equals(cols[0]?.Trim(), managerId,
+                                StringComparison.OrdinalIgnoreCase))
+                        {
+                            managerName = cols[1]?.Trim();
+                            break;
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(managerName))
+                    {
+                        // חפש מייל של המנהל בספר הטלפונים
+                        if (System.IO.File.Exists(phoneCsvPath))
+                        {
+                            var phoneLines = System.IO.File.ReadAllLines(
+                                phoneCsvPath, Encoding.UTF8);
+
+                            for (int i = 1; i < phoneLines.Length; i++)
+                            {
+                                var cols = phoneLines[i].Split(',');
+                                if (cols.Length < 8) continue;
+
+                                var fullName = cols[0]?.Trim() ?? "";
+                                var email    = cols[7]?.Trim() ?? "";
+
+                                if (string.Equals(fullName, managerName,
+                                        StringComparison.OrdinalIgnoreCase) &&
+                                    !string.IsNullOrEmpty(email))
+                                {
+                                    return new ContactResolutionResult
+                                    {
+                                        UserName    = userName,
+                                        Email       = email,
+                                        Source      = "manager_fallback",
+                                        ManagerName = managerName,
+                                        ManagerId   = managerId
+                                    };
+                                }
+                            }
+                        }
+
+                        // המנהל נמצא בעץ אבל לא בספר טלפונים
+                        return new ContactResolutionResult
+                        {
+                            UserName    = userName,
+                            Email       = "",
+                            Source      = "manager_found_no_email",
+                            ManagerName = managerName,
+                            ManagerId   = managerId,
+                            Error       = $"נמצא מנהל '{managerName}' אך לא נמצא מייל"
+                        };
+                    }
+                }
+
+                // עובד נמצא בעץ אבל אין מנהל
+                if (!string.IsNullOrEmpty(employeeId))
+                {
+                    return new ContactResolutionResult
+                    {
+                        UserName = userName,
+                        Email    = "",
+                        Source   = "org_tree_no_manager",
+                        Error    = $"עובד נמצא בעץ ארגוני ללא מנהל מוגדר"
+                    };
+                }
+            }
+        }
+
+        // ─── שלב 4: לא נמצא בשום מקום ───────────────────────────────
+        return new ContactResolutionResult
+        {
+            UserName = userName,
+            Email    = "",
+            Source   = "not_found",
+            Error    = $"'{userName}' לא נמצא בשום מקור נתונים"
+        };
+    }
+
+    private async Task<List<JobContactResult>> BuildJobsContactsTableAsync(
+    List<FailedJobEntry> failedJobs, 
+    List<ContactEntry>   contacts)
+    {
+        var results = new List<JobContactResult>();
+
+        var contactsByJob = contacts
+            .GroupBy(c => c.JobName?.Trim(), 
+                StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), 
+                StringComparer.OrdinalIgnoreCase);
+
+        foreach (var failedJob in failedJobs)
+        {
+            var rawContacts = new List<ContactEntry>();
+            string jobNameForSearch = failedJob.JobName?.Trim() ?? "";
+
+            if (jobNameForSearch.Contains('/'))
+                jobNameForSearch = jobNameForSearch
+                    .Substring(0, jobNameForSearch.IndexOf('/'))
+                    .Trim();
+
+            if (contactsByJob.ContainsKey(jobNameForSearch))
+                rawContacts = contactsByJob[jobNameForSearch];
+
+            // ─── פתור מייל לכל איש קשר עם fallback ──────────────────
+            var resolvedContacts = new List<ResolvedContactInfo>();
+
+            foreach (var rawContact in rawContacts)
+            {
+                if (string.IsNullOrWhiteSpace(rawContact.UserName))
+                    continue;
+
+                var resolution = await ResolveContactEmail(
+                    rawContact.UserName, contacts);
+
+                resolvedContacts.Add(new ResolvedContactInfo
+                {
+                    UserName    = rawContact.UserName,
+                    Email       = resolution.Email,
+                    Source      = resolution.Source,
+                    ManagerName = resolution.ManagerName,
+                    Error       = resolution.Error
+                });
+            }
+
+            // ─── אם אין אנשי קשר - נסה לפי שם הג'וב ─────────────────
+            if (!resolvedContacts.Any() && 
+                !string.IsNullOrEmpty(failedJob.RunAsUser))
+            {
+                var resolution = await ResolveContactEmail(
+                    failedJob.RunAsUser, contacts);
+
+                if (!string.IsNullOrEmpty(resolution.Email) ||
+                    resolution.Source != "not_found")
+                {
+                    resolvedContacts.Add(new ResolvedContactInfo
+                    {
+                        UserName    = failedJob.RunAsUser,
+                        Email       = resolution.Email,
+                        Source      = resolution.Source + "_runasuser",
+                        ManagerName = resolution.ManagerName,
+                        Error       = resolution.Error
+                    });
+                }
+            }
+
+            results.Add(new JobContactResult
+            {
+                Folder          = failedJob.Folder,
+                JobName         = failedJob.JobName,
+                FailureCount    = failedJob.FailureCount,
+                LastFailureTime = failedJob.LastFailureTime
+                    .ToString("dd/MM/yyyy HH:mm:ss"),
+                Application     = failedJob.Application,
+                RunTime         = failedJob.RunTime,
+                EndTime         = failedJob.EndTime,
+                Host            = failedJob.Host,
+                RunId           = failedJob.RunId,
+                RunAsUser       = failedJob.RunAsUser,
+                // ← שמור גם ContactInfo הישן לתאימות לאחור
+                Contacts = resolvedContacts.Select(c => new ContactInfo
+                {
+                    UserName = c.UserName,
+                    Email    = c.Email
+                }).DistinctBy(c => c.Email).ToList(),
+                // ← הוסף מידע מורחב
+                ResolvedContacts = resolvedContacts
+            });
+        }
+
+        return results.OrderByDescending(r => r.FailureCount).ToList();
+    }
+
+    private async Task<List<List<string>>> ParseExcelToList(string filePath)
+    {
+        var result = new List<List<string>>();
+
+        if (!System.IO.File.Exists(filePath))
+            return result;
+
+        var extension = Path.GetExtension(filePath).ToLowerInvariant();
+
+        try
+        {
+            if (extension == ".xlsx")
+            {
+                // קרא XLSX ישירות - XLSX הוא ZIP עם XML בפנים
+                result = ReadXlsxDirectly(filePath);
+            }
+            else if (extension == ".xls")
+            {
+                // עבור XLS ישן - נסה COM עם retry
+                result = await ReadXlsWithRetry(filePath);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error reading Excel file {filePath}: {ex.Message}");
+            throw new Exception($"שגיאה בקריאת קובץ: {Path.GetFileName(filePath)}. {ex.Message}");
+        }
+
+        return result;
+    }
+
+    // קריאת XLSX ישירות - ללא Excel COM
+    private List<List<string>> ReadXlsxDirectly(string filePath)
+    {
+        var result = new List<List<string>>();
+
+        try
+        {
+            using (var archive = System.IO.Compression.ZipFile.OpenRead(filePath))
+            {
+                // ← הוסף: טען את ה-date styles
+                _dateStyleIndices = LoadDateStyleIndices(archive);
+                
+                var sharedStrings = new List<string>();
+                var sharedStringsEntry = archive.GetEntry("xl/sharedStrings.xml");
+                if (sharedStringsEntry != null)
+                {
+                    using (var stream = sharedStringsEntry.Open())
+                    using (var reader = new System.IO.StreamReader(stream))
+                    {
+                        var xml = reader.ReadToEnd();
+                        sharedStrings = ParseSharedStrings(xml);
+                    }
+                }
+
+
+                // מצא את הגיליון הראשון
+                // קודם קרא את workbook.xml כדי למצוא את שם הגיליון
+                string sheet1Path = "xl/worksheets/sheet1.xml";
+                
+                var workbookEntry = archive.GetEntry("xl/workbook.xml");
+                if (workbookEntry != null)
+                {
+                    using (var stream = workbookEntry.Open())
+                    using (var reader = new System.IO.StreamReader(stream))
+                    {
+                        var xml = reader.ReadToEnd();
+                        // מצא את ה-rId של הגיליון הראשון
+                        var sheetMatch = System.Text.RegularExpressions.Regex.Match(
+                            xml, @"<sheet[^>]+r:id=""(rId\d+)""");
+                        if (sheetMatch.Success)
+                        {
+                            var rId = sheetMatch.Groups[1].Value;
+                            // מצא את הנתיב האמיתי מ-_rels
+                            var relsEntry = archive.GetEntry("xl/_rels/workbook.xml.rels");
+                            if (relsEntry != null)
+                            {
+                                using (var relsStream = relsEntry.Open())
+                                using (var relsReader = new System.IO.StreamReader(relsStream))
+                                {
+                                    var relsXml = relsReader.ReadToEnd();
+                                    var relMatch = System.Text.RegularExpressions.Regex.Match(
+                                        relsXml, $@"Id=""{rId}""[^>]+Target=""([^""]+)""");
+                                    if (relMatch.Success)
+                                    {
+                                        var target = relMatch.Groups[1].Value;
+                                        sheet1Path = target.StartsWith("/") 
+                                            ? target.TrimStart('/') 
+                                            : "xl/" + target;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // קרא את הגיליון
+                var sheetEntry = archive.GetEntry(sheet1Path);
+                if (sheetEntry == null)
+                {
+                    // נסה נתיב ישיר
+                    sheetEntry = archive.GetEntry("xl/worksheets/sheet1.xml");
+                }
+
+                if (sheetEntry != null)
+                {
+                    using (var stream = sheetEntry.Open())
+                    using (var reader = new System.IO.StreamReader(stream))
+                    {
+                        var xml = reader.ReadToEnd();
+                        result = ParseSheetXml(xml, sharedStrings);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error reading XLSX directly: {ex.Message}");
+            throw;
+        }
+
+        return result;
+    }
+
+    // פרסור SharedStrings מ-XML
+    private List<string> ParseSharedStrings(string xml)
+    {
+        var strings = new List<string>();
+        
+        // מצא כל <si> element
+        var matches = System.Text.RegularExpressions.Regex.Matches(
+            xml, @"<si>(.*?)</si>", 
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+        
+        foreach (System.Text.RegularExpressions.Match match in matches)
+        {
+            var siContent = match.Groups[1].Value;
+            
+            // חלץ טקסט מ-<t> tags
+            var textMatches = System.Text.RegularExpressions.Regex.Matches(
+                siContent, @"<t[^>]*>(.*?)</t>",
+                System.Text.RegularExpressions.RegexOptions.Singleline);
+            
+            var sb = new StringBuilder();
+            foreach (System.Text.RegularExpressions.Match tm in textMatches)
+            {
+                sb.Append(System.Net.WebUtility.HtmlDecode(tm.Groups[1].Value));
+            }
+            
+            strings.Add(sb.ToString());
+        }
+        
+        return strings;
+    }
+
+    // פרסור גיליון Excel מ-XML
+    private List<List<string>> ParseSheetXml(string xml, List<string> sharedStrings)
+    {
+        var result = new List<List<string>>();
+        
+        // מצא את כל השורות
+        var rowMatches = System.Text.RegularExpressions.Regex.Matches(
+            xml, @"<row[^>]*>(.*?)</row>",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+        
+        foreach (System.Text.RegularExpressions.Match rowMatch in rowMatches)
+        {
+            var rowContent = rowMatch.Value;
+            var cells = new List<(string ref_, string type, string value)>();
+            
+            // מצא את כל התאים בשורה
+            var cellMatches = System.Text.RegularExpressions.Regex.Matches(
+                rowContent, @"<c\s+r=""([^""]+)""(?:[^>]*t=""([^""]*)"")?\s*(?:[^>]*)?>(?:<v>(.*?)</v>)?(?:<is><t>(.*?)</t></is>)?</c>|<c\s+r=""([^""]+)""(?:[^>]*t=""([^""]*)"")?\s*(?:[^>]*)?/>",
+                System.Text.RegularExpressions.RegexOptions.Singleline);
+            
+            foreach (System.Text.RegularExpressions.Match cellMatch in cellMatches)
+            {
+                string cellRef = cellMatch.Groups[1].Value;
+                string cellType = cellMatch.Groups[2].Value;
+                string cellValue = cellMatch.Groups[3].Value;
+                string inlineStr = cellMatch.Groups[4].Value;
+                
+                if (string.IsNullOrEmpty(cellRef))
+                {
+                    cellRef = cellMatch.Groups[5].Value;
+                    cellType = cellMatch.Groups[6].Value;
+                }
+                
+                cells.Add((cellRef, cellType, string.IsNullOrEmpty(inlineStr) ? cellValue : inlineStr));
+            }
+            
+            if (!cells.Any()) continue;
+            
+            // מצא את מספר העמודה המקסימלי בשורה
+            int maxCol = 0;
+            foreach (var (cellRef, _, _) in cells)
+            {
+                int col = GetColumnIndex(cellRef);
+                if (col > maxCol) maxCol = col;
+            }
+            
+            // בנה שורה עם כל התאים במיקום הנכון
+            var row = new List<string>(new string[maxCol]);
+            
+            foreach (var (cellRef, cellType, cellValue) in cells)
+            {
+                int colIdx = GetColumnIndex(cellRef) - 1;
+                if (colIdx < 0 || colIdx >= row.Count) continue;
+                
+                string value = "";
+                
+                if (cellType == "s") // shared string
+                {
+                    if (int.TryParse(cellValue, out int idx) && idx < sharedStrings.Count)
+                        value = sharedStrings[idx];
+                }
+                else if (cellType == "b") // boolean
+                {
+                    value = cellValue == "1" ? "TRUE" : "FALSE";
+                }
+                else if (cellType == "inlineStr" || !string.IsNullOrEmpty(cellValue))
+                {
+                    // נסה לפרמט תאריך אם זה מספר
+                    if (double.TryParse(cellValue, 
+                        System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture, 
+                        out double numVal))
+                    {
+                        // בדוק אם זה תאריך Excel (מספרים בין 1 ל-2958465)
+                        if (numVal > 1 && numVal < 2958465 && IsDateCell(cellRef, xml))
+                        {
+                            try
+                            {
+                                var date = DateTime.FromOADate(numVal);
+                                value = date.ToString("MMM d, yyyy h:mm:ss tt", 
+                                    System.Globalization.CultureInfo.InvariantCulture);
+                            }
+                            catch
+                            {
+                                value = cellValue;
+                            }
+                        }
+                        else
+                        {
+                            value = cellValue;
+                        }
+                    }
+                    else
+                    {
+                        value = System.Net.WebUtility.HtmlDecode(cellValue);
+                    }
+                }
+                
+                row[colIdx] = value;
+            }
+            
+            result.Add(row);
+        }
+        
+        return result;
+    }
+
+    // בדוק אם תא הוא תאריך לפי ה-style שלו
+    private bool IsDateCell(string cellRef, string sheetXml)
+    {
+        var cellMatch = System.Text.RegularExpressions.Regex.Match(
+            sheetXml, 
+            $@"<c\s+r=""{System.Text.RegularExpressions.Regex.Escape(cellRef)}""[^>]*s=""(\d+)""");
+        
+        if (cellMatch.Success && int.TryParse(cellMatch.Groups[1].Value, out int styleIdx))
+        {
+            // ← בדוק אם ה-style הזה הוא באמת תאריך לפי styles.xml
+            if (_dateStyleIndices != null)
+                return _dateStyleIndices.Contains(styleIdx);
+                
+            // ← fallback: אם אין מידע על styles, אל תניח שזה תאריך
+            return false;
+        }
+        
+        return false;
+    }
+
+    // המר אות עמודה למספר (A=1, B=2, AA=27 וכו')
+    private int GetColumnIndex(string cellRef)
+    {
+        if (string.IsNullOrEmpty(cellRef)) return 0;
+        
+        int col = 0;
+        foreach (char c in cellRef)
+        {
+            if (!char.IsLetter(c)) break;
+            col = col * 26 + (char.ToUpper(c) - 'A' + 1);
+        }
+        return col;
+    }
+
+    // קריאת XLS ישן עם retry
+    private async Task<List<List<string>>> ReadXlsWithRetry(string filePath, int maxRetries = 3)
+    {
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                return await Task.Run(() =>
+                {
+                    var result = new List<List<string>>();
+                    using (var helper = new OfficeInteropHelper(OfficeInteropHelper.OfficeApplication.Excel))
+                    {
+                        var workbook = helper.OpenWorkbook(filePath);
+                        var worksheet = helper.GetWorksheet(1);
+                        var usedRange = worksheet.UsedRange;
+                        int rowCount = usedRange.Rows.Count;
+                        int colCount = usedRange.Columns.Count;
+
+                        for (int i = 1; i <= rowCount; i++)
+                        {
+                            var row = new List<string>();
+                            for (int j = 1; j <= colCount; j++)
+                            {
+                                var cell = worksheet.Cells[i, j];
+                                row.Add(cell.Value?.ToString() ?? "");
+                            }
+                            result.Add(row);
+                        }
+                    }
+                    return result;
+                });
+            }
+            catch (System.Runtime.InteropServices.COMException ex) 
+                when (ex.HResult == unchecked((int)0x8001010A))
+            {
+                Console.WriteLine($"Excel busy, attempt {attempt}/{maxRetries}. Waiting...");
+                if (attempt < maxRetries)
+                    await Task.Delay(2000 * attempt); // המתן 2, 4, 6 שניות
+                else
+                    throw new Exception($"Excel עמוס לאחר {maxRetries} ניסיונות. נסה שוב מאוחר יותר.");
+            }
+        }
+        
+        return new List<List<string>>();
     }
 
     [HttpPost]
@@ -3489,11 +5140,11 @@ public class MessagesController : Controller
         try
         {
             var mappings = new List<object>();
-            string phoneDirectoryPath = @"C:\\Users\\liron\\Desktop\\automation\\Noc Portal\\NocPortal\\NocPortal\\portal\\files\phone_directory.csv";
+            string phoneDirectoryPath = @"R:\USERS\TASHTIT\NOC\Portal\files\phone_directory.csv";
             bool emailMappingExists = System.IO.File.Exists(_emailMappingFilePath);
             bool phoneDirectoryExists = System.IO.File.Exists(phoneDirectoryPath);
             
-            // קריאת נתונים מקובץ מיפוי מיילים אם קיים
+            // ─── קריאת נתונים מקובץ מיפוי מיילים אם קיים ───────────
             if (emailMappingExists)
             {
                 var lines = System.IO.File.ReadAllLines(_emailMappingFilePath);
@@ -3522,16 +5173,19 @@ public class MessagesController : Controller
                 }
             }
             
-            // קריאת נתונים מספר הטלפונים ושילוב עם מיפוי המיילים
+            // ─── קריאת נתונים מספר הטלפונים - לתצוגה בלבד ──────────
+            // *** שים לב: אין שמירה לקובץ! ***
             if (phoneDirectoryExists)
             {
-                var phoneLines = System.IO.File.ReadAllLines(phoneDirectoryPath);
+                var phoneLines = System.IO.File.ReadAllLines(
+                    phoneDirectoryPath, Encoding.UTF8);
                 bool isFirstLine = true;
                 
                 // מילון לבדיקת כפילויות מיילים
-                var existingEmails = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                // (כולל מיילים שכבר נטענו מקובץ המיפוי)
+                var existingEmails = new HashSet<string>(
+                    StringComparer.OrdinalIgnoreCase);
                 
-                // הוסף את המיילים הקיימים למילון
                 foreach (var mapping in mappings)
                 {
                     var dict = mapping as Dictionary<string, string>;
@@ -3550,38 +5204,30 @@ public class MessagesController : Controller
                     }
                     
                     var parts = line.Split(',');
-                    if (parts.Length >= 8) // וודא שיש מספיק שדות
+                    if (parts.Length >= 8)
                     {
                         string fullName = parts[0].Trim();
-                        string email = parts[7].Trim();
+                        string email    = parts[7].Trim();
                         
-                        // הוסף רק אם המייל לא ריק ולא קיים כבר
-                        if (!string.IsNullOrEmpty(email) && !existingEmails.Contains(email))
+                        // הוסף לתצוגה בלבד - ללא שמירה לקובץ
+                        if (!string.IsNullOrEmpty(email) && 
+                            !existingEmails.Contains(email))
                         {
                             var mapping = new Dictionary<string, string>
                             {
-                                ["emails"] = email,
-                                ["users"] = fullName,
+                                ["emails"]   = email,
+                                ["users"]    = fullName,
                                 ["onitGroup"] = "",
-                                ["הערות"] = "מספר טלפונים"
+                                // ← סימון שמקור הנתון הוא ספר הטלפונים
+                                ["הערות"]   = "מספר טלפונים",
+                                // ← דגל שמונע שמירה בעתיד
+                                ["readOnly"] = "true"
                             };
                             
                             mappings.Add(mapping);
                             existingEmails.Add(email);
                             
-                            // אם קובץ המיפוי קיים, הוסף את הרשומה החדשה גם אליו
-                            if (emailMappingExists)
-                            {
-                                try
-                                {
-                                    string newLine = $"{email},{fullName},,מספר טלפונים";
-                                    System.IO.File.AppendAllText(_emailMappingFilePath, Environment.NewLine + newLine);
-                                }
-                                catch (Exception ex)
-                                {
-                                    Console.WriteLine($"שגיאה בהוספת רשומה לקובץ מיפוי: {ex.Message}");
-                                }
-                            }
+                            // *** הוסרה כל שמירה לקובץ מכאן ***
                         }
                     }
                 }
@@ -3608,8 +5254,9 @@ public class MessagesController : Controller
                                 string user = dict.ContainsKey("users") ? dict["users"] : "";
                                 string group = dict.ContainsKey("onitGroup") ? dict["onitGroup"] : "";
                                 string notes = dict.ContainsKey("הערות") ? dict["הערות"] : "";
-                                
-                                lines.Add($"{email},{user},{group},{notes}");
+                                if(!notes.Contains("מספר טלפונים")){
+                                    lines.Add($"{email},{user},{group},{notes}");
+                                }
                             }
                         }
                         
@@ -3628,15 +5275,17 @@ public class MessagesController : Controller
                 
                 if (System.IO.File.Exists(alternativePath))
                 {
-                    // העתק את הקובץ למיקום הרצוי
-                    System.IO.File.Copy(alternativePath, _emailMappingFilePath, true);
-                    
-                    // קרא את הנתונים מהקובץ החדש
+                    // העתק רק את קובץ המיפוי המקורי - ללא נתוני ספר טלפונים
+                    System.IO.File.Copy(
+                        alternativePath, _emailMappingFilePath, true);
                     return GetEmailMapping();
                 }
                 else
                 {
-                    return Json(new { success = false, error = "קובץ מיפוי מיילים לא קיים" });
+                    return Json(new { 
+                        success = false, 
+                        error = "קובץ מיפוי מיילים לא קיים" 
+                    });
                 }
             }
 
@@ -3696,6 +5345,258 @@ public class MessagesController : Controller
         {
             return Json(new { success = false, error = ex.Message });
         }
+    }
+
+    [HttpGet]
+    public IActionResult InitDailyPermitEmailTimer()
+    {
+        try
+        {
+            EnsureDailyPermitEmailTimerStarted();
+            return Json(new { success = true, message = "Timer initialized" });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    private static void EnsureDailyPermitEmailTimerStarted()
+    {
+        lock (_timerLock)
+        {
+            if (_dailyEmailTimerInitialized) return;
+            _dailyEmailTimerInitialized = true;
+
+           // חשב כמה זמן עד 06:50 הבאה
+            var now = DateTime.Now;
+            var nextRun = new DateTime(now.Year,now.Month,now.Day,
+                6,   // שעה
+                50,  // דקות
+                0    // שניות
+            );
+
+            // אם כבר עברנו 06:50 היום - קבע ליום הבא
+            if (now >= nextRun)
+                nextRun = nextRun.AddDays(1);
+
+            // דלג על שבת (6) - קבע ליום ראשון
+            while (nextRun.DayOfWeek == DayOfWeek.Saturday)
+                nextRun = nextRun.AddDays(1);
+
+            var initialDelay = nextRun - now;
+            var period = TimeSpan.FromHours(24);
+
+            Console.WriteLine(
+                $"[DailyPermitEmail] Timer set. " +
+                $"First run: {nextRun:dd/MM/yyyy HH:mm:ss} " +
+                $"(in {initialDelay.TotalMinutes:F0} minutes)"
+            );
+
+            _dailyPermitEmailTimer = new System.Threading.Timer(
+                callback: _ => SendDailyDanBironPermitEmail(),
+                state: null,
+                dueTime: initialDelay,
+                period: period
+            );
+        }
+    }
+
+    private static void SendDailyDanBironPermitEmail()
+    {
+        try
+        {
+            var now = DateTime.Now;
+
+            if (now.DayOfWeek == DayOfWeek.Saturday)
+            {
+                Console.WriteLine(
+                    $"[DailyPermitEmail] Skipping Saturday {now:dd/MM/yyyy}");
+                return;
+            }
+
+            var dateDisplay =
+                $"{now.Day:D2}/{now.Month:D2}/{now.Year}";
+
+            var body = BuildDanBironPermitBody(dateDisplay);
+
+            var toAddresses = new List<string>
+            {
+                "lobbymenora@menoramivt.co.il",
+                "binyaminra@menoramivt.co.il",
+                "securityroomusr@menoramivt.co.il",
+                "HananBD1@kyndryl.com"
+            };
+
+            // CC משותף
+            var cc = new List<string>
+            {
+                "noc@menoramivt.co.il"
+            };
+
+            SendPermitEmailSmtp(
+                subject:  $"אישור כניסה להיום ({dateDisplay}) עבור דן בירון- פ\"ת ור\"ג",
+                body: body,
+                toAddresses: toAddresses,
+                ccAddresses: cc
+            );
+            Console.WriteLine(
+                $"[DailyPermitEmail] Successfully sent for {dateDisplay}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"[DailyPermitEmail] Error: {ex.Message}");
+        }
+    }
+
+    private static string BuildDanBironPermitBody(string dateDisplay)
+    {
+        return
+            $"שלום רב,\n\n" +
+            $"נא לאשר כניסה להיום ({dateDisplay}) לר\"ג ולפ\"ת:\n\n" +
+            $"חברה    : מנורה מבטחים\n\n" +
+            $"שם      : דני בירון\n\n" +
+            $"תודה.";
+    }
+
+    private static void SendPermitEmailSmtp(
+        string subject,
+        string body,
+        List<string> toAddresses,
+        List<string> ccAddresses)
+    {
+        using var client = new System.Net.Mail.SmtpClient("172.22.28.25", 25)
+        {
+            EnableSsl             = false,
+            DeliveryMethod        = System.Net.Mail.SmtpDeliveryMethod.Network,
+            UseDefaultCredentials = false,
+            Credentials           = System.Net.CredentialCache.DefaultNetworkCredentials,
+            Timeout               = 10_000
+        };
+
+        var htmlBody = BuildPermitHtmlBodyStatic(body);
+
+        using var mail = new System.Net.Mail.MailMessage
+        {
+            From       = new System.Net.Mail.MailAddress(
+                            "noc@menoramivt.co.il", "NOC Portal"),
+            Subject    = subject,
+            Body       = htmlBody,
+            IsBodyHtml = true
+        };
+
+        mail.SubjectEncoding = System.Text.Encoding.UTF8;
+        mail.BodyEncoding    = System.Text.Encoding.UTF8;
+        mail.HeadersEncoding = System.Text.Encoding.UTF8;
+
+        foreach (var to in toAddresses)
+            if (!string.IsNullOrWhiteSpace(to))
+                mail.To.Add(to.Trim());
+
+        foreach (var cc in ccAddresses)
+            if (!string.IsNullOrWhiteSpace(cc))
+                mail.CC.Add(cc.Trim());
+
+        try
+        {
+            client.Send(mail);
+
+            _auditLog?.Log(new AuditLogEntry
+            {
+                EventType = AuditEventTypes.EmailSent,
+                Username  = "system",
+                IpAddress = "system",
+                Details   = $"Permit email sent | To={string.Join(", ", toAddresses)} | Subject={subject}",
+                Success   = true
+            });
+        }
+        catch (Exception ex)
+        {
+            _auditLog?.Log(new AuditLogEntry
+            {
+                EventType = AuditEventTypes.EmailFailed,
+                Username  = "system",
+                IpAddress = "system",
+                Details   = $"Permit email failed | To={string.Join(", ", toAddresses)} | Subject={subject} | Error={ex.Message}",
+                Success   = false
+            });
+
+            throw;
+        }
+
+    }
+
+    private static string BuildPermitHtmlBodyStatic(string plainBody)
+    {
+        if (string.IsNullOrEmpty(plainBody))
+            return "<html><body></body></html>";
+
+        var lines = plainBody.Split('\n');
+        var sb = new System.Text.StringBuilder();
+
+        foreach (var line in lines)
+        {
+            var trimmed = line.TrimEnd('\r').Trim();
+
+            if (string.IsNullOrEmpty(trimmed))
+            {
+                sb.Append(
+                    "<div style=\"height:10px;line-height:10px;\">&nbsp;</div>"
+                );
+                continue;
+            }
+
+            if (trimmed.Contains(':'))
+            {
+                int idx = trimmed.IndexOf(':');
+                string label = trimmed.Substring(0, idx).Trim();
+                string value = trimmed.Substring(idx + 1).Trim();
+
+                var knownLabels = new[]
+                {
+                    "שם", "שמות", "חברה", "מס' רכב",
+                    "ת.ז.", "מלווה", "טלפון"
+                };
+
+                if (knownLabels.Any(l => label.Trim() == l))
+                {
+                    sb.Append($@"
+    <div style=""padding:4px 0;line-height:1.6;"">
+    <span style=""font-weight:bold;color:#444;
+                display:inline-block;min-width:90px;"">
+        {System.Net.WebUtility.HtmlEncode(label)}:
+    </span>
+    <span style=""color:#222;margin-right:8px;"">
+        {System.Net.WebUtility.HtmlEncode(value)}
+    </span>
+    </div>");
+                    continue;
+                }
+            }
+
+            sb.Append($@"
+    <div style=""padding:4px 0;color:#333;line-height:1.6;"">
+    {System.Net.WebUtility.HtmlEncode(trimmed)}
+    </div>");
+        }
+
+        return $@"<!DOCTYPE html>
+    <html dir=""rtl"" lang=""he"">
+    <head>
+    <meta charset=""UTF-8"">
+    <meta http-equiv=""Content-Type"" content=""text/html; charset=UTF-8"">
+    </head>
+    <body style=""margin:0;padding:25px 30px;
+                font-family:Arial,sans-serif;
+                direction:rtl;font-size:14px;
+                color:#333;line-height:1.8;
+                background:#ffffff;"">
+    <div style=""max-width:600px;"">
+        {sb}
+    </div>
+    </body>
+    </html>";
     }
 
     private async Task<List<ExecutionJob>> ParseExcelToJobs(string filePath)
@@ -3850,7 +5751,6 @@ public class MessagesController : Controller
         }
     }
 
-
 public class AddEmailMappingsRequest
 {
     public List<EmailMapping> Mappings { get; set; }
@@ -3884,6 +5784,7 @@ public class MessageRequest
     public List<string> AttachedEmails { get; set; } // מערך חדש לקבצי מייל
     public string CsvFilePath { get; set; } // דוחות
     public List<List<string>> TableData { get; set; } 
+    public List<List<string>> ControlMTableData { get; set; }
     
     // סיכום משמרת
     public string Incidents { get; set; }
@@ -3893,12 +5794,15 @@ public class MessageRequest
     public string OpenItems { get; set; }
     public List<string> Attachments { get; set; } // קבצים מצורפים לסיכומי משמרת
     public List<AlertItem> AlertItems { get; set; }
+    public object DailyTasksSummary { get; set; }
 
     public EntryPermitData EntryPermitData { get; set; }
     public bool IsEntryPermit { get; set; }
 
-}
+    public string EndDate { get; set; }        // תאריך סיום
+    public bool AlwaysShow { get; set; } = true; // הצג תמיד
 
+}
 
 public class UpdateMessageOrderRequest
 {
@@ -4045,4 +5949,99 @@ public class EntryPermitPerson
     public string CarNumber { get; set; }
     public string IdNumber { get; set; }
     public string Phone { get; set; }
+}
+
+public class FailedJobEntry
+{
+    public string Folder { get; set; }
+    public string JobName { get; set; }
+    public string Application { get; set; }
+    public string SubApplication { get; set; }
+    public int FailureCount { get; set; }
+    public DateTime LastFailureTime { get; set; }
+    public string RunTime { get; set; }
+    public string EndTime { get; set; }
+    public string Host { get; set; }
+    public string RunId { get; set; }
+    public string RunAsUser { get; set; }
+}
+
+public class ContactEntry
+{
+    public string JobName { get; set; }
+    public string Email { get; set; }
+    public string UserName { get; set; }
+}
+
+public class ContactInfo
+{
+    public string UserName { get; set; }
+    public string Email { get; set; }
+}
+
+public class JobContactResult
+{
+    public string Folder { get; set; }
+    public string JobName { get; set; }
+    public int FailureCount { get; set; }
+    public string LastFailureTime { get; set; }
+    public string Application { get; set; }
+    public string RunTime { get; set; }
+    public string EndTime { get; set; }
+    public string Host { get; set; }
+    public string RunId { get; set; }
+    public string RunAsUser { get; set; }
+    public List<ContactInfo> Contacts { get; set; } = new List<ContactInfo>();
+    public List<ResolvedContactInfo> ResolvedContacts { get; set; } = new();
+}
+
+public class PermanentAccessPerson
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string Name { get; set; }
+    public string Company { get; set; }
+    public string CarNumber { get; set; }
+    public string IdNumber { get; set; }
+    public string Phone { get; set; }
+    public string Notes { get; set; }
+    public string AddedDate { get; set; } = 
+        DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+    public string AddedBy { get; set; }
+    // אתרים מורשים: "ר\"ג", "פ\"ת", "שניהם"
+    public List<string> AllowedSites { get; set; } = new List<string>();
+}
+
+public class SavePermanentAccessRequest
+{
+    public List<PermanentAccessPerson> Persons { get; set; }
+}
+
+public class EntryPermitEmailRequest
+{
+    public string Subject { get; set; }
+    public string Body { get; set; }
+    public List<string> ToAddresses { get; set; }
+    public List<string> CcAddresses { get; set; }
+}
+
+public class ContactResolutionResult
+{
+    public string  UserName    { get; set; } = "";
+    public string  Email       { get; set; } = "";
+    // "jobs_contacts" | "phone_directory" | "phone_directory_partial"
+    // "manager_fallback" | "manager_found_no_email" 
+    // "org_tree_no_manager" | "not_found" | "empty"
+    public string  Source      { get; set; } = "";
+    public string? ManagerName { get; set; }
+    public string? ManagerId   { get; set; }
+    public string? Error       { get; set; }
+}
+
+public class ResolvedContactInfo
+{
+    public string  UserName    { get; set; } = "";
+    public string  Email       { get; set; } = "";
+    public string  Source      { get; set; } = "";
+    public string? ManagerName { get; set; }
+    public string? Error       { get; set; }
 }

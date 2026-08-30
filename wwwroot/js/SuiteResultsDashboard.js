@@ -53,6 +53,10 @@ class SuiteResultsDashboard {
         // *** זמן הריצה האחרון של Run All (מהשרת) ***
         this._runAllLastTime = null;
 
+        this._collapsedSuiteKeys = new Set(
+            JSON.parse(localStorage.getItem('sdCollapsedSuites') || '[]')
+        );
+
     }
 
     // ==========================================
@@ -67,10 +71,22 @@ class SuiteResultsDashboard {
 
         this.compactView = localStorage.getItem('sdCompactView') === '1';
 
+        // *** טען מצב collapse שמור — Grid View ***
+        try {
+            const saved = JSON.parse(
+                localStorage.getItem('sdCollapsedSuites') || '[]'
+            );
+            this._collapsedSuiteKeys = new Set(saved);
+        } catch {
+            this._collapsedSuiteKeys = new Set();
+        }
+
+        // *** טען מצב collapse שמור — List View ***
+        this._loadListCollapseState();
+
         this.addStyles();
         this.renderShell();
         this.bindEvents();
-
         // *** applyPermissions מטפל בשני סוגי הרשאות ***
         this.applyPermissions();
 
@@ -80,6 +96,28 @@ class SuiteResultsDashboard {
             () => this.loadData(), this.REFRESH_MS);
 
         this._checkRunAllCooldownOnLoad();
+    }
+
+    // ==========================================
+    // *** שמירה וטעינה של מצב List View ***
+    // ==========================================
+
+    _saveListCollapseState() {
+        localStorage.setItem(
+            'sdCollapsedListSuites',
+            JSON.stringify([...this._collapsedListSuites])
+        );
+    }
+
+    _loadListCollapseState() {
+        try {
+            const saved = JSON.parse(
+                localStorage.getItem('sdCollapsedListSuites') || '[]'
+            );
+            this._collapsedListSuites = new Set(saved);
+        } catch {
+            this._collapsedListSuites = new Set();
+        }
     }
 
     applyPermissions() {
@@ -123,19 +161,28 @@ class SuiteResultsDashboard {
     // ==========================================
     checkEditPermission() {
         if (!this.currentUser) return false;
-        const { role, username } = this.currentUser;
-        // רק משתמשים ספציפיים יכולים לערוך סוויטות ולסנכרן שמות
-        if (['lirongo', 'rinaja', 'dekelra'].includes(username)) return true;
+        const { role, username, privilegedUsers } = this.currentUser;
+
+        const privList = Array.isArray(privilegedUsers)
+            ? privilegedUsers.map(u => u.toLowerCase())
+            : [];
+
+        if (privList.includes((username || '').toLowerCase())) return true;
         if (role === 'Admin') return true;
         return false;
     }
 
-    // *** האם המשתמש יכול להריץ (NOC + Admin + ספציפיים) ***
     checkRunPermission() {
         if (!this.currentUser) return false;
-        const { role, username } = this.currentUser;
+        const { role, username, privilegedUsers } = this.currentUser;
+
         if (['Admin', 'NOC'].includes(role)) return true;
-        if (['lirongo', 'rinaja', 'dekelra'].includes(username)) return true;
+
+        const privList = Array.isArray(privilegedUsers)
+            ? privilegedUsers.map(u => u.toLowerCase())
+            : [];
+
+        if (privList.includes((username || '').toLowerCase())) return true;
         return false;
     }
 
@@ -1821,6 +1868,8 @@ class SuiteResultsDashboard {
 
             // *** נקה מצב collapse שמור כשפותחים הכל ***
             this._collapsedListSuites.clear();
+            // *** שמור ב-localStorage ***
+            this._saveListCollapseState();
         }
 
         this._applyListViewCollapse();
@@ -1837,8 +1886,7 @@ class SuiteResultsDashboard {
 
             if (this.listViewCollapsed) {
                 if (rowType === 'test') {
-                    const hasSuiteCell =
-                        row.querySelector('.sd-list-suite-first');
+                    const hasSuiteCell = row.querySelector('.sd-list-suite-first');
 
                     if (!hasSuiteCell) {
                         row.style.display = 'none';
@@ -1849,14 +1897,22 @@ class SuiteResultsDashboard {
                         const suiteNameCell = row.querySelector(
                             '.sd-list-td-suite[data-suite-name]'
                         );
-                        const suiteName =
-                            suiteNameCell?.dataset.suiteName || '';
+                        const suiteName = suiteNameCell?.dataset.suiteName || '';
+                        const suiteKey = row.dataset.suiteKey;
 
                         // *** הוסף ל-Set ***
-                        const suiteKey = row.dataset.suiteKey;
                         if (suiteKey) this._collapsedListSuites.add(suiteKey);
 
                         this._collapseListRow(row, suiteName);
+
+                        // *** תיקון: עדכן את כפתור ה-collapse ***
+                        const collapseBtn = row.querySelector('.sd-list-suite-collapse-btn');
+                        if (collapseBtn) {
+                            collapseBtn.dataset.collapsed = '1';
+                            collapseBtn.title = 'Expand suite';
+                            const btnIcon = collapseBtn.querySelector('i');
+                            if (btnIcon) btnIcon.className = 'fas fa-chevron-down';
+                        }
                     }
                 } else {
                     row.style.display = '';
@@ -1864,8 +1920,22 @@ class SuiteResultsDashboard {
             } else {
                 row.style.display = '';
                 this._expandListRow(row);
+
+                // *** תיקון: אפס את כפתור ה-collapse ***
+                const collapseBtn = row.querySelector('.sd-list-suite-collapse-btn');
+                if (collapseBtn) {
+                    collapseBtn.dataset.collapsed = '0';
+                    collapseBtn.title = 'Collapse suite';
+                    const btnIcon = collapseBtn.querySelector('i');
+                    if (btnIcon) btnIcon.className = 'fas fa-chevron-up';
+                }
             }
         });
+
+        // *** שמור ב-localStorage אחרי Collapse All ***
+        if (this.listViewCollapsed) {
+            this._saveListCollapseState();
+        }
     }
 
     // ==========================================
@@ -1931,10 +2001,8 @@ class SuiteResultsDashboard {
                 ? `<span class="sd-list-collapsed-suite-name">
                    ${this.escHtml(resolvedSuiteName)}
                </span>
-               <span class="sd-list-collapsed-hint">
-                   — click to expand tests
-               </span>`
-                : 'Click to expand tests'
+               `
+                : ''
             }
         </span>
     </div>`;
@@ -2010,16 +2078,24 @@ class SuiteResultsDashboard {
     toggleCollapseColumn(index) {
         const idx = parseInt(index);
 
-        if (!this._manuallyExpandedPatch)
-            this._manuallyExpandedPatch = new Set();
+        // *** קבל את הסוויטה לפי האינדקס מה-DOM, לא מהמערך המסונן ***
+        const col = document.querySelector(`.sd-column[data-index="${idx}"]`);
+        const suite = this.getFilteredSuites()[idx - 1];
+        const suiteKey = suite ? this._getSuiteKey(suite) : null;
 
         if (this.collapsedSuites.has(idx)) {
             this.collapsedSuites.delete(idx);
-            this._manuallyExpandedPatch.add(idx);
+            if (suiteKey) this._collapsedSuiteKeys.delete(suiteKey);
         } else {
             this.collapsedSuites.add(idx);
-            this._manuallyExpandedPatch.delete(idx);
+            if (suiteKey) this._collapsedSuiteKeys.add(suiteKey);
         }
+
+        // שמור ב-localStorage
+        localStorage.setItem('sdCollapsedSuites',
+            JSON.stringify([...this._collapsedSuiteKeys])
+        );
+
         this._applyCollapseState(idx);
 
         // *** עדכן אייקון המפריד אם זו סוויטת Patch ***
@@ -2029,23 +2105,32 @@ class SuiteResultsDashboard {
     collapseAll() {
         this.allCollapsed = true;
         const filtered = this.getFilteredSuites();
-        filtered.forEach((_, i) => {
-            this.collapsedSuites.add(i + 1);
-            this._applyCollapseState(i + 1);
+
+        filtered.forEach((suite, i) => {
+            const idx = i + 1;
+            const suiteKey = this._getSuiteKey(suite);
+
+            this.collapsedSuites.add(idx);
+            if (suiteKey) this._collapsedSuiteKeys.add(suiteKey);
+
+            this._applyCollapseState(idx);
         });
-        // *** נקה פתיחות ידניות של Patch ***
+
+        localStorage.setItem('sdCollapsedSuites',
+            JSON.stringify([...this._collapsedSuiteKeys])
+        );
+
         this._manuallyExpandedPatch?.clear();
     }
 
     expandAll() {
         this.allCollapsed = false;
-
         const filtered = this.getFilteredSuites();
 
         filtered.forEach((suite, i) => {
             const idx = i + 1;
+            const suiteKey = this._getSuiteKey(suite);
 
-            // *** אל תפתח סוויטות Patch ***
             if (suite.isPatchSuite) {
                 this.collapsedSuites.add(idx);
                 this._manuallyExpandedPatch?.delete(idx);
@@ -2053,8 +2138,12 @@ class SuiteResultsDashboard {
             }
 
             this.collapsedSuites.delete(idx);
+            this._collapsedSuiteKeys.delete(suiteKey);
             this._applyCollapseState(idx);
         });
+        localStorage.setItem('sdCollapsedSuites',
+            JSON.stringify([...this._collapsedSuiteKeys])
+        );
     }
 
     _applyCollapseState(idx) {
@@ -2268,7 +2357,12 @@ class SuiteResultsDashboard {
 
         this.listViewCollapsed = false;
 
-        // *** שמות משתנים ברורים ונפרדים ***
+        // *** כשעוברים ל-Grid — שמור מצב List ***
+        // *** כשעוברים ל-List — טען מצב שמור ***
+        if (this.viewMode === 'list') {
+            this._loadListCollapseState();
+        }
+
         const collapseLabel = document.getElementById('sdCollapseAllLabel');
         const collapseIcon = document.querySelector('#sdCollapseAllBtn i');
         const viewModeBtn = document.getElementById('sdViewModeBtn');
@@ -2276,7 +2370,6 @@ class SuiteResultsDashboard {
 
         // *** כפתור Compact — מושבת ב-List View ***
         const compactBtn = document.getElementById('sdCompactBtn');
-        const compactLabel = document.getElementById('sdCompactLabel');
         if (compactBtn) {
             compactBtn.disabled = this.viewMode === 'list';
             compactBtn.title = this.viewMode === 'list'
@@ -2340,7 +2433,12 @@ class SuiteResultsDashboard {
 
         // *** בנה שורות — כל טסט שורה נפרדת ***
         const allRows = [];
-        filtered.forEach(suite => {
+
+        // *** הפרד לשתי קבוצות ***
+        const regularSuites = filtered.filter(s => !s.isPatchSuite);
+        const patchSuites = filtered.filter(s => s.isPatchSuite);
+
+        const pushSuiteRows = (suite) => {
             const stats = this.calcSuiteStats(suite.tests || []);
             const tests = suite.tests || [];
 
@@ -2364,7 +2462,16 @@ class SuiteResultsDashboard {
                     });
                 });
             }
-        });
+        };
+
+        regularSuites.forEach(pushSuiteRows);
+
+        // *** הוסף מפריד רק אם יש שתי קבוצות ***
+        if (regularSuites.length > 0 && patchSuites.length > 0) {
+            allRows.push({ type: 'patch-divider' });
+        }
+
+        patchSuites.forEach(pushSuiteRows);
 
         container.innerHTML = `
         <!-- ===== סיכום כללי ===== -->
@@ -2407,6 +2514,26 @@ class SuiteResultsDashboard {
                 </thead>
                 <tbody id="sdListTableBody">
                     ${allRows.map((row, rowIdx) => {
+
+            // *** מפריד בין סוויטות רגילות ל-Patch ***
+            if (row.type === 'patch-divider') {
+                return `
+        <tr class="sd-list-patch-divider-row"
+            data-row-idx="${rowIdx}"
+            data-type="divider">
+            <td colspan="7"
+                class="sd-list-patch-divider-cell">
+                <div class="sd-list-patch-divider-inner">
+                    <div class="sd-list-patch-divider-line"></div>
+                    <div class="sd-list-patch-divider-label">
+                        <i class="fas fa-code-branch"></i>
+                        Run Only After Security Updates
+                    </div>
+                    <div class="sd-list-patch-divider-line"></div>
+                </div>
+            </td>
+        </tr>`;
+            }
 
             if (row.type === 'empty-suite') {
                 const rateColor = row.stats.passRate === 100
@@ -2695,6 +2822,9 @@ class SuiteResultsDashboard {
                 const rowData = allRows[rowIdx];
                 if (!rowData) return;
 
+                // *** דלג על שורת מפריד ***
+                if (rowData.type === 'patch-divider') return;
+
                 // *** לחיצה על תא סוויטה — פתח פופאפ סוויטה ***
                 if (e.target.closest('.sd-list-td-suite')) {
                     if (rowData.suite) {
@@ -2748,11 +2878,10 @@ class SuiteResultsDashboard {
             // ==========================================
             // פתיחה
             // ==========================================
-
-            // *** הסר מה-Set ***
             this._collapsedListSuites.delete(suiteKey);
+            // *** שמור ב-localStorage ***
+            this._saveListCollapseState();
 
-            // מצא את השורה הראשונה של הסוויטה
             let firstRow = null;
             rows.forEach(row => {
                 if (row.dataset.suiteKey === suiteKey &&
@@ -2763,21 +2892,17 @@ class SuiteResultsDashboard {
 
             if (!firstRow) return;
 
-            // *** קרא את מספר הטסטים שנשמר ***
             const testCount = parseInt(
                 firstRow.dataset.suiteTestCount || '1'
             );
 
-            // *** שחזר את השורה הראשונה ***
             this._expandListRow(firstRow);
 
-            // *** הצג את שאר השורות של הסוויטה ***
             let shown = 1;
             rows.forEach(row => {
                 if (row === firstRow) return;
                 if (row.dataset.suiteKey !== suiteKey) return;
                 if (shown >= testCount) return;
-
                 row.style.display = '';
                 shown++;
             });
@@ -2791,29 +2916,23 @@ class SuiteResultsDashboard {
             // ==========================================
             // סגירה
             // ==========================================
-
-            // *** הוסף ל-Set ***
             this._collapsedListSuites.add(suiteKey);
+            // *** שמור ב-localStorage ***
+            this._saveListCollapseState();
 
             rows.forEach(row => {
                 if (row.dataset.suiteKey !== suiteKey) return;
 
-                const hasSuiteCell =
-                    row.querySelector('.sd-list-suite-first');
+                const hasSuiteCell = row.querySelector('.sd-list-suite-first');
 
                 if (!hasSuiteCell) {
-                    // שורות נוספות — הסתר
                     row.style.display = 'none';
                 } else {
-                    // שורה ראשונה — הצג עם סיכום
                     row.style.display = '';
-
                     const suiteNameCell = row.querySelector(
                         '.sd-list-td-suite[data-suite-name]'
                     );
-                    const suiteName =
-                        suiteNameCell?.dataset.suiteName || '';
-
+                    const suiteName = suiteNameCell?.dataset.suiteName || '';
                     this._collapseListRow(row, suiteName);
                 }
             });
@@ -3511,6 +3630,10 @@ class SuiteResultsDashboard {
                 ? 'Click to expand all Post-Patch suites'
                 : 'Click to collapse all Post-Patch suites';
         }
+
+        localStorage.setItem('sdCollapsedSuites',
+            JSON.stringify([...this._collapsedSuiteKeys])
+        );
     }
 
     // ==========================================
@@ -3637,6 +3760,18 @@ class SuiteResultsDashboard {
                 ? 'bad'
                 : 'warning';
         const shortName = this.shortenSuiteName(suite.suiteName);
+        const suiteKey = this._getSuiteKey(suite);
+
+        // שחזר מצב collapse מה-cache לפי suiteKey (לא לפי index)
+        if (this._collapsedSuiteKeys.has(suiteKey)) {
+            this.collapsedSuites.add(index);
+        } else {
+            // (אלא אם כן זה Patch suite שנסגר אוטומטית)
+            if (!suite.isPatchSuite) {
+                this.collapsedSuites.delete(index);
+            }
+        }
+
         const isCollapsed = this.collapsedSuites.has(index);
         const lastRunStr = this.fmtLastRun(suite.lastRunTime);
 
@@ -6174,7 +6309,7 @@ class SuiteResultsDashboard {
                        dir="rtl"/>
                 <input id="sdContactEmailInput"
                        class="sd-mp-input"
-                       type="email"
+                       type="text"
                        placeholder="Email address *"
                        dir="ltr"/>
 
@@ -6412,7 +6547,7 @@ class SuiteResultsDashboard {
                dir="rtl"/>
         <input class="sd-mp-input sd-contact-edit-input"
                id="sdEditEmailInput_${contactId}"
-               type="email"
+               type="text"
                value="${this.escHtml(currentEmail)}"
                placeholder="Email address *"
                dir="ltr"/>
@@ -6474,7 +6609,7 @@ class SuiteResultsDashboard {
         const addBtn = document.getElementById('sdContactAddBtn');
 
         const name = nameInput?.value?.trim() || '';
-        const email = emailInput?.value?.trim() || '';
+        const email = (emailInput?.value?.trim() || '').toLowerCase();
         let phone = phoneInput?.value?.trim() || '';
 
         // *** ולידציה ***
@@ -6564,7 +6699,7 @@ class SuiteResultsDashboard {
         const phoneInput = document.getElementById(`sdEditPhoneInput_${contactId}`);
 
         const name = nameInput?.value?.trim() || '';
-        const email = emailInput?.value?.trim() || '';
+        const email = (emailInput?.value?.trim() || '').toLowerCase();
         const phone = phoneInput?.value?.trim() || '';
 
         // *** ולידציה ***
@@ -6666,7 +6801,9 @@ class SuiteResultsDashboard {
 
     // *** ולידציית מייל ***
     isValidEmail(email) {
-        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+        if (!email) return false;
+        // מאפשר נקודות מרובות בדומיין, אותיות גדולות/קטנות, מקפים
+        return /^[^\s@]+@[^\s@]+(\.[^\s@]+)+$/.test(email.trim().toLowerCase());
     }
 
     // ==========================================
@@ -11026,6 +11163,1463 @@ class SuiteResultsDashboard {
             border-radius: 8px;
             font-size: 0.82rem;
         }
+        /* ===== List View — מפריד Patch ===== */
+        .sd-list-patch-divider-row {
+            cursor: default !important;
+            pointer-events: none;
+        }
+        .sd-list-patch-divider-row:hover td {
+            background: transparent !important;
+        }
+        .sd-list-patch-divider-cell {
+            padding: 12px 16px !important;
+            background: transparent !important;
+            border: none !important;
+            border-top: 2px solid #2a2a4e !important;
+            border-bottom: 2px solid #2a2a4e !important;
+        }
+        .sd-list-patch-divider-inner {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .sd-list-patch-divider-line {
+            flex: 1;
+            height: 2px;
+            background: linear-gradient(
+                90deg,
+                transparent,
+                rgba(167, 139, 250, 0.5),
+                transparent
+            );
+        }
+        .sd-list-patch-divider-label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #a78bfa;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            white-space: nowrap;
+            padding: 6px 18px;
+            background: rgba(167, 139, 250, 0.1);
+            border: 1px solid rgba(167, 139, 250, 0.35);
+            border-radius: 20px;
+            box-shadow: 0 0 14px rgba(167, 139, 250, 0.12);
+        }
+        /* ===== LIGHT MODE — SuiteResultsDashboard ===== */
+        [data-theme="light"] .sd-root {
+            background: #f0f2f5;
+            color: #1a1a2e;
+        }
+
+        [data-theme="light"] .sd-header {
+            background: #e8e8f8;
+            border-bottom: 1px solid #c8c8e0;
+        }
+
+        [data-theme="light"] .sd-search-input {
+            background: #fff;
+            border: 1px solid #ccc;
+            color: #1a1a2e;
+        }
+
+        [data-theme="light"] .sd-search-input::placeholder { color: #aaa; }
+
+        [data-theme="light"] .sd-filter-btn {
+            background: #fff;
+            border: 1px solid #ccc;
+            color: #555;
+        }
+
+        [data-theme="light"] .sd-filter-btn:hover {
+            background: #f0f0f8;
+            color: #333;
+        }
+
+        [data-theme="light"] .sd-filter-btn.active {
+            background: #320F5B;
+            border-color: #7c3aed;
+            color: #fff;
+        }
+
+        [data-theme="light"] .sd-filter-btn.passed.active {
+            background: rgba(34,197,94,0.15);
+            border-color: #22c55e;
+            color: #15803d;
+        }
+
+        [data-theme="light"] .sd-filter-btn.failed.active {
+            background: rgba(239,68,68,0.15);
+            border-color: #ef4444;
+            color: #b91c1c;
+        }
+
+        [data-theme="light"] .sd-manage-btn {
+            background: #e8f0fe;
+            border: 1px solid #93c5fd;
+            color: #1d4ed8;
+        }
+
+        [data-theme="light"] .sd-manage-btn:hover {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        [data-theme="light"] .sd-last-refresh { color: #888; }
+
+        [data-theme="light"] .sd-refresh-btn {
+            background: #fff;
+            border: 1px solid #ccc;
+            color: #555;
+        }
+
+        [data-theme="light"] .sd-refresh-btn:hover {
+            background: #f0f0f8;
+            color: #333;
+        }
+
+        [data-theme="light"] .sd-collapse-all-btn {
+            background: #fff;
+            border: 1px solid #ccc;
+            color: #555;
+        }
+
+        [data-theme="light"] .sd-collapse-all-btn:hover {
+            background: #f0f0f8;
+            color: #333;
+        }
+
+        [data-theme="light"] .sd-compact-btn {
+            background: #fff;
+            border: 1px solid #ccc;
+            color: #555;
+        }
+
+        [data-theme="light"] .sd-compact-btn:hover {
+            background: #f0f0f8;
+            color: #333;
+        }
+
+        [data-theme="light"] .sd-compact-btn.active {
+            background: rgba(20,184,166,0.1);
+            border-color: #14b8a6;
+            color: #0f766e;
+        }
+
+        [data-theme="light"] .sd-run-all-btn {
+            background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+            border: 1px solid #22c55e;
+            color: #15803d;
+            box-shadow: 0 0 8px rgba(34,197,94,0.15);
+        }
+
+        [data-theme="light"] .sd-run-all-btn:hover:not(:disabled) {
+            background: linear-gradient(135deg, #bbf7d0, #86efac);
+            color: #14532d;
+            box-shadow: 0 0 12px rgba(34,197,94,0.25);
+        }
+
+        [data-theme="light"] .sd-run-all-btn:disabled,
+        [data-theme="light"] .sd-run-all-btn.sd-run-all-btn-cooldown {
+            background: #f5f5f5;
+            border-color: #ccc;
+            color: #888;
+            box-shadow: none;
+        }
+
+        [data-theme="light"] .sd-sync-btn {
+            background: #dcfce7;
+            border: 1px solid #22c55e;
+            color: #15803d;
+        }
+
+        [data-theme="light"] .sd-sync-btn:hover {
+            background: #bbf7d0;
+            color: #14532d;
+        }
+
+        [data-theme="light"] .sd-export-btn {
+            background: rgba(34,197,94,0.1);
+            border: 1px solid rgba(34,197,94,0.3);
+            color: #15803d;
+        }
+
+        [data-theme="light"] .sd-export-btn:hover {
+            background: rgba(34,197,94,0.18);
+            color: #14532d;
+        }
+
+        [data-theme="light"] .sd-view-mode-btn {
+            background: #fff;
+            border: 1px solid #ccc;
+            color: #555;
+        }
+
+        [data-theme="light"] .sd-view-mode-btn:hover {
+            background: #f0f0f8;
+            color: #333;
+        }
+
+        [data-theme="light"] .sd-view-mode-btn.active {
+            background: rgba(122,179,239,0.12);
+            border-color: #7ab3ef;
+            color: #1d4ed8;
+        }
+
+        /* ===== LIGHT MODE — Search Banner ===== */
+        [data-theme="light"] .sd-search-banner {
+            background: linear-gradient(
+                135deg,
+                rgba(234,179,8,0.1),
+                rgba(234,179,8,0.05)
+            );
+            border-bottom: 2px solid rgba(234,179,8,0.35);
+            border-top: 1px solid rgba(234,179,8,0.15);
+            color: #92400e;
+        }
+
+        [data-theme="light"] .sd-search-banner-term {
+            color: #78350f;
+            background: rgba(234,179,8,0.12);
+            border: 1px solid rgba(234,179,8,0.25);
+        }
+
+        [data-theme="light"] .sd-search-banner-clear {
+            background: rgba(234,179,8,0.12);
+            border: 1px solid rgba(234,179,8,0.3);
+            color: #92400e;
+        }
+
+        [data-theme="light"] .sd-search-banner-clear:hover {
+            background: rgba(234,179,8,0.22);
+            color: #78350f;
+        }
+
+        /* ===== LIGHT MODE — Columns Wrap ===== */
+        [data-theme="light"] .sd-columns-wrap {
+            background: #f0f2f5;
+        }
+
+        /* ===== LIGHT MODE — Suite Column ===== */
+        [data-theme="light"] .sd-column {
+            background: #fff;
+            border-right: 1px solid #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-col-header.good {
+            background: #f0fdf4;
+            border-bottom-color: #22c55e;
+        }
+
+        [data-theme="light"] .sd-col-header.bad {
+            background: #fef2f2;
+            border-bottom-color: #ef4444;
+        }
+
+        [data-theme="light"] .sd-col-header.warning {
+            background: #fffbeb;
+            border-bottom-color: #f59e0b;
+        }
+
+        [data-theme="light"] .sd-col-title { color: #1a1a2e; }
+
+        [data-theme="light"] .sd-col-index {
+            background: #e5e7eb;
+            color: #555;
+        }
+
+        [data-theme="light"] .sd-col-lastrun { color: #888; }
+
+        [data-theme="light"] .sd-col-body {
+            background: #fff;
+        }
+
+        /* ===== LIGHT MODE — Test Cards ===== */
+        [data-theme="light"] .sd-test-card.passed {
+            background: linear-gradient(135deg, #16a34a, #22c55e);
+            border-left: 3px solid #15803d;
+        }
+
+        [data-theme="light"] .sd-test-card.failed {
+            background: linear-gradient(135deg, #dc2626, #ef4444);
+            border-left: 3px solid #b91c1c;
+        }
+
+        [data-theme="light"] .sd-test-card.warning {
+            background: linear-gradient(135deg, #d97706, #f59e0b);
+            border-left: 3px solid #b45309;
+        }
+
+        [data-theme="light"] .sd-card-name { color: #fff; }
+
+        [data-theme="light"] .sd-card-duration {
+            color: rgba(255,255,255,0.75);
+        }
+
+        [data-theme="light"] .sd-card-lastrun {
+            color: rgba(255,255,255,0.6);
+        }
+
+        /* ===== LIGHT MODE — Compact Dots ===== */
+        [data-theme="light"] .sd-compact-dot.passed {
+            background: linear-gradient(135deg, #16a34a, #22c55e);
+        }
+
+        [data-theme="light"] .sd-compact-dot.failed {
+            background: linear-gradient(135deg, #dc2626, #ef4444);
+        }
+
+        [data-theme="light"] .sd-compact-dot.warning {
+            background: linear-gradient(135deg, #d97706, #f59e0b);
+        }
+
+        /* ===== LIGHT MODE — No Data ===== */
+        [data-theme="light"] .sd-no-data { color: #aaa; }
+        [data-theme="light"] .sd-no-data i { color: #ccc; }
+        [data-theme="light"] .sd-no-tests { color: #aaa; }
+
+        /* ===== LIGHT MODE — Patch Divider ===== */
+        [data-theme="light"] .sd-patch-divider-label {
+            background: rgba(167,139,250,0.1);
+            border: 1px solid rgba(167,139,250,0.35);
+            color: #5b21b6;
+        }
+
+        [data-theme="light"] .sd-patch-divider-clickable:hover {
+            background: rgba(167,139,250,0.18);
+            border-color: rgba(167,139,250,0.55);
+        }
+
+        [data-theme="light"] .sd-patch-divider-count {
+            background: rgba(167,139,250,0.2);
+            color: #4c1d95;
+        }
+
+        /* ===== LIGHT MODE — Downtime Divider ===== */
+        [data-theme="light"] .sd-downtime-divider-header:hover {
+            background: rgba(251,191,36,0.04);
+        }
+
+        [data-theme="light"] .sd-downtime-divider-label {
+            background: rgba(251,191,36,0.08);
+            border: 1px solid rgba(251,191,36,0.25);
+            color: #92400e;
+        }
+
+        [data-theme="light"] .sd-downtime-divider-header:hover
+        .sd-downtime-divider-label {
+            background: rgba(251,191,36,0.14);
+            border-color: rgba(251,191,36,0.45);
+        }
+
+        [data-theme="light"] .sd-downtime-divider-count {
+            background: rgba(251,191,36,0.18);
+            color: #78350f;
+        }
+
+        [data-theme="light"] .sd-dt-col {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-dt-table thead tr {
+            background: rgba(251,191,36,0.08);
+        }
+
+        [data-theme="light"] .sd-dt-table th {
+            color: #92400e;
+            border-bottom: 1px solid rgba(251,191,36,0.2);
+        }
+
+        [data-theme="light"] .sd-dt-table td {
+            border-bottom: 1px solid #f3f4f6;
+        }
+
+        [data-theme="light"] .sd-dt-table tr:hover td {
+            background: rgba(251,191,36,0.04);
+        }
+
+        [data-theme="light"] .sd-dt-table tr.sd-dt-even td {
+            background: rgba(0,0,0,0.01);
+        }
+
+        [data-theme="light"] .sd-dt-en { color: #1d4ed8; }
+        [data-theme="light"] .sd-dt-num { color: #92400e; }
+        [data-theme="light"] .sd-dt-he { color: #1a1a2e; }
+
+        /* ===== LIGHT MODE — Stale Column ===== */
+        [data-theme="light"] .sd-column-stale .sd-test-card {
+            opacity: 0.45;
+            filter: saturate(0.4);
+        }
+
+        [data-theme="light"] .sd-column-stale .sd-col-header {
+            opacity: 0.55;
+        }
+
+        /* ===== LIGHT MODE — Popup ===== */
+        [data-theme="light"] .sd-popup {
+            background: #fff;
+            border: 1px solid #c8c8e0;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+
+        [data-theme="light"] .sd-popup-header {
+            background: #f0f0f8;
+            border-bottom: 1px solid #ddd;
+        }
+
+        [data-theme="light"] .sd-popup-title { color: #1d4ed8; }
+
+        [data-theme="light"] .sd-popup-body {
+            background: #fff;
+        }
+
+        [data-theme="light"] .sd-mp-input {
+            background: #f5f5f5;
+            border: 1px solid #ccc;
+            color: #1a1a2e;
+        }
+
+        [data-theme="light"] .sd-mp-input::placeholder { color: #aaa; }
+
+        [data-theme="light"] .sd-mp-input:focus {
+            border-color: #7c3aed;
+        }
+
+        [data-theme="light"] .sd-mp-add-btn {
+            background: #dcfce7;
+            border: 1px solid #22c55e;
+            color: #15803d;
+        }
+
+        [data-theme="light"] .sd-mp-add-btn:hover {
+            background: #bbf7d0;
+            color: #14532d;
+        }
+
+        [data-theme="light"] .sd-mp-table th {
+            background: #f0f0f8;
+            color: #1d4ed8;
+            border-bottom: 1px solid #ddd;
+        }
+
+        [data-theme="light"] .sd-mp-table td {
+            border-bottom: 1px solid #f3f4f6;
+            color: #333;
+        }
+
+        [data-theme="light"] .sd-mp-table tr:hover td {
+            background: rgba(122,179,239,0.04);
+        }
+
+        [data-theme="light"] .sd-mp-uid { color: #888; }
+        [data-theme="light"] .sd-mp-date { color: #888; }
+        [data-theme="light"] .sd-mp-empty { color: #aaa; }
+
+        [data-theme="light"] .sd-mp-edit-btn {
+            color: #1d4ed8;
+            border-color: #93c5fd;
+        }
+
+        [data-theme="light"] .sd-mp-edit-btn:hover {
+            background: rgba(59,130,246,0.1);
+        }
+
+        [data-theme="light"] .sd-mp-del-btn {
+            color: #b91c1c;
+            border-color: #fca5a5;
+        }
+
+        [data-theme="light"] .sd-mp-del-btn:hover {
+            background: rgba(239,68,68,0.1);
+        }
+
+        [data-theme="light"] .sd-mp-cbid-badge {
+            color: #15803d;
+        }
+
+        [data-theme="light"] .sd-mp-cbid-empty { color: #aaa; }
+
+        [data-theme="light"] .sd-mp-cbid-btn {
+            color: #1d4ed8;
+            border-color: #93c5fd;
+        }
+
+        [data-theme="light"] .sd-mp-cbid-btn:hover {
+            background: rgba(59,130,246,0.1);
+            border-color: #3b82f6;
+            color: #1e40af;
+        }
+
+        /* ===== LIGHT MODE — Test Action Popup ===== */
+        [data-theme="light"] .sd-test-action-popup {
+            background: #fff;
+            border: 1px solid #c8c8e0;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+
+        [data-theme="light"] .sd-tap-header {
+            background: #f0f0f8;
+            border-bottom: 1px solid #ddd;
+        }
+
+        [data-theme="light"] .sd-tap-title { color: #1a1a2e; }
+
+        [data-theme="light"] .sd-tap-body {
+            background: #fff;
+        }
+
+        [data-theme="light"] .sd-tap-section-title {
+            color: #1d4ed8;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-tap-detail-label { color: #888; }
+        [data-theme="light"] .sd-tap-detail-value { color: #333; }
+        [data-theme="light"] .sd-tap-mono { color: #666; }
+
+        [data-theme="light"] .sd-tap-relative-time { color: #888; }
+
+        [data-theme="light"] .sd-tap-contact {
+            background: #f5f5f5;
+            border: 1px solid #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-tap-contact i { color: #888; }
+        [data-theme="light"] .sd-tap-contact span { color: #333; }
+
+        [data-theme="light"] .sd-tap-contact-email { color: #1d4ed8; }
+        [data-theme="light"] .sd-tap-contact-email:hover { color: #1e40af; }
+
+        [data-theme="light"] .sd-tap-no-contacts {
+            color: #888;
+            background: #f9fafb;
+            border: 1px dashed #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-tap-run-btn {
+            background: #dcfce7;
+            border-color: #22c55e;
+            color: #15803d;
+        }
+
+        [data-theme="light"] .sd-tap-run-btn:not(:disabled):hover {
+            background: #bbf7d0;
+            color: #14532d;
+        }
+
+        [data-theme="light"] .sd-tap-rerun-btn {
+            background: rgba(167,139,250,0.1);
+            border-color: #a78bfa;
+            color: #5b21b6;
+        }
+
+        [data-theme="light"] .sd-tap-rerun-btn:not(:disabled):hover {
+            background: rgba(167,139,250,0.2);
+            color: #4c1d95;
+        }
+
+        [data-theme="light"] .sd-tap-mail-btn {
+            background: #eff6ff;
+            border-color: #93c5fd;
+            color: #1d4ed8;
+        }
+
+        [data-theme="light"] .sd-tap-mail-btn:hover {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        [data-theme="light"] .sd-tap-cblink-btn {
+            background: #dcfce7;
+            border-color: #22c55e;
+            color: #15803d;
+        }
+
+        [data-theme="light"] .sd-tap-cblink-btn:hover {
+            background: #bbf7d0;
+            color: #14532d;
+        }
+
+        [data-theme="light"] .sd-tap-contacts-btn {
+            background: #eff6ff;
+            border-color: #93c5fd;
+            color: #1d4ed8;
+        }
+
+        [data-theme="light"] .sd-tap-contacts-btn:hover {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        /* ===== LIGHT MODE — Suite Action Popup ===== */
+        [data-theme="light"] .sd-suite-action-popup {
+            background: #fff;
+            border: 1px solid #c8c8e0;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+
+        [data-theme="light"] .sd-sap-stat-card.passed {
+            background: rgba(34,197,94,0.08);
+            border: 1px solid rgba(34,197,94,0.25);
+        }
+
+        [data-theme="light"] .sd-sap-stat-card.failed {
+            background: rgba(239,68,68,0.08);
+            border: 1px solid rgba(239,68,68,0.25);
+        }
+
+        [data-theme="light"] .sd-sap-stat-card.total {
+            background: rgba(0,0,0,0.03);
+            border: 1px solid #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-sap-stat-card.total .sd-sap-stat-num {
+            color: #555;
+        }
+
+        [data-theme="light"] .sd-sap-stat-label { color: #888; }
+
+        [data-theme="light"] .sd-sap-progress-wrap {
+            background: #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-sap-failed-test {
+            background: rgba(239,68,68,0.05);
+            border: 1px solid rgba(239,68,68,0.12);
+        }
+
+        [data-theme="light"] .sd-sap-failed-name { color: #b91c1c; }
+        [data-theme="light"] .sd-sap-failed-dur { color: #888; }
+
+        [data-theme="light"] .sd-sap-recipients-wrap {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        [data-theme="light"] .sd-sap-recipient {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            font-size: 0.8rem;
+            padding: 5px 8px;
+            background: #fff;
+            border-radius: 5px;
+            border: 1px solid #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-sap-recipient i { color: #888; }
+
+        [data-theme="light"] .sd-sap-recipient-name { color: #333; }
+
+        [data-theme="light"] .sd-sap-recipient-email {
+            color: #1d4ed8;
+            font-size: 0.75rem;
+        }
+
+        [data-theme="light"] .sd-sap-copy-btn {
+            background: #f5f5f5;
+            border: 1px solid #ccc;
+            color: #555;
+        }
+
+        [data-theme="light"] .sd-sap-copy-btn:hover {
+            background: #ebebf5;
+            color: #333;
+        }
+
+        /* ===== LIGHT MODE — Contacts Popup ===== */
+        [data-theme="light"] .sd-contacts-popup {
+            background: #fff;
+            border: 1px solid #c8c8e0;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+
+        [data-theme="light"] .sd-contacts-body {
+            background: #fff;
+        }
+
+        [data-theme="light"] .sd-contact-row {
+            background: #f5f5f5;
+            border: 1px solid #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-contact-row:hover {
+            background: #ebebf5;
+        }
+
+        [data-theme="light"] .sd-contact-icon { color: #888; }
+        [data-theme="light"] .sd-contact-name { color: #333; }
+
+        [data-theme="light"] .sd-contact-phone { color: #15803d; }
+        [data-theme="light"] .sd-contact-phone:hover { color: #14532d; }
+
+        [data-theme="light"] .sd-contact-edit-btn {
+            color: #1d4ed8;
+            border-color: #93c5fd;
+        }
+
+        [data-theme="light"] .sd-contact-edit-btn:hover {
+            background: rgba(59,130,246,0.1);
+        }
+
+        [data-theme="light"] .sd-contact-del-btn {
+            color: #b91c1c;
+            border-color: #fca5a5;
+        }
+
+        [data-theme="light"] .sd-contact-del-btn:hover {
+            background: rgba(239,68,68,0.1);
+        }
+
+        [data-theme="light"] .sd-contact-lookup-btn {
+            background: #eff6ff;
+            border: 1px solid #93c5fd;
+            color: #1d4ed8;
+        }
+
+        [data-theme="light"] .sd-contact-lookup-btn:hover {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        [data-theme="light"] .sd-contact-save-btn {
+            background: #dcfce7;
+            border: 1px solid #22c55e;
+            color: #15803d;
+        }
+
+        [data-theme="light"] .sd-contact-save-btn:hover {
+            background: #bbf7d0;
+            color: #14532d;
+        }
+
+        [data-theme="light"] .sd-contact-cancel-btn {
+            background: transparent;
+            border: 1px solid #ccc;
+            color: #666;
+        }
+
+        [data-theme="light"] .sd-contact-cancel-btn:hover {
+            background: rgba(239,68,68,0.08);
+            border-color: #fca5a5;
+            color: #b91c1c;
+        }
+
+        [data-theme="light"] .sd-contact-edit-input {
+            background: #f5f5f5;
+            border: 1px solid #ccc;
+            color: #1a1a2e;
+        }
+
+        /* ===== LIGHT MODE — Run Suite Popup ===== */
+        [data-theme="light"] .sd-run-suite-popup {
+            background: #fff;
+            border: 1px solid #22c55e;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+
+        [data-theme="light"] .sd-run-runner-card {
+            background: #f5f5f5;
+            border: 2px solid #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-run-runner-card:hover {
+            background: #ebebf5;
+            border-color: #22c55e;
+        }
+
+        [data-theme="light"] .sd-run-runner-card.selected {
+            background: rgba(34,197,94,0.08);
+            border-color: #22c55e;
+        }
+
+        [data-theme="light"] .sd-run-runner-icon { color: #888; }
+        [data-theme="light"] .sd-run-runner-label { color: #333; }
+
+        [data-theme="light"] .sd-run-runner-card.selected .sd-run-runner-icon {
+            color: #15803d;
+        }
+
+        [data-theme="light"] .sd-run-progress-wrap {
+            background: #f5f5f5;
+            border: 1px solid #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-run-progress-track {
+            background: #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-run-progress-label { color: #555; }
+
+        /* ===== LIGHT MODE — Run All Popup ===== */
+        [data-theme="light"] .sd-run-all-popup {
+            background: #fff;
+            border: 1px solid #22c55e;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+
+        [data-theme="light"] .sd-run-all-cooldown-banner {
+            background: rgba(245,158,11,0.08);
+            border: 1px solid rgba(245,158,11,0.25);
+            color: #92400e;
+        }
+
+        [data-theme="light"] .sd-run-all-cooldown-title { color: #92400e; }
+        [data-theme="light"] .sd-run-all-cooldown-sub { color: #b45309; }
+
+        [data-theme="light"] .sd-run-all-triggered-info {
+            background: rgba(107,114,128,0.06);
+            border: 1px solid rgba(107,114,128,0.15);
+            color: #555;
+        }
+
+        [data-theme="light"] .sd-run-all-triggered-info strong { color: #333; }
+
+        [data-theme="light"] .sd-run-all-privileged-banner {
+            background: rgba(167,139,250,0.06);
+            border: 1px solid rgba(167,139,250,0.2);
+        }
+
+        [data-theme="light"] .sd-run-all-last-run {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-run-all-runner-info {
+            background: #f9fafb;
+            border: 1px dashed #e5e7eb;
+            color: #666;
+        }
+
+        [data-theme="light"] .sd-run-all-runner-card {
+            background: #f5f5f5;
+            border: 2px solid #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-run-all-runner-card:hover {
+            background: #ebebf5;
+            border-color: #22c55e;
+        }
+
+        [data-theme="light"] .sd-run-all-runner-card.selected {
+            background: rgba(34,197,94,0.08);
+            border-color: #22c55e;
+        }
+
+        [data-theme="light"] .sd-run-all-patch-label {
+            background: transparent;
+        }
+
+        [data-theme="light"] .sd-run-all-patch-custom-chk {
+            background: #f5f5f5;
+            border: 1px solid #ccc;
+            color: #555;
+        }
+
+        [data-theme="light"] .sd-run-all-patch-checked .sd-run-all-patch-custom-chk {
+            background: rgba(167,139,250,0.1);
+            border-color: #a78bfa;
+            color: #5b21b6;
+        }
+
+        /* ===== LIGHT MODE — Sync Popup ===== */
+        [data-theme="light"] .sd-sync-popup {
+            background: #fff;
+            border: 1px solid #22c55e;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+
+        [data-theme="light"] .sd-sync-body {
+            background: #fff;
+        }
+
+        [data-theme="light"] .sd-sync-summary { gap: 12px; }
+
+        [data-theme="light"] .sd-sync-stat-box.updated {
+            background: rgba(34,197,94,0.08);
+            border: 1px solid rgba(34,197,94,0.25);
+            color: #15803d;
+        }
+
+        [data-theme="light"] .sd-sync-stat-box.unchanged {
+            background: rgba(0,0,0,0.03);
+            border: 1px solid #e5e7eb;
+            color: #555;
+        }
+
+        [data-theme="light"] .sd-sync-stat-box.failed {
+            background: rgba(239,68,68,0.08);
+            border: 1px solid rgba(239,68,68,0.25);
+            color: #b91c1c;
+        }
+
+        [data-theme="light"] .sd-sync-table th {
+            background: #f0f0f8;
+            color: #1d4ed8;
+            border-bottom: 1px solid #ddd;
+        }
+
+        [data-theme="light"] .sd-sync-table td {
+            border-bottom: 1px solid #f3f4f6;
+            color: #333;
+        }
+
+        [data-theme="light"] .sd-sync-table tr.updated td {
+            background: rgba(34,197,94,0.03);
+        }
+
+        [data-theme="light"] .sd-sync-table tr.failed td {
+            background: rgba(239,68,68,0.03);
+        }
+
+        [data-theme="light"] .sd-sync-old-name { color: #888; }
+        [data-theme="light"] .sd-sync-new-name { color: #15803d; }
+
+        [data-theme="light"] .sd-sync-status-badge.updated {
+            background: rgba(34,197,94,0.12);
+            color: #15803d;
+        }
+
+        [data-theme="light"] .sd-sync-status-badge.unchanged {
+            background: rgba(0,0,0,0.06);
+            color: #666;
+        }
+
+        [data-theme="light"] .sd-sync-status-badge.failed {
+            background: rgba(239,68,68,0.12);
+            color: #b91c1c;
+        }
+
+        [data-theme="light"] .sd-sync-apply-btn {
+            background: #dcfce7;
+            border: 1px solid #22c55e;
+            color: #15803d;
+        }
+
+        [data-theme="light"] .sd-sync-apply-btn:hover {
+            background: #bbf7d0;
+            color: #14532d;
+        }
+
+        /* ===== LIGHT MODE — Export Choice Popup ===== */
+        [data-theme="light"] .sd-export-choice-popup {
+            background: #fff;
+            border: 1px solid #c8c8e0;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+
+        [data-theme="light"] .sd-export-choice-desc { color: #666; }
+
+        [data-theme="light"] .sd-export-choice-btn.excel {
+            background: rgba(34,197,94,0.06);
+            border-color: rgba(34,197,94,0.2);
+            color: #15803d;
+        }
+
+        [data-theme="light"] .sd-export-choice-btn.excel:hover {
+            background: rgba(34,197,94,0.12);
+            border-color: rgba(34,197,94,0.4);
+            box-shadow: 4px 0 16px rgba(34,197,94,0.1);
+        }
+
+        [data-theme="light"] .sd-export-choice-btn.email {
+            background: rgba(59,130,246,0.06);
+            border-color: rgba(59,130,246,0.2);
+            color: #1d4ed8;
+        }
+
+        [data-theme="light"] .sd-export-choice-btn.email:hover {
+            background: rgba(59,130,246,0.12);
+            border-color: rgba(59,130,246,0.4);
+            box-shadow: 4px 0 16px rgba(59,130,246,0.1);
+        }
+
+        [data-theme="light"] .sd-export-choice-title { color: inherit; }
+
+        [data-theme="light"] .sd-export-choice-sub {
+            opacity: 0.7;
+        }
+
+        /* ===== LIGHT MODE — Downtime Mgmt Popup ===== */
+        [data-theme="light"] .sd-mp-table-wrap {
+            background: #fff;
+        }
+
+        [data-theme="light"] #sdDtTableBody tr:hover td {
+            background: rgba(251,191,36,0.04);
+        }
+
+        [data-theme="light"] .sd-dt-edit-btn {
+            color: #1d4ed8;
+            border-color: #93c5fd;
+        }
+
+        [data-theme="light"] .sd-dt-edit-btn:hover {
+            background: rgba(59,130,246,0.1);
+        }
+
+        [data-theme="light"] .sd-dt-del-btn {
+            color: #b91c1c;
+            border-color: #fca5a5;
+        }
+
+        [data-theme="light"] .sd-dt-del-btn:hover {
+            background: rgba(239,68,68,0.1);
+        }
+
+        [data-theme="light"] .sd-dt-manage-btn {
+            background: rgba(251,191,36,0.1);
+            border: 1px solid rgba(251,191,36,0.35);
+            color: #92400e;
+        }
+
+        [data-theme="light"] .sd-dt-manage-btn:hover {
+            background: rgba(251,191,36,0.2);
+            border-color: rgba(251,191,36,0.6);
+        }
+
+        /* ===== LIGHT MODE — List View ===== */
+        [data-theme="light"] .sd-list-view {
+            background: #f0f2f5;
+        }
+
+        [data-theme="light"] .sd-list-summary {
+            background: #fff;
+            border: 1px solid #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-list-table-wrap {
+            border: 1px solid #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-list-table thead tr {
+            background: #f0f0f8;
+        }
+
+        [data-theme="light"] .sd-list-table th {
+            background: #f0f0f8;
+            color: #4a5568;
+            border-bottom: 2px solid #c8c8e0;
+        }
+
+        [data-theme="light"] .sd-list-table td {
+            border-bottom: 1px solid #f3f4f6;
+            color: #2d3748;
+        }
+
+        [data-theme="light"] .sd-list-row:hover td {
+            background: rgba(0,0,0,0.02);
+        }
+
+        [data-theme="light"] .sd-list-row-suite-first td {
+            border-top: 2px solid #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-list-row-suite-last td {
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-list-row.passed:hover td {
+            background: rgba(34,197,94,0.03);
+        }
+
+        [data-theme="light"] .sd-list-row.failed:hover td {
+            background: rgba(239,68,68,0.03);
+        }
+
+        [data-theme="light"] .sd-list-row.warning:hover td {
+            background: rgba(217,119,6,0.03);
+        }
+
+        [data-theme="light"] .sd-list-td-suite {
+            background: #f9fafb !important;
+            border-right: 2px solid #e5e7eb !important;
+        }
+
+        [data-theme="light"] .sd-list-td-suite:hover {
+            background: rgba(59,130,246,0.04) !important;
+        }
+
+        [data-theme="light"] .sd-list-suite-name { color: #1a1a2e; }
+
+        [data-theme="light"] .sd-list-suite-stats-inline {
+            background: rgba(0,0,0,0.04);
+            border: 1px solid #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-list-suite-team-inline { color: #888; }
+
+        [data-theme="light"] .sd-list-suite-browser-inline { color: #aaa; }
+
+        [data-theme="light"] .sd-list-browser-icon { color: #aaa; }
+
+        [data-theme="light"] .sd-list-test-name { color: #1a1a2e; }
+
+        [data-theme="light"] .sd-list-status-badge.passed {
+            background: rgba(34,197,94,0.1);
+            color: #15803d;
+            border: 1px solid rgba(34,197,94,0.2);
+        }
+
+        [data-theme="light"] .sd-list-status-badge.failed {
+            background: rgba(239,68,68,0.1);
+            color: #b91c1c;
+            border: 1px solid rgba(239,68,68,0.2);
+        }
+
+        [data-theme="light"] .sd-list-status-badge.warning {
+            background: rgba(217,119,6,0.1);
+            color: #b45309;
+            border: 1px solid rgba(217,119,6,0.2);
+        }
+
+        [data-theme="light"] .sd-list-status-badge.unknown {
+            background: rgba(0,0,0,0.06);
+            color: #666;
+            border: 1px solid #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-list-priority.p1 {
+            background: rgba(239,68,68,0.12);
+            color: #b91c1c;
+        }
+
+        [data-theme="light"] .sd-list-priority.p2 {
+            background: rgba(245,158,11,0.12);
+            color: #b45309;
+        }
+
+        [data-theme="light"] .sd-list-priority.p0 {
+            background: rgba(99,102,241,0.12);
+            color: #4338ca;
+        }
+
+        [data-theme="light"] .sd-list-priority-empty { color: #aaa; }
+
+        [data-theme="light"] .sd-list-td-duration { color: #666; }
+        [data-theme="light"] .sd-list-clock-icon { color: #aaa; }
+
+        [data-theme="light"] .sd-list-td-lastrun { color: #888; }
+
+        [data-theme="light"] .sd-list-rate-bar-track {
+            background: #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-list-td-no-tests { color: #aaa; }
+
+        [data-theme="light"] .sd-list-mail-icon {
+            color: rgba(239,68,68,0.45);
+        }
+
+        [data-theme="light"] .sd-list-mail-icon:hover {
+            color: #b91c1c;
+            background: rgba(239,68,68,0.08);
+        }
+
+        [data-theme="light"] .sd-list-patch-divider-cell {
+            border-top: 2px solid #e5e7eb !important;
+            border-bottom: 2px solid #e5e7eb !important;
+        }
+
+        [data-theme="light"] .sd-list-patch-divider-label {
+            background: rgba(167,139,250,0.08);
+            border: 1px solid rgba(167,139,250,0.3);
+            color: #5b21b6;
+        }
+
+        [data-theme="light"] .sd-list-suite-collapse-btn { color: #aaa; }
+
+        [data-theme="light"] .sd-list-suite-collapse-btn:hover {
+            background: rgba(0,0,0,0.06);
+            color: #555;
+        }
+
+        [data-theme="light"] .sd-list-td-collapsed-summary {
+            background: rgba(0,0,0,0.02) !important;
+            border-right: 1px dashed #e5e7eb !important;
+        }
+
+        [data-theme="light"] .sd-list-td-collapsed-summary:hover {
+            background: rgba(59,130,246,0.04) !important;
+        }
+
+        [data-theme="light"] .sd-list-collapsed-suite-name { color: #555; }
+        [data-theme="light"] .sd-list-collapsed-hint { color: #aaa; }
+
+        [data-theme="light"] .sd-list-td-collapsed-summary:hover
+        .sd-list-collapsed-hint {
+            color: #1d4ed8;
+        }
+
+        [data-theme="light"] .sd-list-row-stale td {
+            opacity: 0.4;
+            filter: saturate(0.2) brightness(0.9);
+        }
+
+        /* ===== LIGHT MODE — Suite Info Btn ===== */
+        [data-theme="light"] .sd-suite-info-btn { color: #888; }
+
+        [data-theme="light"] .sd-suite-info-btn:hover {
+            background: rgba(0,0,0,0.06);
+            color: #555;
+        }
+
+        /* ===== LIGHT MODE — Col Toggle Btn ===== */
+        [data-theme="light"] .sd-col-toggle-btn { color: #888; }
+
+        [data-theme="light"] .sd-col-toggle-btn:hover {
+            background: rgba(0,0,0,0.06);
+            color: #555;
+        }
+
+        /* ===== LIGHT MODE — Col Header Patch ===== */
+        [data-theme="light"] .sd-col-header.sd-col-header-patch.good {
+            background: linear-gradient(
+                135deg,
+                #f5f3ff,
+                rgba(167,139,250,0.06)
+            );
+            border-bottom: 2px solid #a78bfa;
+        }
+
+        [data-theme="light"] .sd-col-header.sd-col-header-patch.bad {
+            background: linear-gradient(
+                135deg,
+                #fdf4ff,
+                rgba(167,139,250,0.04)
+            );
+            border-bottom: 2px solid #a78bfa;
+        }
+
+        [data-theme="light"] .sd-col-patch-badge {
+            background: rgba(167,139,250,0.12);
+            border: 1px solid rgba(167,139,250,0.25);
+            color: #5b21b6;
+        }
+
+        /* ===== LIGHT MODE — Mail Icons ===== */
+        [data-theme="light"] .sd-card-mail-icon {
+            color: rgba(239,68,68,0.4);
+        }
+
+        [data-theme="light"] .sd-card-mail-icon:hover {
+            color: #b91c1c;
+        }
+
+        [data-theme="light"] .sd-col-mail-icon {
+            color: rgba(239,68,68,0.4);
+        }
+
+        [data-theme="light"] .sd-col-mail-icon:hover {
+            color: #b91c1c;
+        }
+
+        /* ===== LIGHT MODE — Run Mode Badge ===== */
+        [data-theme="light"] .sd-run-mode-badge.full-run {
+            background: rgba(34,197,94,0.1);
+            color: #15803d;
+            border: 1px solid rgba(34,197,94,0.25);
+        }
+
+        [data-theme="light"] .sd-run-mode-badge.failed-only {
+            background: rgba(167,139,250,0.1);
+            color: #5b21b6;
+            border: 1px solid rgba(167,139,250,0.25);
+        }
+
+        /* ===== LIGHT MODE — Tap Details Grid ===== */
+        [data-theme="light"] .sd-tap-details-grid {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 10px 12px;
+        }
+
+        /* ===== LIGHT MODE — Run Progress ===== */
+        [data-theme="light"] .sd-run-progress-wrap {
+            background: #f5f5f5;
+            border: 1px solid #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-run-progress-track {
+            background: #e5e7eb;
+        }
+
+        [data-theme="light"] .sd-run-progress-label { color: #555; }
+        [data-theme="light"] .sd-run-progress-pct { color: #15803d; }
+
+        /* ===== LIGHT MODE — MP Patch ===== */
+        [data-theme="light"] .sd-mp-patch-custom-chk {
+            background: #f5f5f5;
+            border: 1px solid #ccc;
+            color: #555;
+        }
+
+        [data-theme="light"] .sd-mp-patch-label:hover .sd-mp-patch-custom-chk {
+            border-color: #a78bfa;
+            color: #5b21b6;
+        }
+
+        [data-theme="light"] .sd-mp-patch-checked .sd-mp-patch-custom-chk {
+            background: rgba(167,139,250,0.1);
+            border-color: #a78bfa;
+            color: #5b21b6;
+        }
+
+        [data-theme="light"] .sd-mp-patch-btn {
+            background: none;
+            border: 1px solid #e5e7eb;
+            color: #aaa;
+        }
+
+        [data-theme="light"] .sd-mp-patch-btn:hover {
+            background: rgba(167,139,250,0.08);
+            border-color: #a78bfa;
+            color: #5b21b6;
+        }
+
+        /* ===== LIGHT MODE — Search Active ===== */
+        [data-theme="light"] .sd-search-input.sd-search-active {
+            border-color: #eab308 !important;
+            background: rgba(234,179,8,0.04) !important;
+            color: #78350f !important;
+        }
+
+        /* ===== LIGHT MODE — Tap Coming Soon ===== */
+        [data-theme="light"] .sd-tap-coming-soon {
+            background: rgba(124,58,237,0.1);
+            color: #5b21b6;
+            border: 1px solid rgba(124,58,237,0.25);
+        }
+
+        /* ===== LIGHT MODE — SAP Email Count ===== */
+        [data-theme="light"] .sd-sap-email-count {
+            background: rgba(59,130,246,0.12);
+            color: #1d4ed8;
+        }
+
+        /* ===== LIGHT MODE — SAP Failed Badge ===== */
+        [data-theme="light"] .sd-sap-failed-badge {
+            background: rgba(239,68,68,0.12);
+            color: #b91c1c;
+        }
+
+        /* ===== LIGHT MODE — MP Search ===== */
+        [data-theme="light"] .sd-mp-search-input::placeholder { color: #aaa; }
+
+        [data-theme="light"] .sd-mp-clear-search { color: #888; }
+        [data-theme="light"] .sd-mp-clear-search:hover { color: #555; }
+
+        /* ===== LIGHT MODE — MP No Results ===== */
+        [data-theme="light"] .sd-mp-no-results td { color: #aaa; }
+
+        /* ===== LIGHT MODE — MP Display Name ===== */
+        [data-theme="light"] .sd-mp-display-name { color: #333; }
+
+        /* ===== LIGHT MODE — MP CBID Badge ===== */
+        [data-theme="light"] .sd-mp-cbid-badge {
+            color: #15803d;
+        }
+
+        /* ===== LIGHT MODE — Popup Overlay ===== */
+        [data-theme="light"] .sd-popup-overlay {
+            background: rgba(0,0,0,0.5);
+        }
+
+        /* ===== LIGHT MODE — Run All Confirm Btn ===== */
+        [data-theme="light"] #sdRunAllConfirmBtn:not(:disabled) {
+            background: #dcfce7;
+            border-color: #22c55e;
+            color: #15803d;
+        }
+
+        [data-theme="light"] #sdRunAllConfirmBtn:not(:disabled):hover {
+            background: #bbf7d0;
+            color: #14532d;
+        }
+
+        /* ===== LIGHT MODE — Run Suite Confirm Btn ===== */
+        [data-theme="light"] #sdRunSuiteConfirmBtn:not(:disabled) {
+            background: #dcfce7;
+            border-color: #22c55e;
+            color: #15803d;
+        }
+
+        [data-theme="light"] #sdRunSuiteConfirmBtn:not(:disabled):hover {
+            background: #bbf7d0;
+            color: #14532d;
+        }
+
+        /* ===== LIGHT MODE — Cancel Btns ===== */
+        [data-theme="light"] #sdRunSuiteCancelBtn,
+        [data-theme="light"] #sdRunAllCancelBtn {
+            background: #f5f5f5;
+            border-color: #ccc;
+            color: #666;
+        }
+
+        [data-theme="light"] #sdRunSuiteCancelBtn:hover,
+        [data-theme="light"] #sdRunAllCancelBtn:hover {
+            background: #ebebf5;
+            color: #333;
+        }
+
+        /* ===== LIGHT MODE — Tap Action Btn Default ===== */
+        [data-theme="light"] .sd-tap-action-btn {
+            border-color: #e5e7eb;
+            color: #555;
+        }
+
+        /* ===== LIGHT MODE — Night Icon ===== */
+        [data-theme="light"] .sd-list-night-icon { color: #b45309; }
+
+        /* ===== LIGHT MODE — Patch Icon ===== */
+        [data-theme="light"] .sd-list-patch-icon { color: #5b21b6; }
+
+        /* ===== LIGHT MODE — Col Header Collapsed ===== */
+        [data-theme="light"] .sd-col-header.sd-collapsed {
+            opacity: 0.75;
+        }
+
+        /* ===== LIGHT MODE — Two Cols Body ===== */
+        [data-theme="light"] .sd-col-body-two-cols .sd-test-card {
+            border: none;
+        }
+
+        /* ===== LIGHT MODE — Error ===== */
+        [data-theme="light"] .sd-error {
+            background: rgba(239,68,68,0.08);
+            border: 1px solid rgba(239,68,68,0.3);
+            color: #b91c1c;
+        }
+
+        /* ===== LIGHT MODE — Loading ===== */
+        [data-theme="light"] .sd-loading { color: #888; }
+
+        /* ===== LIGHT MODE — MP Form Msg ===== */
+        [data-theme="light"] .sd-mp-form-msg.success {
+            background: rgba(34,197,94,0.1);
+            color: #15803d;
+            border: 1px solid rgba(34,197,94,0.25);
+        }
+
+        [data-theme="light"] .sd-mp-form-msg.error {
+            background: rgba(239,68,68,0.1);
+            color: #b91c1c;
+            border: 1px solid rgba(239,68,68,0.25);
+        }
+
+
         `;
 
         document.head.appendChild(style);

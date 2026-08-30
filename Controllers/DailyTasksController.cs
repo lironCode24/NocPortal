@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
 using System.IO;
@@ -8,14 +7,7 @@ using System.Text.Json;
 
 public class DailyTasksController : Controller
 {
-    private readonly string _tasksFilePath;
-    private readonly IWebHostEnvironment _env;
-
-    public DailyTasksController(IWebHostEnvironment env)
-    {
-        _env = env;
-        _tasksFilePath = Path.Combine(_env.WebRootPath, "assets", "files", "daily_tasks.txt");
-    }
+    private readonly string _tasksFilePath = @"R:\USERS\TASHTIT\NOC\Portal\files\daily_tasks.txt";
 
     [HttpGet]
     public IActionResult GetTasks(string date)
@@ -940,6 +932,20 @@ public class DailyTasksController : Controller
         }
     }
 
+    [HttpGet]
+    public IActionResult GetAllTasksForExport()
+    {
+        try
+        {
+            var allTasks = ReadAllTasksFromFile();
+            return Json(new { success = true, tasks = allTasks });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
     private List<object> ReadAllTasksFromFile()
     {
         var tasks = new List<object>();
@@ -1124,7 +1130,7 @@ public class DailyTasksController : Controller
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"ReadAllTasksFromFile: ERROR: {ex.Message}");
+            Console.WriteLine($"ReadAllTasksFromFile: Error: {ex.Message}");
         }
 
         return tasks;
