@@ -530,31 +530,129 @@ public class AlertsController : Controller
         var now = DateTimeOffset.UtcNow;
         var rand = new Random();
 
-        string[] hosts = { "srv-web-prod-01", "db-sql-cluster-02", "app-api-gateway" };
-        string[] ips = { "10.10.20.11", "10.10.40.55", "10.10.10.5" };
-        
+        // More comprehensive host data
+        var hostData = new[]
+        {
+            new { host = "web-prod-01", ip = "10.10.1.10", team = "Web Team", type = "web" },
+            new { host = "web-prod-02", ip = "10.10.1.11", team = "Web Team", type = "web" },
+            new { host = "web-prod-03", ip = "10.10.1.12", team = "Web Team", type = "web" },
+            new { host = "db-sql-primary", ip = "10.10.2.20", team = "Database Team", type = "database" },
+            new { host = "db-sql-secondary", ip = "10.10.2.21", team = "Database Team", type = "database" },
+            new { host = "db-redis-cache", ip = "10.10.2.30", team = "Database Team", type = "cache" },
+            new { host = "app-api-gateway", ip = "10.10.3.40", team = "Application Team", type = "app" },
+            new { host = "app-service-01", ip = "10.10.3.41", team = "Application Team", type = "app" },
+            new { host = "app-service-02", ip = "10.10.3.42", team = "Application Team", type = "app" },
+            new { host = "storage-nas-01", ip = "10.10.4.50", team = "Infrastructure Team", type = "storage" },
+            new { host = "storage-nas-02", ip = "10.10.4.51", team = "Infrastructure Team", type = "storage" },
+            new { host = "load-balancer-01", ip = "10.10.5.60", team = "Network Team", type = "network" },
+            new { host = "backup-server-01", ip = "10.10.6.70", team = "Infrastructure Team", type = "backup" }
+        };
+
+        var errorMessages = new[]
+        {
+            // Web server errors
+            new { type = "web", message = "High CPU utilization detected (95%)" },
+            new { type = "web", message = "Memory usage critical (92% of 32GB)" },
+            new { type = "web", message = "Disk space low - 5% remaining" },
+            new { type = "web", message = "Connection timeout on port 443" },
+            new { type = "web", message = "SSL certificate expiration warning - 30 days remaining" },
+            
+            // Database errors
+            new { type = "database", message = "Query performance degraded - average 5s response time" },
+            new { type = "database", message = "Replication lag detected - 120 seconds behind master" },
+            new { type = "database", message = "Transaction log full - requires maintenance" },
+            new { type = "database", message = "Connection pool exhausted" },
+            new { type = "database", message = "Backup job failed - timeout after 2 hours" },
+            
+            // Cache errors
+            new { type = "cache", message = "Redis memory threshold exceeded" },
+            new { type = "cache", message = "Cache eviction rate abnormally high" },
+            new { type = "cache", message = "Connection refused from client" },
+            
+            // Application errors
+            new { type = "app", message = "Exception rate increased 300% in last 10 minutes" },
+            new { type = "app", message = "Application health check failed" },
+            new { type = "app", message = "Dependency service unavailable" },
+            new { type = "app", message = "Memory leak detected - steadily increasing allocation" },
+            new { type = "app", message = "Request queue depth exceeding limits" },
+            
+            // Storage errors
+            new { type = "storage", message = "RAID array degraded - one disk failure detected" },
+            new { type = "storage", message = "NAS responding slowly - latency 500ms+" },
+            new { type = "storage", message = "Snapshot creation failed" },
+            
+            // Network errors
+            new { type = "network", message = "Packet loss detected (2.5% of traffic)" },
+            new { type = "network", message = "BGP session with peer down" },
+            new { type = "network", message = "Load balancer failover triggered" },
+            
+            // Backup errors
+            new { type = "backup", message = "Backup window exceeded - incomplete backup" },
+            new { type = "backup", message = "Restore test failed - data corruption detected" }
+        };
+
+        var statuses = new[] { "OPEN", "ACK", "ASSIGN", "CLOSED" };
+        var severities = new[] { "CRITICAL", "MAJOR", "MINOR", "WARNING" };
+        var assignees = new[] { "John Smith", "Sarah Johnson", "Mike Chen", "Lisa Rodriguez", null };
+
         for (int i = 1; i <= count; i++)
         {
+            var hostInfo = hostData[rand.Next(hostData.Length)];
+            var errorMsg = errorMessages.Where(e => e.type == hostInfo.type).OrderBy(x => rand.Next()).First();
+            
+            // Weight severity based on time - more recent alerts tend to be more critical
+            var minutesAgo = rand.Next(5, 240);
+            var severity = minutesAgo < 30 ? "CRITICAL" : (minutesAgo < 90 ? "MAJOR" : (rand.Next(2) == 0 ? "MAJOR" : "MINOR"));
+            
+            // Status distribution: mostly OPEN, some ACK, fewer ASSIGN
+            var status = rand.Next(100) < 60 ? "OPEN" : (rand.Next(100) < 70 ? "ACK" : (rand.Next(100) < 85 ? "ASSIGN" : "CLOSED"));
+            
+            // Older or assigned alerts have modified times and assignees
+            long? modified = status != "OPEN" ? now.AddMinutes(-rand.Next(5, 60)).ToUnixTimeMilliseconds() : (long?)null;
+            string assignee = status == "ASSIGN" ? assignees[rand.Next(assignees.Length)] : null;
+
+            // Some notes for acknowledged/assigned alerts
+            string notes = null;
+            if (status != "OPEN" && rand.Next(100) < 70)
+            {
+                var noteOptions = new[]
+                {
+                    "Investigating the issue",
+                    "Escalated to senior engineer",
+                    "Waiting for resource availability",
+                    "Temporary mitigation in place",
+                    "Root cause identified, fix in progress",
+                    "Scheduled maintenance - expected resolution in 2 hours"
+                };
+                notes = noteOptions[rand.Next(noteOptions.Length)];
+            }
+
             var alert = new
             {
                 id = Guid.NewGuid().ToString("N").Substring(0, 16),
                 idHelix = $"bme_event_{1000000 + i}",
-                host = hosts[rand.Next(hosts.Length)],
-                message = "Mock Alert Error Description Code " + rand.Next(100, 999),
-                timestamp = now.AddMinutes(-rand.Next(5, 200)).ToUnixTimeMilliseconds(),
-                severity = rand.Next(2) == 0 ? "CRITICAL" : "MAJOR",
-                status = "OPEN",
-                hostAddress = ips[rand.Next(ips.Length)],
-                contacts = "DevOps Team",
-                notes = (object)null,
-                modified = (long?)null,
-                assignee = (string)null,
-                priority = rand.Next(1, 4)
+                host = hostInfo.host,
+                message = errorMsg.message,
+                timestamp = now.AddMinutes(-minutesAgo).ToUnixTimeMilliseconds(),
+                severity = severity,
+                status = status,
+                hostAddress = hostInfo.ip,
+                contacts = hostInfo.team,
+                notes = notes,
+                modified = modified,
+                assignee = assignee,
+                priority = status == "CRITICAL" ? 1 : (status == "MAJOR" ? 2 : (status == "MINOR" ? 3 : 4))
             };
+            
             mockAlerts.Add(alert);
         }
         
-        return mockAlerts.Cast<dynamic>().OrderByDescending(a => a.timestamp).ToList();
+        // Sort by timestamp descending (most recent first) with some weighting towards critical
+        return mockAlerts
+            .Cast<dynamic>()
+            .OrderByDescending(a => a.severity == "CRITICAL" ? 1 : (a.severity == "MAJOR" ? 2 : (a.severity == "MINOR" ? 3 : 4)))
+            .ThenByDescending(a => a.timestamp)
+            .ToList();
     }
 
     // פונקציה חדשה לביצוע שאילתת התראות ועיבוד התוצאות

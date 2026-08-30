@@ -647,11 +647,34 @@ class AlertsManager {
                 const errorText = await response.text();
                 this.showError('שגיאה בהבאת נתונים מהשרת. אנא נסה שוב מאוחר יותר.');
                 console.error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+                this.alerts = [];
                 return;
             }
 
             // קבל את ההתראות מהקובץ המקומי
-            this.alerts = await response.json();
+            const data = await response.json();
+
+            // וודא שהנתונים הם מערך
+            if (Array.isArray(data)) {
+                this.alerts = data;
+            } else if (data && typeof data === 'object' && Array.isArray(data.alerts)) {
+                // אם הנתונים עטופים בעצם עם מפתח 'alerts'
+                this.alerts = data.alerts;
+            } else if (data && typeof data === 'object' && Array.isArray(data.data)) {
+                // אם הנתונים עטופים בעצם עם מפתח 'data'
+                this.alerts = data.data;
+            } else {
+                console.error('Unexpected response format:', data);
+                this.alerts = Array.isArray(data) ? data : [];
+            }
+
+            // וודא שיש לפחות מערך ריק
+            if (!Array.isArray(this.alerts)) {
+                console.warn('Alerts is not an array, initializing as empty array');
+                this.alerts = [];
+            }
+
+            console.log(`Successfully loaded ${this.alerts.length} alerts`);
 
             // החל את הסינונים ורנדר את ההתראות
             this.applyFilters();
@@ -661,6 +684,7 @@ class AlertsManager {
 
         } catch (error) {
             console.error('Error loading alerts:', error);
+            this.alerts = [];
             this.showLoading(false);
             this.showError('שגיאה בטעינת התראות: ' + error.message);
         }
@@ -850,6 +874,12 @@ class AlertsManager {
     }
 
     applyFilters() {
+        // בדוק שthis.alerts הוא מערך
+        if (!Array.isArray(this.alerts)) {
+            console.warn('this.alerts is not an array. Initializing as empty array.');
+            this.alerts = [];
+        }
+
         // בדיקה: אם לא נבחר אף סטטוס או לא נבחר אף חומרה (Severity) - אל תציג כלום
         if (this.severityFilters.length === 0 || this.statusFilters.length === 0) {
             this.filteredAlerts = []; // רשימה ריקה
