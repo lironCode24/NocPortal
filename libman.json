@@ -1,0 +1,81 @@
+{
+  "version": "1.0",
+  "defaultProvider": "cdnjs",
+  "libraries": [
+    {
+      "library": "flatpickr@4.6.13",
+      "destination": "wwwroot/lib/flatpickr-4.6.13/",
+      "files": [
+        "flatpickr.min.js",
+        "flatpickr.min.css",
+        "l10n/he.js"
+      ]
+    },
+    {
+      "library": "font-awesome@6.4.0",
+      "destination": "wwwroot/lib/font-awesome/",
+      "files": [
+        "css/all.min.css",
+        "css/fontawesome.min.css",
+        "webfonts/fa-solid-900.woff2",
+        "webfonts/fa-solid-900.ttf",
+        "webfonts/fa-regular-400.woff2",
+        "webfonts/fa-regular-400.ttf",
+        "webfonts/fa-brands-400.woff2",
+        "webfonts/fa-brands-400.ttf"
+      ]
+    },
+    {
+      "library": "xlsx@0.18.5",
+      "destination": "wwwroot/lib/xlsx/",
+      "files": [
+        "xlsx.full.min.js"
+      ]
+    },
+    {
+      "library": "html2canvas@1.4.1",
+      "destination": "wwwroot/lib/html2canvas/",
+      "files": [
+        "html2canvas.min.js"
+      ]
+    },
+    {
+      "library": "chart.js@3.9.1",
+      "provider": "jsdelivr",
+      "destination": "wwwroot/lib/npm/",
+      "files": [
+        "dist/chart.min.js"
+      ],
+      "rename": {
+        "dist/chart.min.js": "chart.js"
+      }
+    },
+    {
+      "library": "chartjs-adapter-date-fns@2.0.0",
+      "provider": "jsdelivr",
+      "destination": "wwwroot/lib/npm/",
+      "files": [
+        "dist/chartjs-adapter-date-fns.bundle.min.js"
+      ],
+      "rename": {
+        "dist/chartjs-adapter-date-fns.bundle.min.js": "chartjs-adapter-date-fns.bundle.min.js"
+      }
+    },
+    {
+      "library": "file-saver@2.0.5",
+      "provider": "jsdelivr",
+      "destination": "wwwroot/lib/xlsx/",
+      "files": [
+        "dist/FileSaver.min.js"
+      ]
+    },
+    {
+      "library": "exceljs@4.3.0",
+      "provider": "jsdelivr",
+      "destination": "wwwroot/lib/xlsx/",
+      "files": [
+        "dist/exceljs.min.js"
+      ]
+    }
+  ]
+}

@@ -17,13 +17,13 @@ namespace MyWebApp.Controllers
     {
         // ─── נתיבים ───────────────────────────────────────────────
         private readonly string _mappingsFilePath;
-
-        private readonly string _proceduresPath =
-            @"R:\USERS\TASHTIT\NOC\נהלים";
+        private readonly string _proceduresPath;
 
         public AlertProcedureMappingController(IWebHostEnvironment env)
         {
-            _mappingsFilePath = Path.Combine(env.WebRootPath, "assets", "files", "alert_procedure_mappings.json");
+            var baseFilesPath = Path.Combine(env.WebRootPath, "assets", "files");
+            _mappingsFilePath = Path.Combine(baseFilesPath, "alert_procedure_mappings.json");
+            _proceduresPath = Path.Combine(baseFilesPath, "Procedures");
         }
 
         private static readonly object _fileLock = new object();

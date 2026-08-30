@@ -18,8 +18,8 @@ public class MessagesController : Controller
     private readonly string _messagesFilePath;
     private readonly string _uploadsPath;
     private readonly string _emailCachePath;
-    private readonly string _dailyReportsPath = @"R:\USERS\TASHTIT\NOC\Control-M Files\DAILY_REPORTS";
-    private readonly string _jobsContactsPath = @"R:\USERS\TASHTIT\NOC\Control-M Files\JOBS_CONTACTS";
+    private readonly string _dailyReportsPath;
+    private readonly string _jobsContactsPath;
     private readonly string _permanentAccessListPath;
 
     // הוסף שדה חדש לשמירת נתיב קובץ מיפוי מיילים
@@ -45,6 +45,8 @@ public class MessagesController : Controller
         _messagesFilePath = Path.Combine(_baseFilesPath, "messages.txt");
         _uploadsPath = Path.Combine(_baseFilesPath, "messagesUploads");
         _emailCachePath = Path.Combine(_baseFilesPath, "emailCache");
+        _dailyReportsPath = Path.Combine(_baseFilesPath, "Control-M Files", "DAILY_REPORTS");
+        _jobsContactsPath = Path.Combine(_baseFilesPath, "Control-M Files", "JOBS_CONTACTS");
         _permanentAccessListPath = Path.Combine(_baseFilesPath, "permanent_access_list.json");
         _emailMappingFilePath = Path.Combine(_baseFilesPath, "email_mapping.csv");
         // הפעל טיימר יומי בפעם הראשונה שהקונטרולר נוצר
@@ -5276,7 +5278,7 @@ public class MessagesController : Controller
             else if (!emailMappingExists)
             {
                 // אם הקובץ לא קיים, נסה להשתמש בקובץ שציינת
-                string alternativePath = @"R:\USERS\TASHTIT\תפעול תשתיות חדש\מחלקת הפעלה ובקרה - שולמית אגמי\אוטומציה\liron\For Tal Yohay\PDL to Users\files\onit_emails.csv";
+                var alternativePath = Path.Combine(_baseFilesPath, "onit_emails.csv");
                 
                 if (System.IO.File.Exists(alternativePath))
                 {

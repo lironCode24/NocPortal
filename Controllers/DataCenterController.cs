@@ -14,8 +14,8 @@ using System.Text;
 public class DataCenterController : Controller
 {
     // שימוש בנתיב יחסי או בהגדרה מקובץ תצורה
-    private readonly string _excelFilePathRG = @"R:\USERS\TASHTIT\NOC\Data Center\תיעוד ציודים בחדרי שרתים - רמת גן.xlsx";
-    private readonly string _excelFilePathPT = @"R:\USERS\TASHTIT\NOC\Data Center\תיעוד ציודים בחדר שרתים - פתח תקווה.xlsx";
+    private readonly string _excelFilePathRG;
+    private readonly string _excelFilePathPT;
     // הוספת שדות חדשים לניהול קאש
     private readonly string _cacheFolderPath;
     private readonly string _connectionsFolderPath;
@@ -41,6 +41,9 @@ public class DataCenterController : Controller
     {
         _httpClientFactory = httpClientFactory;
         _secrets            = secrets;
+        var dataCenterRoot = Path.Combine(env.WebRootPath, "assets", "files", "DataCenter");
+        _excelFilePathRG = Path.Combine(dataCenterRoot, "תיעוד ציודים בחדרי שרתים - רמת גן.xlsx");
+        _excelFilePathPT = Path.Combine(dataCenterRoot, "תיעוד ציודים בחדר שרתים - פתח תקווה.xlsx");
         _cacheFolderPath = Path.Combine(env.WebRootPath, "assets", "files", "dataCenterCache");
         _connectionsFolderPath = Path.Combine(_cacheFolderPath, "connections");
         _metricsCacheFolderPath = Path.Combine(_cacheFolderPath, "metricsCache");

@@ -16,9 +16,7 @@ using Microsoft.AspNetCore.Authorization;
 public class ServersController : Controller
 {
     // ─── נתיבים ───────────────────────────────────────────────
-    private readonly string _baseDir =
-        @"R:\USERS\TASHTIT\תפעול תשתיות חדש\מחלקת הפעלה ובקרה - שולמית אגמי\" +
-        @"אוטומציה\liron\For Tal Yohay\Before Patches\files\";
+    private readonly string _baseDir;
     private readonly string _serverProdPath;
     
     private readonly string _outputServersPath;
@@ -41,6 +39,7 @@ public class ServersController : Controller
         SecretsService secrets,
         IWebHostEnvironment env)  
     {
+        _baseDir = Path.Combine(env.WebRootPath, "assets", "files", "servers");
         _jsonStorePath = Path.Combine(env.WebRootPath, "assets", "files", "servers_data.json");
         _systemsCatalogPath = Path.Combine(env.WebRootPath, "assets", "files", "systems_catalog.json");
         _outputServersPath = Path.Combine(_baseDir,

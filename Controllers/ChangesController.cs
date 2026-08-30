@@ -13,21 +13,12 @@ using NocPortal.Services;
 
 public class ChangesController : Controller
 {
-    private const string CHANGES_FILE_PATH =
-        @"R:\USERS\TASHTIT\NOC\CAB_Automation\results";
-    private const string AGGREGATED_CHANGES_PATH =
-        @"R:\USERS\TASHTIT\NOC\CAB_Automation\aggregated_changes.json";
-    private const string OLD_SYSTEM_JSON_PATH =
-        @"R:\USERS\TASHTIT\NOC\CAB_Automation\ONIT is going down\All regular changes requests - ONIT.json";
-    private const string CAB_DECISIONS_PATH =
-        @"R:\USERS\TASHTIT\NOC\CAB_Automation\cab_decisions.json";
-
-    private const string ATTACHMENTS_BASE_PATH =
-        @"R:\USERS\TASHTIT\NOC\CAB_Automation\attachments";
-
-    // *** הוספה: נתיב קובץ ה-CSV של המערכת הישנה להעשרת נתונים ***
-    private const string OLD_SYSTEM_CSV_PATH =
-        @"R:\USERS\TASHTIT\NOC\CAB_Automation\Changes_NOC_Portal_ServiceNow.csv";
+    private static string CHANGES_FILE_PATH;
+    private static string AGGREGATED_CHANGES_PATH;
+    private static string OLD_SYSTEM_JSON_PATH;
+    private static string CAB_DECISIONS_PATH;
+    private static string ATTACHMENTS_BASE_PATH;
+    private static string OLD_SYSTEM_CSV_PATH;
 
     private static readonly string _emailHtmlCachePath =
         Path.Combine(Path.GetTempPath(), "EmailHtmlCache");
@@ -43,9 +34,16 @@ public class ChangesController : Controller
     private static readonly object _cabTimerLock = new object();
     private static AuditLogService _auditLog;
 
-    public ChangesController(AuditLogService auditLog)
+    public ChangesController(AuditLogService auditLog, IWebHostEnvironment env)
     {
         _auditLog = auditLog;
+        var basePath = Path.Combine(env.WebRootPath, "assets", "files", "CAB_Automation");
+        CHANGES_FILE_PATH = Path.Combine(basePath, "results");
+        AGGREGATED_CHANGES_PATH = Path.Combine(basePath, "aggregated_changes.json");
+        OLD_SYSTEM_JSON_PATH = Path.Combine(basePath, "ONIT is going down", "All regular changes requests - ONIT.json");
+        CAB_DECISIONS_PATH = Path.Combine(basePath, "cab_decisions.json");
+        ATTACHMENTS_BASE_PATH = Path.Combine(basePath, "attachments");
+        OLD_SYSTEM_CSV_PATH = Path.Combine(basePath, "Changes_NOC_Portal_ServiceNow.csv");
         EnsureThursdayCabEmailTimerStarted();
     }
 

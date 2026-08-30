@@ -14,14 +14,16 @@ public class ShiftsController : Controller
     // Define file paths as constants
     private readonly string SHIFTS_FILE_PATH;
     private readonly string BACKUP_DIRECTORY;
-    private const string EXCEL_FILE_PATH = @"R:\USERS\TASHTIT\NOC\משמרות\משמרות.xlsx";
+    private readonly string EXCEL_FILE_PATH;
     private readonly string FUTURE_SHIFTS_FILE_PATH;
 
     public ShiftsController(IWebHostEnvironment env)
     {
-        SHIFTS_FILE_PATH = Path.Combine(env.WebRootPath, "assets", "files", "shifts.csv");
-        BACKUP_DIRECTORY = Path.Combine(env.WebRootPath, "assets", "files", "shifts_backup");
-        FUTURE_SHIFTS_FILE_PATH = Path.Combine(env.WebRootPath, "assets", "files", "future_shifts.csv");
+        var baseFilesPath = Path.Combine(env.WebRootPath, "assets", "files");
+        SHIFTS_FILE_PATH = Path.Combine(baseFilesPath, "shifts.csv");
+        BACKUP_DIRECTORY = Path.Combine(baseFilesPath, "shifts_backup");
+        EXCEL_FILE_PATH = Path.Combine(baseFilesPath, "משמרות", "משמרות.xlsx");
+        FUTURE_SHIFTS_FILE_PATH = Path.Combine(baseFilesPath, "future_shifts.csv");
     }
 
     [HttpGet]
