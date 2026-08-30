@@ -9,19 +9,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@ViewData["Title"]</title>
-    <link rel="icon"  type="image/png" href="~/images/logo.png" >
+    <link rel="icon" type="image/x-icon" href="https://www.menoramivt.co.il/customers-homepage/static/img/favicon.ico">
     <link rel="stylesheet" href="https://cdn.menoramivt.co.il/public/fonts/fonts.css">
-    <link rel="stylesheet" href="/assets/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="/fontawesome/css/all.min.css">
     <link rel="stylesheet" href="~/css/noc-portal.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/he.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@latest/dist/xlsx.full.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/exceljs@latest/dist/exceljs.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/file-saver@latest/dist/FileSaver.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@latest/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <link rel="stylesheet" href="/lib/flatpickr-4.6.13/dist/flatpickr.min.css">
+    <script src="/lib/flatpickr-4.6.13/dist/flatpickr.min.js"></script>
+    <script src="/lib/flatpickr-4.6.13/dist/l10n/he.js"></script>
+    <script src="/lib/xlsx/xlsx.full.min.js"></script>
+    <script src="/lib/xlsx/exceljs.min.js"></script>
+    <script src="/lib/xlsx/FileSaver.min.js"></script>
+    <script src="/lib/html2canvas/html2canvas.min.js"></script>
+    <script src="/lib/npm/chart.js"></script>
+    <script src="/lib/npm/chartjs-adapter-date-fns.bundle.min.js"></script>
 
 </head>
 
@@ -31,19 +31,23 @@
         <div class="container">
             <div class="header-info">
 
-                <!-- 1. ניהול תצוגה - ראשון משמאל -->
+                <!-- 1. ניהול תצוגה - קצה ימין -->
                 <div class="control-panel">
                     <div class="control-panel-header">
                         <i class="fas fa-cog"></i>
                         <span>ניהול תצוגה</span>
                     </div>
                     <div class="control-panel-buttons">
-                        <button class="toggle-all-sections-btn" 
+                        <!-- Dark/Light Mode Toggle -->
+                        <button id="portalThemeBtn" class="theme-toggle-btn" onclick="togglePortalTheme()">
+                            <i class="fas fa-moon"></i>
+                        </button>
+                        <button class="toggle-all-sections-btn"
                                 title="פתח או סגור את כל הסקשנים">
                             <i class="fas fa-expand-alt"></i>
                             <span id="toggleAllText">פתח הכל</span>
                         </button>
-                        <button class="reset-layout-btn" 
+                        <button class="reset-layout-btn"
                                 title="אפס סידור סקשנים">
                             <i class="fas fa-undo"></i>
                             <span>אפס סידור</span>
@@ -51,14 +55,14 @@
                     </div>
                 </div>
 
-                <!-- 2. היי + תפקיד + כפתור ניהול (אם Admin) -->
+                <!-- 2. ברכה + תפקיד + כפתור ניהול -->
                 <div class="user-greeting-section">
                     <div class="user-info">
                         <i class="fas fa-user-circle"></i>
                         <span class="user-display-name">
                             היי, @User.FindFirst("DisplayName")?.Value
                         </span>
-                        <span class="user-role-badge 
+                        <span class="user-role-badge
                             role-@User.FindFirst(
                             System.Security.Claims.ClaimTypes.Role)?.Value">
                             @User.FindFirst(
@@ -66,13 +70,32 @@
                         </span>
                     </div>
 
+
+                    <!-- ══ הודעות ממתינות ══════════════════════════════════════ -->
+                    <div class="user-messages-row" id="userMessagesRow" 
+                        style="display:none">
+                        <button class="btn-messages-indicator" 
+                                id="btnMessagesIndicator"
+                                onclick="openPendingMessages()">
+                            <div class="messages-bell-wrap">
+                                <i class="fas fa-bell"></i>
+                                <span class="messages-badge" 
+                                    id="messagesBadge">0</span>
+                            </div>
+                            <span class="messages-indicator-text">
+                                הודעות הממתינות לאישור
+                            </span>
+                            <i class="fas fa-chevron-left messages-arrow"></i>
+                        </button>
+                    </div>
+                    
                     @if (User.IsInRole("Admin"))
                     {
-                        <a href="/Auth/AdminPanel" 
+                        <a href="/Auth/AdminPanel"
                         class="btn-header-admin admin-panel-link">
                             <i class="fas fa-users-cog"></i>
                             <span>ניהול</span>
-                            @if (ViewBag.UnapprovedCount != null && 
+                            @if (ViewBag.UnapprovedCount != null &&
                                 ViewBag.UnapprovedCount > 0)
                             {
                                 <span class="pending-badge">
@@ -81,48 +104,52 @@
                             }
                         </a>
 
-                        @if (ViewBag.UnapprovedCount != null && 
+                        @if (ViewBag.UnapprovedCount != null &&
                             ViewBag.UnapprovedCount > 0)
                         {
                             <div class="pending-users-alert">
-                                <a href="/Auth/AdminPanel" 
-                                    class="btn-pending-admin admin-panel-link">
-                                    <i class="fas fa-user-clock"></i>
-                                    <span>
-                                        ממתינים: 
-                                        <strong>@ViewBag.UnapprovedCount</strong> 
-                                        משתמשים
-                                    </span>
-                                </a>
+                                <i class="fas fa-user-clock"></i>
+                                <span>
+                                    ממתינים:
+                                    <strong>@ViewBag.UnapprovedCount</strong>
+                                    משתמשים
+                                </span>
+                                <a href="/Auth/Users"
+                                class="pending-approve-link">מעבר לאישור</a>
                             </div>
                         }
                     }
                 </div>
 
-                <!-- 3. פורטל - כותרת ראשית -->
+                <!-- 3. כותרת - תמיד במרכז (absolute) -->
                 <div class="title-section">
                     <div class="title-row">
                         <h1 class="main-title">פורטל חדר מחשב</h1>
                     </div>
                 </div>
 
-                <!-- 4. לוגו -->
-                <div class="logo-section">
-                    <img src="/images/logo.png" alt="Noc Portal Logo" style="max-width: 150px; height: auto;">
-                </div>
+                <!-- 4. Spacer - ממלא את האמצע -->
+                <div class="header-spacer"></div>
 
                 <!-- 5. משמרת נוכחית -->
                 <div class="shift-section">
-                    <div id="currentShiftIndicator" 
+                    <div id="currentShiftIndicator"
                         class="current-shift-indicator">
                         <i class="fas fa-clock"></i>
                         <span>טוען משמרת נוכחית...</span>
                     </div>
                 </div>
 
-                <!-- 6. יציאה - אחרון מימין -->
+                <!-- 6. לוגו -->
+                <div class="logo-section">
+                    <img src="https://cdn.menoramivt.co.il/public/images/20260113/3ggtc2mkccjb39-menora-logo-ido.png"
+                        alt="מנורה מבטחים"
+                        class="logo">
+                </div>
+
+                <!-- 7. יציאה - קצה שמאל -->
                 <div class="logout-section">
-                    <form method="post" action="/Auth/Logout" style="margin:0;">
+                    <form method="post" action="/Auth/Logout" style="margin:0;" onsubmit="clearUserLocalStorage()">
                         @Html.AntiForgeryToken()
                         <button type="submit" class="btn-header-logout">
                             <i class="fas fa-sign-out-alt"></i>
@@ -132,7 +159,7 @@
                     <button id="backToPortalBtn"
                         style="display:flex"
                         class="dashboard-toolbar-btn"
-                        onclick="window.location.href='/dashboards'">מעבר לדשבורדים
+                        onclick="window.location.href='/dashboards'">Dashboards
                     </button>
                 </div>
 
@@ -351,6 +378,12 @@
                             <i class="fas fa-plus"></i>
                             הוסף איש קשר
                         </button>
+                        <button onclick="openExcelImportModal()"
+                                class="btn-import-excel add-contact-btn"
+                                title="ייבוא אנשי קשר מקובץ Excel">
+                            <i class="fas fa-file-excel"></i>
+                            ייבוא מ-Excel
+                        </button>
                     </div>
 
                     <!-- Filters Section -->
@@ -494,9 +527,12 @@
                 <div class="section-content" id="proceduresContent">
                     <div class="procedures-header">
                         <div class="procedures-search">
-                            <input type="text" id="proceduresSearchInput" placeholder="חיפוש נהלים...">
+                            <input type="text" 
+                                id="proceduresSearchInput" 
+                                placeholder="חיפוש נהלים..."
+                                oninput="proceduresManager.searchProcedures(this.value)">
                             <i class="fas fa-search"></i>
-                             <button class="clear-search-btn" 
+                            <button class="clear-search-btn" 
                                     id="clearSearchBtn" 
                                     onclick="proceduresManager.clearSearch()"
                                     style="display: none;"
@@ -504,14 +540,28 @@
                                 <i class="fas fa-times"></i>
                             </button>
                         </div>
-                        <button id="collapseAllBtn" class="collapse-all-btn" onclick="proceduresManager.collapseAllFolders()">
+
+                        <button id="collapseAllBtn" 
+                                class="collapse-all-btn" 
+                                onclick="proceduresManager.collapseAllFolders()">
                             <i class="fas fa-compress-alt"></i>
                             מזער את כל התיקיות
                         </button>
-                        <button class="upload-procedure-btn" onclick="proceduresManager.openUploadModal()">
-                            <i class="fas fa-upload"></i>
-                            העלה נוהל
-                        </button>
+
+                        <div class="procedures-header-spacer"></div>
+
+                        <div class="procedures-action-buttons">
+                            <button class="upload-procedure-btn quick-procedure-btn" 
+                                    onclick="proceduresManager.openQuickProceduresModal()">
+                                <i class="fas fa-bolt"></i>
+                                נהלים מהירים
+                            </button>
+                            <button class="upload-procedure-btn" 
+                                    onclick="proceduresManager.openUploadModal()">
+                                <i class="fas fa-upload"></i>
+                                העלה נוהל
+                            </button>
+                        </div>
                     </div>
                     
                     <!-- Folder View Toggle -->
@@ -1015,6 +1065,12 @@
                             <i class="fas fa-plus"></i>
                             הוסף משימה חדשה
                         </button>
+                        <button class="add-task-btn"
+                                onclick="dailyTasksManager.showExportDialog()"
+                                title="ייצוא משימות לאקסל"
+                                style="background: linear-gradient(135deg, #1D6F42, #27AE60);">
+                            <i class="fas fa-file-excel"></i>
+                        </button>
                     </div>
 
                     <!-- Filters Section -->
@@ -1148,6 +1204,9 @@
                         <button class="btn-refresh" onclick="changesManager.loadChanges()" title="רענן נתוני שינויים">
                             <i class="fas fa-sync-alt"></i>
                         </button>
+                        <button id="exportBtn" class="action-btn export-btn">
+                            <i class="fas fa-file-excel"></i> ייצוא לאקסל
+                        </button>
                     </div>
                     
                     <!-- כפתורי החלפת תצוגה -->
@@ -1190,7 +1249,7 @@
                                     <input type="text" id="activitySearchInput" placeholder="חפש פעילות..." 
                                             onkeyup="activityManager.searchActivities(this.value)">
                                         <i class="fas fa-search"></i>
-                                        <button id="activitySearchClear"  class="clear-search-btn" onclick="document.getElementById('activitySearchInput').value=''; activityManager.searchActivities('')" style="display:none;">
+                                        <button id="activitySearchClear" class="clear-search-btn" onclick="document.getElementById('activitySearchInput').value=''; activityManager.searchActivities('')" style="display:none;">
                                         <i class="fas fa-times"></i>
                                     </button>
                                 </div>
@@ -1298,7 +1357,6 @@
         </div>
     </div>
 
-    
     <footer class="footer">
         <div class="credits">
             <p>Powered by <span class="developer">LG</span> <span class="registered">&reg;</span> | Concept by <span class="concept">TY</span></p>
@@ -1306,6 +1364,12 @@
         </div>
     </footer>
 
+    <!-- Scroll To Top Button -->
+    <button id="scrollToTopBtn" 
+            title="חזרה לראש הדף" 
+            aria-label="חזרה לראש הדף">
+        <i class="fas fa-arrow-up"></i>
+    </button>
     <!-- Simple Document Viewer Modal -->
     <div id="simpleDocumentModal" class="watch-document-modal" style="display: none;">
         <div class="modal-content">
@@ -1327,6 +1391,142 @@
         </div>
     </div>
 
+    <!-- מודל הוספה/עריכה של נוהל מהיר - עצמאי -->
+    <div id="addQuickProcedureModal" class="add-task-modal">
+        <div class="add-quick-modal-box">
+
+            <!-- Header -->
+            <div class="add-quick-modal-header">
+                <h3><i class="fas fa-bolt"></i> הוסף נוהל מהיר</h3>
+                <button class="add-quick-modal-close"
+                        onclick="proceduresManager.closeAddQuickProcedureModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <!-- Body -->
+            <div class="add-quick-modal-body">
+
+                <!-- כותרת -->
+                <div class="quick-form-group">
+                    <label class="quick-form-label">
+                        <i class="fas fa-heading"></i>
+                        כותרת הנוהל
+                    </label>
+                    <input type="text"
+                        id="aqpTitle"
+                        class="quick-form-input"
+                        placeholder="הכנס כותרת קצרה וברורה..."
+                        maxlength="100">
+                </div>
+
+                <!-- בחירת משתמש -->
+                <div class="quick-form-group">
+                    <label class="quick-form-label">
+                        <i class="fas fa-user"></i>
+                        נערך על ידי
+                    </label>
+                    <select id="aqpUserName" class="quick-form-input">
+                        <option value="">בחר משתמש...</option>
+                    </select>
+                </div>
+
+                <!-- תוכן עם תמיכה בתמונות -->
+                <div class="quick-form-group">
+                    <label class="quick-form-label">
+                        <i class="fas fa-align-right"></i>
+                        תוכן הנוהל
+                    </label>
+
+                    <div class="quick-content-area">
+                        <!-- Toolbar -->
+                        <div class="quick-content-toolbar">
+                            <span class="quick-toolbar-label">עיצוב:</span>
+                            <button class="quick-toolbar-btn" 
+                                    onmousedown="event.preventDefault(); document.execCommand('bold')"
+                                    title="מודגש">
+                                <i class="fas fa-bold"></i>
+                            </button>
+                            <button class="quick-toolbar-btn" 
+                                    onmousedown="event.preventDefault(); document.execCommand('italic')"
+                                    title="נטוי">
+                                <i class="fas fa-italic"></i>
+                            </button>
+                            <button class="quick-toolbar-btn" 
+                                    onmousedown="event.preventDefault(); document.execCommand('underline')"
+                                    title="קו תחתון">
+                                <i class="fas fa-underline"></i>
+                            </button>
+                            <div class="quick-toolbar-sep"></div>
+                            <span class="quick-toolbar-label">תמונה:</span>
+                            <button class="quick-toolbar-btn"
+                                    onclick="proceduresManager.insertImageFromFile()"
+                                    title="הכנס תמונה מקובץ">
+                                <i class="fas fa-image"></i>
+                            </button>
+                            <button class="quick-toolbar-btn"
+                                    onclick="document.getElementById('aqpEditor').focus();
+                                            NotificationManager.show('הדבק תמונה עם Ctrl+V', \'info\')"
+                                    title="הדבק תמונה (Ctrl+V)">
+                                <i class="fas fa-paste"></i>
+                            </button>
+                        </div>
+
+                        <!-- Editor -->
+                        <div id="aqpEditor"
+                            class="quick-rich-editor"
+                            contenteditable="true"
+                            data-placeholder="כתוב את תוכן הנוהל כאן...
+    ניתן גם להדביק תמונות עם Ctrl+V"
+                            oninput="proceduresManager._updateAqpCharCounter()">
+                        </div>
+
+                        <!-- מונה תווים -->
+                        <div class="quick-char-counter" id="aqpCharCounter">
+                            <span id="aqpCharCount">0 תווים</span>
+                            <span style="color:#aaa; font-size:0.75rem;">מקסימום 2000 תווים</span>
+                        </div>
+                    </div>
+
+                    <!-- רמז הדבקה -->
+                    <div class="quick-paste-hint">
+                        <i class="fas fa-lightbulb"></i>
+                        ניתן להדביק תמונות ישירות לתוך התוכן עם
+                        <strong>Ctrl+V</strong>
+                        או לבחור קובץ תמונה עם כפתור
+                        <i class="fas fa-image"></i>
+                    </div>
+                </div>
+
+            </div><!-- /body -->
+
+            <!-- Footer -->
+            <div class="add-quick-modal-footer">
+                <button class="btn-cancel-quick"
+                        onclick="proceduresManager.closeAddQuickProcedureModal()">
+                    <i class="fas fa-times"></i>
+                    ביטול
+                </button>
+                <button class="btn-save-quick" id="aqpSaveBtn"
+                        onclick="proceduresManager.saveAddQuickProcedureModal()">
+                    <i class="fas fa-save"></i>
+                    שמור
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Lightbox לתמונות בנהלים מהירים -->
+    <div id="quickImageLightbox" class="quick-image-lightbox"
+        onclick="proceduresManager.closeImageLightbox()">
+        <button class="quick-lightbox-close"
+                onclick="event.stopPropagation(); proceduresManager.closeImageLightbox()">
+            <i class="fas fa-times"></i>
+        </button>
+        <img id="quickLightboxImg" src="" alt="תמונה" onclick="event.stopPropagation()">
+    </div>
+
     <!-- Upload Procedure Modal -->
     <div id="uploadProcedureModal" class="add-task-modal">
         <div class="task-modal-content">
@@ -1336,118 +1536,147 @@
             </div>
             
             <div class="modal-body">
-                <div class="upload-instructions">
-                    <i class="fas fa-info-circle"></i>
-                    <div>
-                        <strong>הוראות העלאה:</strong>
-                        <ul>
-                            <li>בחר קובץ נוהל מהמחשב שלך</li>
-                            <li>גודל קובץ מקסימלי: 10MB</li>
-                            <li>שם הקובץ יהיה שם הנוהל במערכת</li>
-                            <li>אם קיים קובץ בשם זהה, ההעלאה תיכשל</li>
-                        </ul>
+
+                <!-- שדות נוהל מהיר - מוסתרים כברירת מחדל -->
+                <div id="quickProcedureSection" style="display: none;">
+                    <div class="form-group">
+                        <label class="form-label">
+                            <i class="fas fa-heading"></i>
+                            כותרת הנוהל:
+                        </label>
+                        <input type="text" 
+                            id="quickProcedureTitle" 
+                            class="form-input" 
+                            placeholder="הכנס כותרת לנוהל המהיר"
+                            maxlength="100">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">
+                            <i class="fas fa-align-right"></i>
+                            תוכן הנוהל:
+                        </label>
+                        <textarea id="quickProcedureContent" 
+                                class="form-textarea" 
+                                placeholder="הכנס את תוכן הנוהל המהיר (עד 500 תווים)"
+                                maxlength="500"
+                                rows="6"
+                                oninput="proceduresManager.updateCharCounter()"></textarea>
+                        <small class="char-counter" id="quickProcedureCharCount">0 / 500 תווים</small>
                     </div>
                 </div>
-
-                <!-- User Selection -->
-                <div class="form-group">
-                    <label class="form-label">
-                        <i class="fas fa-user"></i>
-                        שם המשתמש המעלה:
-                    </label>
-                    <select id="procedureUploadUserName" class="form-select">
-                        <option value="">בחר משתמש...</option>
-                    </select>
-                    <small class="form-help">
+                <div id="fileUploadSection">
+                    <div class="upload-instructions">
                         <i class="fas fa-info-circle"></i>
-                        שם זה יופיע כמי שערך את הנוהל
-                    </small>
-                </div>
-
-                <!-- Folder Selection -->
-                <div class="form-group">
-                    <label class="form-label">
-                        <i class="fas fa-folder"></i>
-                        בחר תיקייה:
-                    </label>
-                    <select id="procedureFolderSelect" class="form-select" onchange="proceduresManager.handleFolderSelection()">
-                        <option value="">תיקייה ראשית</option>
-                    </select>
-                </div>
-
-                <!-- New Folder Input (hidden by default) -->
-                <div class="form-group" id="newFolderGroup" style="display: none;">
-                    <label class="form-label">
-                        <i class="fas fa-folder-plus"></i>
-                        שם תיקייה חדשה:
-                    </label>
-                    <input type="text" 
-                        id="newFolderNameInput" 
-                        class="form-input" 
-                        placeholder="הכנס שם לתיקייה החדשה"
-                        maxlength="100">
-                    <small class="form-help">
-                        <i class="fas fa-info-circle"></i>
-                        השם יכול להכיל אותיות, מספרים, רווחים ותווים מיוחדים בסיסיים
-                    </small>
-                </div>
-               
-                <div class="file-upload-area">
-                    <input type="file" 
-                        id="procedureFileInput" 
-                        accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.rtf,.odt,.ods" 
-                        onchange="proceduresManager.handleFileSelect(event)">
-                    
-                    <label for="procedureFileInput" class="file-upload-label">
-                        <i class="fas fa-cloud-upload-alt"></i>
-                        <span>לחץ לבחירת קובץ או גרור לכאן</span>
-                        <small>קבצים נתמכים: PDF, DOC, DOCX, XLS, XLSX, TXT, RTF, ODT, ODS</small>
-                    </label>
-                </div>
-
-                <div id="procedureUploadPreview" class="upload-preview">
-                    <div class="preview-icon">
-                        <i class="fas fa-file"></i>
+                        <div>
+                            <strong>הוראות העלאה:</strong>
+                            <ul>
+                                <li>בחר קובץ נוהל מהמחשב שלך</li>
+                                <li>גודל קובץ מקסימלי: 10MB</li>
+                                <li>שם הקובץ יהיה שם הנוהל במערכת</li>
+                                <li>אם קיים קובץ בשם זהה, ההעלאה תיכשל</li>
+                            </ul>
+                        </div>
                     </div>
-                    <div class="preview-details">
-                        <div class="preview-filename" id="procedureUploadFileName"></div>
-                        <div class="preview-filesize" id="procedureUploadFileSize"></div>
-                    </div>
-                    <button class="preview-remove" 
-                            onclick="document.getElementById('procedureFileInput').value=''; 
-                                    document.getElementById('procedureUploadPreview').style.display='none';">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
 
-                <div class="supported-file-types">
-                    <h4>
-                        <i class="fas fa-check-circle"></i>
-                        סוגי קבצים נתמכים:
-                    </h4>
-                    <div class="file-type-badges">
-                        <span class="file-type-badge">
-                            <i class="fas fa-file-pdf"></i> PDF
-                        </span>
-                        <span class="file-type-badge">
-                            <i class="fas fa-file-word"></i> DOC/DOCX
-                        </span>
-                        <span class="file-type-badge">
-                            <i class="fas fa-file-excel"></i> XLS/XLSX
-                        </span>
-                        <span class="file-type-badge">
-                            <i class="fas fa-file-alt"></i> TXT
-                        </span>
-                        <span class="file-type-badge">
-                            <i class="fas fa-file"></i> RTF
-                        </span>
-                        <span class="file-type-badge">
-                            <i class="fas fa-file"></i> ODT/ODS
-                        </span>
+                    <!-- User Selection -->
+                    <div class="form-group">
+                        <label class="form-label">
+                            <i class="fas fa-user"></i>
+                            שם המשתמש המעלה:
+                        </label>
+                        <select id="procedureUploadUserName" class="form-select">
+                            <option value="">בחר משתמש...</option>
+                        </select>
+                        <small class="form-help">
+                            <i class="fas fa-info-circle"></i>
+                            שם זה יופיע כמי שערך את הנוהל
+                        </small>
+                    </div>
+
+                    <!-- Folder Selection -->
+                    <div class="form-group">
+                        <label class="form-label">
+                            <i class="fas fa-folder"></i>
+                            בחר תיקייה:
+                        </label>
+                        <select id="procedureFolderSelect" class="form-select" onchange="proceduresManager.handleFolderSelection()">
+                            <option value="">תיקייה ראשית</option>
+                        </select>
+                    </div>
+
+                    <!-- New Folder Input (hidden by default) -->
+                    <div class="form-group" id="newFolderGroup" style="display: none;">
+                        <label class="form-label">
+                            <i class="fas fa-folder-plus"></i>
+                            שם תיקייה חדשה:
+                        </label>
+                        <input type="text" 
+                            id="newFolderNameInput" 
+                            class="form-input" 
+                            placeholder="הכנס שם לתיקייה החדשה"
+                            maxlength="100">
+                        <small class="form-help">
+                            <i class="fas fa-info-circle"></i>
+                            השם יכול להכיל אותיות, מספרים, רווחים ותווים מיוחדים בסיסיים
+                        </small>
+                    </div>
+                
+                    <div class="file-upload-area">
+                        <input type="file" 
+                            id="procedureFileInput" 
+                            accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.rtf,.odt,.ods" 
+                            onchange="proceduresManager.handleFileSelect(event)">
+                        
+                        <label for="procedureFileInput" class="file-upload-label">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <span>לחץ לבחירת קובץ או גרור לכאן</span>
+                            <small>קבצים נתמכים: PDF, DOC, DOCX, XLS, XLSX, TXT, RTF, ODT, ODS</small>
+                        </label>
+                    </div>
+
+                    <div id="procedureUploadPreview" class="upload-preview">
+                        <div class="preview-icon">
+                            <i class="fas fa-file"></i>
+                        </div>
+                        <div class="preview-details">
+                            <div class="preview-filename" id="procedureUploadFileName"></div>
+                            <div class="preview-filesize" id="procedureUploadFileSize"></div>
+                        </div>
+                        <button class="preview-remove" 
+                                onclick="document.getElementById('procedureFileInput').value=''; 
+                                        document.getElementById('procedureUploadPreview').style.display='none';">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
+                    <div class="supported-file-types">
+                        <h4>
+                            <i class="fas fa-check-circle"></i>
+                            סוגי קבצים נתמכים:
+                        </h4>
+                        <div class="file-type-badges">
+                            <span class="file-type-badge">
+                                <i class="fas fa-file-pdf"></i> PDF
+                            </span>
+                            <span class="file-type-badge">
+                                <i class="fas fa-file-word"></i> DOC/DOCX
+                            </span>
+                            <span class="file-type-badge">
+                                <i class="fas fa-file-excel"></i> XLS/XLSX
+                            </span>
+                            <span class="file-type-badge">
+                                <i class="fas fa-file-alt"></i> TXT
+                            </span>
+                            <span class="file-type-badge">
+                                <i class="fas fa-file"></i> RTF
+                            </span>
+                            <span class="file-type-badge">
+                                <i class="fas fa-file"></i> ODT/ODS
+                            </span>
+                        </div>
                     </div>
                 </div>
             </div>
-
             <div class="modal-footer">
                 <div class="form-actions">
                     <button type="button" class="btn-secondary" onclick="proceduresManager.closeUploadModal()">
@@ -1459,6 +1688,92 @@
                     </button>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Quick Procedures Modal -->
+    <div id="quickProceduresModal" class="add-task-modal" style="display:none;">
+        <div class="task-modal-content quick-procedures-modal-content">
+
+            <!-- Header -->
+            <div class="modal-header">
+                <div class="quick-procedures-modal-header-actions">
+                    <h3 class="modal-title">
+                        <i class="fas fa-bolt"></i>
+                        נהלים מהירים
+                    </h3>
+                    <button class="btn-add-quick-inline"
+                            onclick="proceduresManager.openAddQuickProcedureModal()">
+                        <i class="fas fa-plus"></i>
+                        הוסף נוהל מהיר
+                    </button>
+                    <button id="expandAllNotesBtn" 
+                            onclick="proceduresManager.expandAllNotes()"
+                            class="btn-expand-collapse-all"
+                            title="הרחב הכל"
+                            style="display: none;">
+                        <i class="fas fa-expand-alt"></i>
+                        הרחב הכל
+                    </button>
+
+                    <button id="collapseAllNotesBtn" 
+                            onclick="proceduresManager.collapseAllNotes()"
+                            class="btn-expand-collapse-all"
+                            title="כווץ הכל">
+                        <i class="fas fa-compress-alt"></i>
+                        כווץ הכל
+                    </button>
+                </div>
+                <button class="close-btn" 
+                        onclick="proceduresManager.closeQuickProceduresModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <!-- Search Bar -->
+            <div class="quick-procedures-search-bar">
+                <div class="quick-procedures-search-wrap">
+                    <i class="fas fa-search search-icon"></i>
+                    <input type="text"
+                        id="quickProceduresSearchInput"
+                        placeholder="חפש בנהלים מהירים..."
+                        autocomplete="off">
+                    <button class="clear-quick-search" id="clearQuickSearch" title="נקה חיפוש">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Body -->
+            <div class="modal-body">
+                <div id="quickProceduresContainer">
+                    <!-- נהלים מהירים יוצגו כאן -->
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Quick Procedure Viewer Modal -->
+    <div id="quickProcedureViewerModal"
+        class="add-task-modal"
+        style="display:none;">
+
+        <div class="task-modal-content quick-procedure-viewer-content">
+
+            <div class="modal-header">
+                <h3 id="quickProcedureViewerTitle"></h3>
+
+                <button class="close-btn"
+                        onclick="proceduresManager.closeQuickProcedureViewer()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div class="modal-body">
+                <div id="quickProcedureViewerContent"></div>
+            </div>
+
         </div>
     </div>
 
@@ -1568,6 +1883,96 @@
                 <button type="button" class="btn-secondary" onclick="shiftsManager.closeBackupModal()">
                     סגור
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Templates Modal -->
+    <div id="activityTemplatesModal" class="add-task-modal">
+        <div class="task-modal-content" style="max-width: 650px;">
+            
+            <div class="modal-header">
+                <h2>
+                    <i class="fas fa-file-excel" 
+                    style="color:#1d6f42; margin-left:8px;"></i>
+                    טמפלייטים לייבוא פעילויות
+                </h2>
+                <button class="close-btn" 
+                        onclick="activityManager.closeTemplatesModal()">
+                    &times;
+                </button>
+            </div>
+
+            <div class="modal-body">
+
+                <!-- אזור העלאת טמפלייט חדש -->
+                <div class="template-upload-section">
+                    <div class="template-upload-header">
+                        <div class="template-upload-title">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            העלה טמפלייט חדש
+                        </div>
+                        <span class="template-upload-hint">
+                            קבצי Excel בלבד (.xlsx, .xls)
+                        </span>
+                    </div>
+
+                    <!-- אזור גרירה -->
+                    <div class="template-drop-zone" 
+                        id="templateDropZone"
+                        onclick="activityManager.openUploadTemplateDialog()"
+                        ondragover="event.preventDefault(); 
+                                    this.classList.add('drag-over')"
+                        ondragleave="this.classList.remove('drag-over')"
+                        ondrop="
+                            event.preventDefault();
+                            this.classList.remove('drag-over');
+                            const f = event.dataTransfer.files[0];
+                            if(f) activityManager.uploadTemplate(f);
+                        ">
+                        <i class="fas fa-file-excel"></i>
+                        <span>לחץ לבחירת קובץ או גרור לכאן</span>
+                        <small>XLSX, XLS · גודל מקסימלי 10MB</small>
+                        
+                        <button id="uploadTemplateBtn" 
+                                class="upload-template-btn"
+                                onclick="event.stopPropagation(); 
+                                        activityManager.openUploadTemplateDialog()">
+                            <i class="fas fa-upload"></i>
+                            העלה טמפלייט
+                        </button>
+                    </div>
+
+                    <!-- שורת התקדמות -->
+                    <div id="templateUploadProgress" 
+                        class="template-upload-progress"
+                        style="display:none;">
+                    </div>
+                </div>
+
+                <!-- קו הפרדה -->
+                <div class="templates-divider">
+                    <span>טמפלייטים קיימים</span>
+                </div>
+
+                <!-- רשימת טמפלייטים -->
+                <div id="templatesList" class="templates-list">
+                    <div class="templates-loading">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <span>טוען...</span>
+                    </div>
+                </div>
+
+            </div>
+
+            <div class="modal-footer">
+                <div class="form-actions">
+                    <button type="button" 
+                            class="btn btn-secondary" 
+                            onclick="activityManager.closeTemplatesModal()">
+                        סגור
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -1776,37 +2181,106 @@
     <!-- Import excel Modal for Activity Tasks  -->
     <div id="importExcelModal" class="add-task-modal">
         <div class="task-modal-content">
+            
+            <!-- Header נקי -->
             <div class="modal-header">
                 <h2 id="excelModalTitle">ייבוא פעילות מקובץ אקסל</h2>
-                <button class="close-btn" onclick="activityManager.closeImportExcelModal()">&times;</button>
+                <button class="close-btn" 
+                        onclick="activityManager.closeImportExcelModal()">
+                    &times;
+                </button>
             </div>
             
             <div class="modal-body">
-                <div class="upload-instructions">
-                    <i class="fas fa-info-circle"></i>
-                    <div>
-                        <strong>הוראות העלאה:</strong>
-                        <ul>
+
+                <!-- כפתור טמפלייטים - בתוך ה-body, מסוגנן יפה -->
+                <div class="templates-section" style="
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 10px 14px;
+                    background: linear-gradient(135deg, #f0fff4, #e8f5e9);
+                    border: 1px solid #28a745;
+                    border-radius: 10px;
+                    margin-bottom: 16px;
+                ">
+                    <div style="display:flex; align-items:center; gap:8px; 
+                                color:#155724; font-size:0.9rem; font-weight:600;">
+                        <i class="fas fa-file-excel" style="color:#1d6f42; font-size:1.1rem;"></i>
+                        הורד טמפלייט לדוגמה
+                    </div>
+                    <button class="template-download-btn" 
+                            onclick="activityManager.openTemplatesModal()"
+                            style="
+                                display:flex; align-items:center; gap:6px;
+                                padding:7px 14px;
+                                background:#28a745; color:white;
+                                border:none; border-radius:6px;
+                                cursor:pointer; font-size:0.85rem;
+                                transition:background 0.2s;
+                            ">
+                        <i class="fas fa-download"></i> טמפלייטים
+                    </button>
+                </div>
+
+                <!-- הוראות מתקפלות -->
+                <details class="upload-instructions-collapsible" style="margin-bottom:16px;">
+                    <summary style="
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                        padding: 10px 14px;
+                        background: linear-gradient(135deg, #e3f2fd, #f3e5f5);
+                        border-radius: 8px;
+                        border-right: 4px solid #667eea;
+                        cursor: pointer;
+                        font-weight: 600;
+                        color: #320F5B;
+                        list-style: none;
+                        user-select: none;
+                    ">
+                        <i class="fas fa-info-circle" style="color:#667eea;"></i>
+                        הוראות העלאה
+                        <i class="fas fa-chevron-down" style="
+                            margin-right:auto; 
+                            color:#667eea; 
+                            font-size:0.8rem;
+                            transition: transform 0.3s;
+                        "></i>
+                    </summary>
+                    
+                    <div class="upload-instructions" style="
+                        margin-top: 8px;
+                        border-right: 4px solid #667eea;
+                        padding: 12px 16px;
+                        background: rgba(102,126,234,0.05);
+                        border-radius: 0 0 8px 8px;
+                    ">
+                        <ul style="margin:0; padding-right:20px; color:#555;">
                             <li>בחר קובץ אקסל עם רשימת משימות לפעילות</li>
                             <li>שורה 1: שם הפעילות (תא D1)</li>
                             <li>שורה 3-4: כותרות טבלה</li>
-                            <li>שורה 5 ואילך: משימות לפי המבנה הבא:</li>
-                            <ul>
-                                <li>עמודה A: יום</li>
-                                <li>עמודה B: תאריך</li>
-                                <li>עמודה C: שעה (בפורמט HH:MM)</li>
-                                <li>עמודה D: תיאור המשימה</li>
-                                <li>עמודה E: גורם אחראי</li>
-                                <li>עמודה F: אחראי משנה</li>
-                                <li>עמודה G: סטטוס</li>
-                                <li>עמודה H: הערות</li>
-                            </ul>
+                            <li>שורה 5 ואילך: משימות לפי המבנה הבא:
+                                <ul style="margin-top:6px;">
+                                    <li>עמודה A: יום</li>
+                                    <li>עמודה B: תאריך</li>
+                                    <li>עמודה C: שעה (HH:MM)</li>
+                                    <li>עמודה D: תיאור המשימה</li>
+                                    <li>עמודה E: גורם אחראי</li>
+                                    <li>עמודה F: אחראי משנה</li>
+                                    <li>עמודה G: סטטוס</li>
+                                    <li>עמודה H: הערות</li>
+                                </ul>
+                            </li>
                         </ul>
                     </div>
-                </div>
-                
+                </details>
+
+                <!-- שאר תוכן המודל ללא שינוי -->
                 <div class="form-group">
-                    <label class="form-label" for="excelImportDate">תאריך הפעילות:</label>
+                    <label class="form-label" for="excelImportDate">
+                        תאריך הפעילות:
+                    </label>
                     <div class="date-input-wrapper">
                         <input type="date" 
                             id="excelImportDateHidden" 
@@ -1819,11 +2293,12 @@
                             class="formatted-date-input">
                         <i class="fas fa-calendar-alt date-icon" 
                             onclick="activityManager.openExcelImportDatePicker()"></i>
-                        
-                        <button type="button" id="excelImportDateClear" class="time-clear-btn" 
-                            onclick="activityManager.clearExcelImportDate()" 
-                            title="נקה שדה תאריך" 
-                            style="display: none;">
+                        <button type="button" 
+                                id="excelImportDateClear" 
+                                class="time-clear-btn" 
+                                onclick="activityManager.clearExcelImportDate()" 
+                                title="נקה שדה תאריך" 
+                                style="display: none;">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
@@ -1832,17 +2307,19 @@
                 <div class="file-upload-area">
                     <input type="file" 
                         id="excelFileInput" 
-                        accept=".xlsx,.xls"
+                        accept=".xlsx,.xls,.docx,.doc"
                         onchange="activityManager.handleFileSelect(event)">
                     
                     <label for="excelFileInput" class="file-upload-label">
                         <i class="fas fa-cloud-upload-alt"></i>
                         <span>לחץ לבחירת קובץ או גרור לכאן</span>
-                        <small>קבצים נתמכים: XLSX, XLS</small>
+                        <small>קבצים נתמכים: XLSX, XLS, DOCX, DOC</small>
                     </label>
                 </div>
 
-                <div id="uploadActivityPreview" class="upload-preview" style="display: none;">
+                <div id="uploadActivityPreview" 
+                    class="upload-preview" 
+                    style="display: none;">
                     <div class="preview-icon">
                         <i class="fas fa-file-excel"></i>
                     </div>
@@ -1851,7 +2328,8 @@
                         <div class="preview-filesize" id="uploadActivityFileSize"></div>
                     </div>
                     <button class="preview-remove" 
-                            onclick="activityManager.clearSelectedFile(); event.stopPropagation();">
+                            onclick="activityManager.clearSelectedFile(); 
+                                    event.stopPropagation();">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
@@ -1859,8 +2337,17 @@
             
             <div class="modal-footer">
                 <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="activityManager.closeImportExcelModal()">ביטול</button>
-                    <button type="button" id="excelImportSubmitBtn" class="btn btn-primary" onclick="activityManager.importExcelActivity()">ייבא פעילות</button>
+                    <button type="button" 
+                            class="btn btn-secondary" 
+                            onclick="activityManager.closeImportExcelModal()">
+                        ביטול
+                    </button>
+                    <button type="button" 
+                            id="excelImportSubmitBtn" 
+                            class="btn btn-primary" 
+                            onclick="activityManager.importExcelActivity()">
+                        ייבא פעילות
+                    </button>
                 </div>
             </div>
         </div>
@@ -1877,24 +2364,47 @@
                 const taskId = document.getElementById('activitySkipTaskId').value;
                 const reasonSelect = document.getElementById('activitySkipReasonSelect').value;
                 const customReason = document.getElementById('activitySkipReasonCustom').value;
-                const userName = document.getElementById('activitySkipUserName').value;
-                const skipReason = reasonSelect === 'אחר' ? customReason : reasonSelect;
                 
-                if (!skipReason || !userName) {
-                    alert('יש למלא את כל השדות');
+                // *** שינוי: קרא מהשדה הנסתר במקום מה-select ***
+                const userName = document.getElementById('activitySkipUserName').value;
+                
+                const skipReason = reasonSelect === 'אחר' ? customReason : reasonSelect;
+
+                if (!skipReason) {
+                    alert('יש לבחור סיבת אי ביצוע');
                     return;
                 }
-                
+
+                if (!userName) {
+                    NotificationManager.show('שגיאה: לא זוהה משתמש מחובר', 'error');
+                    return;
+                }
+
                 activityManager.markTaskAsSkipped(taskId, skipReason, userName);
                 activityManager.closeSkipModal();">
                 
                 <input type="hidden" id="activitySkipTaskId">
                 
                 <div class="form-group">
-                    <label class="form-label" for="activitySkipUserName">שם העובד: <span class="required">*</span></label>
-                    <select id="activitySkipUserName" class="form-select" required>
-                        <option value="">בחר עובד...</option>
-                    </select>
+                    <div class="form-group">
+                        <label class="form-label">מבוצע על ידי:</label>
+                        <div class="current-user-display" style="
+                            padding: 8px 12px;
+                            border-radius: 8px;
+                            font-size: 0.9rem;
+                            font-weight: 600;
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            background: rgba(102,126,234,0.08);
+                            border: 1px solid rgba(102,126,234,0.2);
+                        ">
+                            <i class="fas fa-user" style="color:#667eea;"></i>
+                            <span id="skipCurrentUserDisplay">טוען...</span>
+                        </div>
+                        <!-- שדה hidden לשמירת הערך -->
+                        <input type="hidden" id="activitySkipUserName">
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -2204,7 +2714,8 @@
                                 <div id="alertItemsContainer" class="alert-items-container">
                                     <!-- תאי התראה יתווספו כאן דינמית -->
                                 </div>
-                                <button type="button" class="btn-secondary add-alert-item-btn" onclick="messagesManager.addAlertItem()">
+                                <button type="button" class="btn-secondary add-alert-item-btn" 
+                                        onclick="messagesManager.addAlertItem()">
                                     <i class="fas fa-plus"></i> הוסף תא התראה
                                 </button>
                             </div>
@@ -2221,25 +2732,30 @@
                             <label class="form-label">דברים פתוחים ממשמרות קודמות</label>
                             <textarea id="openItemsInput" class="form-textarea" rows="3"></textarea>
                         </div>
+                    </div>
+
+                    <!-- ↓ shiftAttachmentsField עכשיו מחוץ ל-shiftSummaryFields ↓ -->
+                    <div class="form-group" id="shiftAttachmentsField" style="display: none;">
+                        <label class="form-label">קבצים מצורפים (תמונות, מסמכים)</label>
                         
-                        <!-- הוסף אזור העלאת קבצים -->
-                        <div class="form-group" id="shiftAttachmentsField">
-                            <label class="form-label">קבצים מצורפים (תמונות, מסמכים)</label>
-                            
-                            <!-- אזור Drag & Drop -->
-                            <div id="shiftAttachmentsDropZone" class="attachment-drop-zone">
-                                <i class="fas fa-cloud-upload-alt"></i>
-                                <p>גרור קבצים לכאן</p>
-                                <span>או לחץ לבחירה</span>
-                                <small>תומך בתמונות ומסמכים (JPG, PNG, PDF, DOC, XLS,TXT)</small>
-                            </div>
-                            
-                            <input type="file" id="shiftAttachmentsFileInput" accept=".jpg,.jpeg,.png,.gif,.pdf,.doc,.docx,.xls,.xlsx,txt" style="display: none;" multiple>
-                            
-                            <!-- תצוגת קבצים שנבחרו -->
-                            <div id="shiftAttachmentsPreview" class="upload-preview attachments-preview" style="display: none;">
-                                <!-- כאן יתווספו פריטי הקבצים באופן דינמי -->
-                            </div>
+                        <!-- אזור Drag & Drop -->
+                        <div id="shiftAttachmentsDropZone" class="attachment-drop-zone">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <p>גרור קבצים לכאן</p>
+                            <span>או לחץ לבחירה</span>
+                            <small>תומך בתמונות ומסמכים (JPG, PNG, PDF, DOC, XLS, TXT)</small>
+                        </div>
+                        
+                        <input type="file" 
+                            id="shiftAttachmentsFileInput" 
+                            accept=".jpg,.jpeg,.png,.gif,.pdf,.doc,.docx,.xls,.xlsx,.txt" 
+                            style="display: none;" 
+                            multiple>
+                        
+                        <!-- תצוגת קבצים שנבחרו -->
+                        <div id="shiftAttachmentsPreview" 
+                            class="upload-preview attachments-preview" 
+                            style="display: none;">
                         </div>
                     </div>
 
@@ -2259,6 +2775,7 @@
                         </select>
                     </div>
 
+                    <!-- שדה תאריך יעד - קיים -->
                     <div class="form-group">
                         <label class="form-label" for="messageDueDate">תאריך יעד</label>
                         <div class="date-input-wrapper">
@@ -2274,10 +2791,65 @@
                                 class="formatted-date-input">
                             <i class="fas fa-calendar-alt date-icon" 
                             onclick="messagesManager.openDueDatePicker()"></i>
-                            
-                            <button type="button"  id="messageDueDateClear" class="time-clear-btn time-job-clear-btn" onclick="messagesManager.clearDueDate()" title="נקה שדה תאריך יעד">
+                            <button type="button" id="messageDueDateClear" 
+                                    class="time-clear-btn time-job-clear-btn" 
+                                    onclick="messagesManager.clearDueDate()" 
+                                    title="נקה שדה תאריך יעד">
                                 <i class="fas fa-times"></i>
                             </button>
+                        </div>
+                    </div>
+
+                    <!-- הגדרות תצוגה - צמוד לתאריך יעד -->
+                    <div id="listDisplayOptionsField" style="display: none;">
+                        <div class="form-group list-display-options-group">
+                            <label class="form-label">
+                                <i class="fas fa-eye"></i> הגדרות תצוגה
+                            </label>
+
+                            <label class="checkbox-label">
+                                <input type="checkbox" 
+                                    id="listAlwaysShow" 
+                                    checked
+                                    onchange="messagesManager.toggleListDateFields(!this.checked)">
+                                <span class="checkbox-text">
+                                    <i class="fas fa-infinity"></i> הצג תמיד
+                                </span>
+                            </label>
+
+                            <!-- שדה תאריך סיום - מוסתר כברירת מחדל -->
+                            <div id="listDateRangeFields" style="display: none; margin-top: 10px;">
+                                <div class="date-range-info">
+                                    <i class="fas fa-info-circle"></i>
+                                    <small>תאריך ההתחלה נלקח מ"תאריך יעד" שנבחר למעלה</small>
+                                </div>
+
+                                <div class="form-group" style="margin-top: 8px;">
+                                    <label class="form-label">תאריך סיום תצוגה</label>
+                                    <div class="date-input-wrapper">
+                                        <input type="date" 
+                                            id="listEndDateHidden" 
+                                            class="hidden-date-input"
+                                            onchange="messagesManager.handleListEndDateChange(this.value)">
+                                        <input type="text" 
+                                            id="listEndDate" 
+                                            placeholder="DD/MM/YYYY" 
+                                            readonly 
+                                            onclick="messagesManager.openListEndDatePicker()" 
+                                            class="formatted-date-input">
+                                        <i class="fas fa-calendar-alt date-icon" 
+                                        onclick="messagesManager.openListEndDatePicker()"></i>
+                                        <button type="button" 
+                                                id="listEndDateClear" 
+                                                class="time-clear-btn time-job-clear-btn" 
+                                                onclick="messagesManager.clearListEndDate()" 
+                                                title="נקה תאריך סיום"
+                                                style="display:none;">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -2692,16 +3264,26 @@
                         <span id="activityCompletionTaskTitle"></span>
                     </div>
 
-                    <div class="form-group">
-                        <label class="form-label" for="activityCompletionEmployeeName">
+                   <div class="form-group">
+                        <label class="form-label">
                             <i class="fas fa-user"></i>
-                            שם העובד שסימן את המשימה:
+                            מבוצע על ידי:
                         </label>
-                        <select id="activityCompletionEmployeeName" 
-                                class="form-select" 
-                                required>
-                            <option value="">בחר עובד...</option>
-                        </select>
+                        <div class="current-user-display" style="
+                            padding: 8px 12px;
+                            border-radius: 8px;
+                            font-size: 0.9rem;
+                            font-weight: 600;
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            background: rgba(40,167,69,0.08);
+                            border: 1px solid rgba(40,167,69,0.2);
+                        ">
+                            <i class="fas fa-user-check" style="color:#28a745;"></i>
+                            <span id="completionCurrentUserDisplay">טוען...</span>
+                        </div>
+                        <input type="hidden" id="activityCompletionEmployeeName">
                     </div>
 
                     <div class="form-group">
@@ -2811,11 +3393,145 @@
     <script src="~/js/SectionDragManager.js"asp-append-version="true"></script>
     <script src="/js/DataCenterManager.js"asp-append-version="true"></script>
     <script src="/js/AlertsManager.js"asp-append-version="true"></script>
+    <script src="/js/AlertProcedureMappingManager.js" asp-append-version="true"></script>
     <script src="/js/ChangesManager.js"asp-append-version="true"></script>
+    <script src="/js/message-popup.js"></script>
 
     <!-- Main Application -->
     <script src="~/js/main.js"asp-append-version="true"></script>
+    <script>
+        // ==========================================
+        // Portal Theme Toggle (Dark/Light Mode)
+        // ==========================================
+        
+        function initPortalTheme() {
+            const savedTheme = localStorage.getItem('portalColorTheme') || 'light';
+            applyPortalTheme(savedTheme);
+        }
 
+        function togglePortalTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            applyPortalTheme(newTheme);
+            localStorage.setItem('portalColorTheme', newTheme);
+        }
+
+        function applyPortalTheme(theme) {
+            const root = document.documentElement;
+            const btn = document.getElementById('portalThemeBtn');
+
+            if (theme === 'dark') {
+                root.setAttribute('data-theme', 'dark');
+                if (btn) {
+                    btn.innerHTML = '<i class="fas fa-sun"></i>';
+                    btn.title = 'עבור ל-Light Mode';
+                }
+            } else {
+                root.removeAttribute('data-theme');
+                if (btn) {
+                    btn.innerHTML = '<i class="fas fa-moon"></i>';
+                    btn.title = 'עבור ל-Dark Mode';
+                }
+            }
+        }
+
+        // אתחול בטעינת הדף
+        document.addEventListener('DOMContentLoaded', () => {
+            initPortalTheme();
+        });
+        
+        // אתחול מיידי למניעת flash
+        (function() {
+            const savedTheme = localStorage.getItem('portalColorTheme');
+            if (savedTheme === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        })();
+    </script>
+    <script>
+        (function () {
+            const btn = document.getElementById('scrollToTopBtn');
+            
+            if (!btn) return;
+
+            btn.style.cssText = `
+                position: fixed;
+                bottom: 30px;
+                left: 30px;
+                width: 46px;
+                height: 46px;
+                border-radius: 50%;
+                background: linear-gradient(135deg, #7c3aed, #a78bfa);
+                color: white;
+                border: none;
+                cursor: pointer;
+                font-size: 1.1rem;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 4px 16px rgba(124,58,237,0.45);
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.3s ease, transform 0.3s ease;
+                transform: translateY(10px);
+            `;
+
+            // פונקציות הצגה/הסתרה ישירות על style - לא על class
+            const showBtn = () => {
+                btn.style.opacity = '1';
+                btn.style.pointerEvents = 'auto';
+                btn.style.transform = 'translateY(0)';
+            };
+
+            const hideBtn = () => {
+                btn.style.opacity = '0';
+                btn.style.pointerEvents = 'none';
+                btn.style.transform = 'translateY(10px)';
+            };
+
+            const onScroll = () => {
+                const scrollTop = window.scrollY 
+                            || document.documentElement.scrollTop;
+
+                if (scrollTop > window.innerHeight / 2) {
+                    showBtn();
+                } else {
+                    hideBtn();
+                }
+            };
+
+            window.addEventListener('scroll', onScroll, { passive: true });
+
+            btn.addEventListener('click', () => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+
+            btn.addEventListener('mouseenter', () => {
+                btn.style.transform = 'translateY(-3px) scale(1.08)';
+                btn.style.boxShadow = '0 8px 24px rgba(124,58,237,0.55)';
+            });
+
+            btn.addEventListener('mouseleave', () => {
+                btn.style.transform = 'translateY(0) scale(1)';
+                btn.style.boxShadow = '0 4px 16px rgba(124,58,237,0.45)';
+            });
+
+        })();
+
+        function clearUserLocalStorage() {
+            // מחק נתוני משתמש מ-localStorage
+            const keysToRemove = [
+                'currentUser',
+                'lastSelectedEmployee'
+            ];
+            
+            keysToRemove.forEach(key => localStorage.removeItem(key));
+            
+            // מחק מ-sessionStorage
+            sessionStorage.removeItem('currentUser');
+            
+        }
+    </script>
 </body>
 
 </html>

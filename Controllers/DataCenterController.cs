@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
@@ -15,39 +14,43 @@ using System.Text;
 public class DataCenterController : Controller
 {
     // שימוש בנתיב יחסי או בהגדרה מקובץ תצורה
-    private readonly IWebHostEnvironment _env;
-    private readonly string _filesFolderPath;
-    private readonly string _excelFilePathRG;
-    private readonly string _excelFilePathPT;
+    private readonly string _excelFilePathRG = @"R:\USERS\TASHTIT\NOC\Data Center\תיעוד ציודים בחדרי שרתים - רמת גן.xlsx";
+    private readonly string _excelFilePathPT = @"R:\USERS\TASHTIT\NOC\Data Center\תיעוד ציודים בחדר שרתים - פתח תקווה.xlsx";
     // הוספת שדות חדשים לניהול קאש
     private readonly string _cacheFolderPath;
     private readonly string _connectionsFolderPath;
-    private readonly TimeSpan _cacheExpiration = TimeSpan.FromHours(12); // תוקף הקאש - 12 שעות
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly string _proxyUrl = "http://10.10.111.209:8080";
-    private readonly string _helixAccessKey = "85Q505MJG73R3KVTYDI9YEZLYT8I59";
-    private readonly string _helixAccessSecretKey = "MhMx6Xzxg3djFUmUO0gP3kkgMdxvMlOiY8ZJIbrlix9YMthuTq";
-    private readonly string _helixTenantId = "976648405";
-    private readonly string _helixApiBaseUrl  = "https://menora-itom.onbmc.com";
-    
+    private readonly SecretsService _secrets;
+
+    private string _helixAccessKey       => _secrets.HelixAccessKey;
+    private string _helixAccessSecretKey => _secrets.HelixAccessSecret;
+    private string _helixTenantId        => _secrets.HelixTenantId;
+    private string _helixApiBaseUrl      => _secrets.HelixBaseUrl;
+
+    private readonly string _scrapFolderPath;
+    private readonly string _metricsCacheFolderPath;
+
     private static string _jwtToken;
     private static DateTime _tokenExpiry = DateTime.MinValue;
     
-    public DataCenterController(IHttpClientFactory httpClientFactory, IWebHostEnvironment env)
+    public DataCenterController(IHttpClientFactory httpClientFactory,
+    SecretsService secrets,
+    IWebHostEnvironment env)
     {
         _httpClientFactory = httpClientFactory;
-        _env = env;
-
-        _filesFolderPath = Path.Combine(_env.WebRootPath, "assets", "files");
-        _excelFilePathRG = Path.Combine(_filesFolderPath, "תיעוד ציודים בחדרי שרתים - רמת גן.xlsx");
-        _excelFilePathPT = Path.Combine(_filesFolderPath, "תיעוד ציודים בחדר שרתים - פתח תקווה.xlsx");
-        _cacheFolderPath = Path.Combine(_filesFolderPath, "dataCenterCache");
+        _secrets            = secrets;
+        _cacheFolderPath = Path.Combine(env.WebRootPath, "assets", "files", "dataCenterCache");
         _connectionsFolderPath = Path.Combine(_cacheFolderPath, "connections");
-
+        _metricsCacheFolderPath = Path.Combine(_cacheFolderPath, "metricsCache");
         // וודא שהתיקיות קיימות
+
         Directory.CreateDirectory(_cacheFolderPath);
         Directory.CreateDirectory(_connectionsFolderPath);
+        Directory.CreateDirectory(_metricsCacheFolderPath); 
+        _scrapFolderPath = Path.Combine(_cacheFolderPath, "scrap");
+        Directory.CreateDirectory(_scrapFolderPath);    
     }
     
     private async Task EnsureValidToken()
@@ -121,36 +124,50 @@ public class DataCenterController : Controller
     }
 
     [HttpGet]
-    public IActionResult GetRacksData(string dataCenterType, bool forceRefresh = false)
+    public IActionResult GetRacksData(
+        string dataCenterType, bool forceRefresh = false)
     {
         try
         {
-            // If forced refresh is requested, delete the relevant cache file
+            // *** forceRefresh = מחק קאש וטען מאקסל מחדש ***
             if (forceRefresh)
             {
-                string cacheFilePath = Path.Combine(_cacheFolderPath, $"datacenter_{dataCenterType}_cache.json");
+                string cacheFilePath = Path.Combine(_cacheFolderPath,
+                    $"datacenter_{dataCenterType}_cache.json");
+
                 if (System.IO.File.Exists(cacheFilePath))
                 {
                     System.IO.File.Delete(cacheFilePath);
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[Cache] Force refresh: deleted cache for {dataCenterType}");
                 }
             }
-            
+
             var racksData = LoadRacksDataFromExcel(dataCenterType);
             return Ok(new { success = true, racksData });
         }
         catch (FileNotFoundException ex)
         {
-            return BadRequest(new { success = false, error = $"Excel file not found: {ex.Message}" });
+            return BadRequest(new { 
+                success = false, 
+                error = $"Excel file not found: {ex.Message}" 
+            });
         }
         catch (UnauthorizedAccessException ex)
         {
-            return BadRequest(new { success = false, error = $"Access denied to file: {ex.Message}" });
+            return BadRequest(new { 
+                success = false, 
+                error = $"Access denied to file: {ex.Message}" 
+            });
         }
         catch (Exception ex)
         {
-            // Log the full exception for debugging
-            System.Diagnostics.Debug.WriteLine($"Error in GetRacksData: {ex.ToString()}");
-            return BadRequest(new { success = false, error = $"Error loading data: {ex.Message}" });
+            System.Diagnostics.Debug.WriteLine(
+                $"[Cache] Error in GetRacksData: {ex}");
+            return BadRequest(new { 
+                success = false, 
+                error = $"Error loading data: {ex.Message}" 
+            });
         }
     }
 
@@ -179,28 +196,32 @@ public class DataCenterController : Controller
     {
         try
         {
-            // אם לא צוין סוג חדר שרתים ספציפי, נמחק את כל קבצי הקאש
             if (string.IsNullOrEmpty(dataCenterType))
             {
-                // מחיקת כל קבצי הקאש
                 if (Directory.Exists(_cacheFolderPath))
                 {
-                    foreach (var file in Directory.GetFiles(_cacheFolderPath, "datacenter_*_cache.json"))
+                    foreach (var file in Directory.GetFiles(
+                        _cacheFolderPath, "datacenter_*_cache.json"))
                     {
                         System.IO.File.Delete(file);
+                        System.Diagnostics.Debug.WriteLine(
+                            $"[Cache] Deleted: {file}");
                     }
                 }
             }
             else
             {
-                // מחיקת קובץ קאש ספציפי
-                string cacheFilePath = Path.Combine(_cacheFolderPath, $"datacenter_{dataCenterType}_cache.json");
+                string cacheFilePath = Path.Combine(_cacheFolderPath,
+                    $"datacenter_{dataCenterType}_cache.json");
+
                 if (System.IO.File.Exists(cacheFilePath))
                 {
                     System.IO.File.Delete(cacheFilePath);
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[Cache] Deleted cache for {dataCenterType}");
                 }
             }
-            
+
             return Ok(new { success = true, message = "Cache cleared successfully" });
         }
         catch (Exception ex)
@@ -373,60 +394,72 @@ public class DataCenterController : Controller
         }
     }
 
-    private Dictionary<string, List<object>> LoadRacksDataFromExcel(string dataCenterType)
+    private Dictionary<string, List<object>> LoadRacksDataFromExcel(
+    string dataCenterType)
     {
         try
         {
-            // בדיקה אם יש נתונים בקאש ואם הם עדיין תקפים
-            string cacheFilePath = Path.Combine(_cacheFolderPath, $"datacenter_{dataCenterType}_cache.json");
-            
+            string cacheFilePath = Path.Combine(_cacheFolderPath,
+                $"datacenter_{dataCenterType}_cache.json");
+
+            // *** אם קובץ הקאש קיים - תמיד תטען ממנו, ללא בדיקת תוקף ***
             if (System.IO.File.Exists(cacheFilePath))
             {
-                var fileInfo = new FileInfo(cacheFilePath);
-                if ((DateTime.Now - fileInfo.LastWriteTime) < _cacheExpiration)
+                try
                 {
-                    try
+                    string jsonData = System.IO.File.ReadAllText(cacheFilePath);
+                    var cachedData = JsonSerializer
+                        .Deserialize<Dictionary<string, List<object>>>(jsonData);
+
+                    if (cachedData != null)
                     {
-                        // קריאת נתונים מהקאש
-                        string jsonData = System.IO.File.ReadAllText(cacheFilePath);
-                        var cachedData = JsonSerializer.Deserialize<Dictionary<string, List<object>>>(jsonData);
-                        System.Diagnostics.Debug.WriteLine($"Loaded {dataCenterType} data from cache");
+                        System.Diagnostics.Debug.WriteLine(
+                            $"[Cache] Loaded {dataCenterType} from cache " +
+                            $"({cachedData.Count} racks)");
                         return cachedData;
                     }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"Error reading from cache: {ex.Message}");
-                        // אם יש שגיאה בקריאה מהקאש, נמשיך לקריאה מהאקסל
-                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[Cache] Error reading cache, " +
+                        $"will reload from Excel: {ex.Message}");
+                    // אם הקובץ פגום - נמשיך לטעינה מאקסל
                 }
             }
 
-            // אם אין קאש תקף, נקרא מהאקסל
-            System.Diagnostics.Debug.WriteLine($"Loading {dataCenterType} data from Excel");
+            // *** הקאש לא קיים או פגום - טען מאקסל ושמור ***
+            System.Diagnostics.Debug.WriteLine(
+                $"[Cache] No cache found for {dataCenterType}, " +
+                $"loading from Excel...");
+
             var racksData = LoadRacksDataFromExcelDirectly(dataCenterType);
-            
-            // שמירת הנתונים בקאש
+
+            // שמור לקאש
             try
             {
-                // וודא שתיקיית הקאש קיימת
                 Directory.CreateDirectory(_cacheFolderPath);
-                
-                // שמירת הנתונים כקובץ JSON
-                string jsonData = JsonSerializer.Serialize(racksData);
-                System.IO.File.WriteAllText(cacheFilePath, jsonData);
-                System.Diagnostics.Debug.WriteLine($"Saved {dataCenterType} data to cache");
+                string json = JsonSerializer.Serialize(racksData);
+                string tmp  = cacheFilePath + ".tmp";
+                System.IO.File.WriteAllText(tmp, json);
+                System.IO.File.Move(tmp, cacheFilePath, overwrite: true);
+
+                System.Diagnostics.Debug.WriteLine(
+                    $"[Cache] Saved {dataCenterType} to cache " +
+                    $"({racksData.Count} racks)");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error writing to cache: {ex.Message}");
-                // נמשיך גם אם השמירה לקאש נכשלה
+                System.Diagnostics.Debug.WriteLine(
+                    $"[Cache] Error writing cache: {ex.Message}");
             }
-            
+
             return racksData;
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error in LoadRacksDataFromExcel: {ex.ToString()}");
+            System.Diagnostics.Debug.WriteLine(
+                $"[Cache] Error in LoadRacksDataFromExcel: {ex}");
             throw;
         }
     }
@@ -1645,28 +1678,29 @@ public class DataCenterController : Controller
         }
     }
 
-    private void SaveRacksData(string dataCenterType, Dictionary<string, List<object>> racksData)
+    private void SaveRacksData(
+    string dataCenterType,
+    Dictionary<string, List<object>> racksData)
     {
         try
         {
-            // Clear cache for this data center
-            string cacheFilePath = Path.Combine(_cacheFolderPath, $"datacenter_{dataCenterType}_cache.json");
-            if (System.IO.File.Exists(cacheFilePath))
-            {
-                System.IO.File.Delete(cacheFilePath);
-            }
+            string cacheFilePath = Path.Combine(_cacheFolderPath,
+                $"datacenter_{dataCenterType}_cache.json");
 
-            // Save the updated data to cache
-            string jsonData = JsonSerializer.Serialize(racksData);
-            System.IO.File.WriteAllText(cacheFilePath, jsonData);
+            // *** כתיבה אטומית - שמור ישירות לקאש ***
+            string json = JsonSerializer.Serialize(racksData);
+            string tmp  = cacheFilePath + ".tmp";
+            System.IO.File.WriteAllText(tmp, json);
+            System.IO.File.Move(tmp, cacheFilePath, overwrite: true);
 
-            // TODO: Implement saving back to Excel file
-            // This is more complex and would require a separate implementation
-            // For now, we'll just update the cache and notify the user
+            System.Diagnostics.Debug.WriteLine(
+                $"[Cache] Saved {dataCenterType} data " +
+                $"({racksData.Count} racks)");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"Error saving racks data: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine(
+                $"[Cache] Error saving: {ex.Message}");
             throw;
         }
     }
@@ -2238,6 +2272,482 @@ public class DataCenterController : Controller
         }
     }
 
+    /// <summary>
+    /// קבלת רשימת ציודים לגריטה לפי אתר
+    /// </summary>
+    [HttpGet]
+    public IActionResult GetScrapItems(string dataCenterType)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(dataCenterType))
+                return BadRequest(new { success = false, 
+                    error = "חסר סוג חדר שרתים" });
+
+            string scrapFilePath = GetScrapFilePath(dataCenterType);
+
+            if (!System.IO.File.Exists(scrapFilePath))
+                return Ok(new { success = true, items = new List<ScrapItem>() });
+
+            string json = System.IO.File.ReadAllText(scrapFilePath);
+            var items   = JsonSerializer.Deserialize<List<ScrapItem>>(json)
+                        ?? new List<ScrapItem>();
+
+            return Ok(new { success = true, items });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { success = false, error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// הוספת ציוד לרשימת הגריטה (ללא מחיקה מהארון)
+    /// </summary>
+    [HttpPost]
+    public IActionResult AddToScrap([FromBody] AddToScrapRequest request)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(request.Equipment) ||
+                string.IsNullOrEmpty(request.DataCenterType))
+            {
+                return BadRequest(new { success = false, 
+                    error = "חסרים פרמטרים נדרשים" });
+            }
+
+            string scrapFilePath = GetScrapFilePath(request.DataCenterType);
+
+            // קריאת הרשימה הקיימת
+            var items = new List<ScrapItem>();
+            if (System.IO.File.Exists(scrapFilePath))
+            {
+                string existingJson = System.IO.File.ReadAllText(scrapFilePath);
+                items = JsonSerializer.Deserialize<List<ScrapItem>>(existingJson)
+                        ?? new List<ScrapItem>();
+            }
+
+            // הוספת הפריט החדש
+            items.Add(new ScrapItem
+            {
+                Equipment      = request.Equipment,
+                RackId         = request.RackId,
+                StartPosition  = request.StartPosition,
+                SizeUnits      = request.SizeUnits,
+                Type           = request.Type ?? "other",
+                DataCenterType = request.DataCenterType,
+                RemovedAt      = DateTime.UtcNow.ToString("o"),
+                RemovedBy      = request.RemovedBy ?? "Unknown",
+                Notes          = request.Notes ?? ""
+            });
+
+            // שמירה אטומית
+            WriteJsonAtomic(scrapFilePath, items);
+
+            return Ok(new { success = true, 
+                message = "הציוד נוסף לרשימת הגריטה" });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { success = false, error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// מחיקת ציוד מהארון + הוספה לגריטה בפעולה אחת
+    /// </summary>
+    [HttpPost]
+    public IActionResult RemoveEquipmentToScrap(
+        [FromBody] AddToScrapRequest request)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(request.Equipment)      ||
+                string.IsNullOrEmpty(request.RackId)         ||
+                string.IsNullOrEmpty(request.DataCenterType) ||
+                request.StartPosition <= 0)
+            {
+                return BadRequest(new { success = false, 
+                    error = "חסרים פרמטרים נדרשים" });
+            }
+
+            // 1. הוסף לגריטה
+            var addResult = AddToScrap(request) as OkObjectResult;
+            if (addResult == null)
+                return BadRequest(new { success = false, 
+                    error = "שגיאה בהוספה לגריטה" });
+
+            // 2. מחק מהארון
+            var racksData = LoadRacksDataFromExcel(request.DataCenterType);
+
+            if (!racksData.TryGetValue(request.RackId, out var rackData))
+                return NotFound(new { success = false, 
+                    error = $"ארון {request.RackId} לא נמצא" });
+
+            int indexToRemove = -1;
+            for (int i = 0; i < rackData.Count; i++)
+            {
+                int pos   = GetIntProperty(rackData[i], "startPosition");
+                string nm = GetStringProperty(rackData[i], "equipment");
+
+                if (pos == request.StartPosition &&
+                    string.Equals(nm, request.Equipment,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    indexToRemove = i;
+                    break;
+                }
+            }
+
+            if (indexToRemove < 0)
+                return NotFound(new { success = false, 
+                    error = "הציוד לא נמצא בארון" });
+
+            rackData.RemoveAt(indexToRemove);
+            SaveRacksData(request.DataCenterType, racksData);
+
+            return Ok(new { success = true,
+                message = "הציוד הועבר לגריטה בהצלחה" });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { success = false, error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// הסרת ציוד מרשימת הגריטה (לאחר שנשלח לגריטה בפועל)
+    /// </summary>
+    [HttpDelete]
+    public IActionResult RemoveFromScrap(
+        [FromBody] RemoveFromScrapRequest request)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(request.DataCenterType))
+                return BadRequest(new { success = false, 
+                    error = "חסר סוג חדר שרתים" });
+
+            string scrapFilePath = GetScrapFilePath(request.DataCenterType);
+
+            if (!System.IO.File.Exists(scrapFilePath))
+                return Ok(new { success = true, 
+                    message = "הפריט לא נמצא ברשימה" });
+
+            string json  = System.IO.File.ReadAllText(scrapFilePath);
+            var items    = JsonSerializer.Deserialize<List<ScrapItem>>(json)
+                        ?? new List<ScrapItem>();
+
+            // מחיקה לפי שילוב ייחודי
+            int removed = items.RemoveAll(i =>
+                string.Equals(i.Equipment, request.Equipment,
+                    StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(i.RackId, request.RackId,
+                    StringComparison.OrdinalIgnoreCase) &&
+                i.StartPosition == request.StartPosition &&
+                i.RemovedAt     == request.RemovedAt);
+
+            if (removed == 0)
+                return NotFound(new { success = false, 
+                    error = "הפריט לא נמצא ברשימת הגריטה" });
+
+            WriteJsonAtomic(scrapFilePath, items);
+
+            return Ok(new { success = true, 
+                message = "הפריט הוסר מרשימת הגריטה" });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { success = false, error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// קבלת מטריקות נוכחיות עם קאש בקובץ
+    /// אם הקאש עדכני (פחות מ-5 דקות) - מחזיר מהקאש
+    /// אחרת - מביא מה-API ומעדכן את הקאש
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> GetCurrentRackMetricsCached(
+        string rackId, 
+        string dataCenterType,
+        string side = "L")
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(rackId))
+                return BadRequest(new { success = false, error = "מזהה ארון חסר" });
+
+            side = side.ToUpper();
+            if (side != "L" && side != "R") side = "L";
+
+            string cacheFilePath = Path.Combine(
+                _metricsCacheFolderPath,
+                $"metrics_{dataCenterType}_{rackId}_{side}.json");
+
+            // *** נסה לטעון מקאש קובץ ***
+            if (System.IO.File.Exists(cacheFilePath))
+            {
+                try
+                {
+                    string cachedJson = System.IO.File.ReadAllText(cacheFilePath);
+                    var cached = JsonSerializer.Deserialize<MetricsCacheEntry>(cachedJson);
+
+                    if (cached != null)
+                    {
+                        var cacheAge = DateTime.UtcNow - cached.CachedAt;
+
+                        // קאש תקף אם פחות מ-6 דקות (רענון כל 5 דקות)
+                        if (cacheAge.TotalMinutes < 6)
+                        {
+                            System.Diagnostics.Debug.WriteLine(
+                                $"[MetricsCache] HIT: {rackId}-{side} " +
+                                $"(age: {cacheAge.TotalSeconds:F0}s)");
+
+                            return Ok(new
+                            {
+                                success        = cached.Success,
+                                rackId         = cached.RackId,
+                                currentPower   = cached.CurrentPower,
+                                currentTemperature = cached.CurrentTemperature,
+                                fromCache      = true,
+                                cachedAt       = cached.CachedAt,
+                                error          = cached.Success ? null : cached.Error
+                            });
+                        }
+
+                        System.Diagnostics.Debug.WriteLine(
+                            $"[MetricsCache] STALE: {rackId}-{side} " +
+                            $"(age: {cacheAge.TotalMinutes:F1}m) - refreshing");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[MetricsCache] Error reading cache for {rackId}-{side}: {ex.Message}");
+                    // המשך לטעינה מה-API
+                }
+            }
+
+            // *** קאש לא קיים / פג תוקף - טען מה-API ***
+            System.Diagnostics.Debug.WriteLine(
+                $"[MetricsCache] MISS: {rackId}-{side} - fetching from API");
+
+            var metrics = await GetRackMetricsFromHelixAPI(rackId, side, 5);
+
+            // *** שמור לקאש קובץ ***
+            try
+            {
+                var entry = new MetricsCacheEntry
+                {
+                    RackId             = rackId,
+                    Side               = side,
+                    DataCenterType     = dataCenterType,
+                    Success            = metrics.Success,
+                    CurrentPower       = metrics.CurrentPower,
+                    CurrentTemperature = metrics.CurrentTemperature,
+                    Error              = metrics.Error,
+                    CachedAt           = DateTime.UtcNow
+                };
+
+                string entryJson = JsonSerializer.Serialize(entry,
+                    new JsonSerializerOptions { WriteIndented = false });
+
+                string tmpPath = cacheFilePath + ".tmp";
+                System.IO.File.WriteAllText(tmpPath, entryJson);
+                System.IO.File.Move(tmpPath, cacheFilePath, overwrite: true);
+
+                System.Diagnostics.Debug.WriteLine(
+                    $"[MetricsCache] SAVED: {rackId}-{side} " +
+                    $"(power={metrics.CurrentPower}, temp={metrics.CurrentTemperature})");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[MetricsCache] Error saving cache for {rackId}-{side}: {ex.Message}");
+                // לא קריטי - ממשיכים
+            }
+
+            return Ok(new
+            {
+                success            = metrics.Success,
+                rackId             = metrics.RackId,
+                currentPower       = metrics.CurrentPower,
+                currentTemperature = metrics.CurrentTemperature,
+                fromCache          = false,
+                cachedAt           = DateTime.UtcNow,
+                error              = metrics.Success ? null : metrics.Error
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new
+            {
+                success = false,
+                error   = $"שגיאה בקבלת מטריקות: {ex.Message}"
+            });
+        }
+    }
+
+    /// <summary>
+    /// עדכון קאש מטריקות לכל הארונות ברקע
+    /// נקרא מה-dashboard לפני טעינת הנתונים
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> UpdateMetricsCache()
+    {
+        try
+        {
+            var allRacks = GetAllRacksForCache();
+            int updated  = 0;
+            int skipped  = 0;
+            int failed   = 0;
+
+            // עדכון מקבילי - עד 5 ארונות בו-זמנית
+            var semaphore = new System.Threading.SemaphoreSlim(5, 5);
+            var tasks     = new List<Task>();
+
+            foreach (var rack in allRacks)
+            {
+                foreach (var side in new[] { "L", "R" })
+                {
+                    var rackId         = rack.RackId;
+                    var dataCenterType = rack.DataCenterType;
+                    var sideLocal      = side;
+
+                    tasks.Add(Task.Run(async () =>
+                    {
+                        await semaphore.WaitAsync();
+                        try
+                        {
+                            string cacheFilePath = Path.Combine(
+                                _metricsCacheFolderPath,
+                                $"metrics_{dataCenterType}_{rackId}_{sideLocal}.json");
+
+                            // בדוק אם הקאש עדיין תקף
+                            if (System.IO.File.Exists(cacheFilePath))
+                            {
+                                try
+                                {
+                                    string existingJson =
+                                        System.IO.File.ReadAllText(cacheFilePath);
+                                    var existing =
+                                        JsonSerializer.Deserialize<MetricsCacheEntry>(
+                                            existingJson);
+
+                                    if (existing != null)
+                                    {
+                                        var age = DateTime.UtcNow - existing.CachedAt;
+                                        if (age.TotalMinutes < 4)
+                                        {
+                                            System.Threading.Interlocked.Increment(
+                                                ref skipped);
+                                            return; // קאש עדיין טרי
+                                        }
+                                    }
+                                }
+                                catch { /* המשך לעדכון */ }
+                            }
+
+                            // טען מה-API ושמור
+                            var metrics = await GetRackMetricsFromHelixAPI(
+                                rackId, sideLocal, 5);
+
+                            var entry = new MetricsCacheEntry
+                            {
+                                RackId             = rackId,
+                                Side               = sideLocal,
+                                DataCenterType     = dataCenterType,
+                                Success            = metrics.Success,
+                                CurrentPower       = metrics.CurrentPower,
+                                CurrentTemperature = metrics.CurrentTemperature,
+                                Error              = metrics.Error,
+                                CachedAt           = DateTime.UtcNow
+                            };
+
+                            string entryJson = JsonSerializer.Serialize(entry);
+                            string tmpPath   = cacheFilePath + ".tmp";
+                            System.IO.File.WriteAllText(tmpPath, entryJson);
+                            System.IO.File.Move(tmpPath, cacheFilePath,
+                                overwrite: true);
+
+                            System.Threading.Interlocked.Increment(ref updated);
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine(
+                                $"[MetricsCache] Failed {rackId}-{sideLocal}: " +
+                                $"{ex.Message}");
+                            System.Threading.Interlocked.Increment(ref failed);
+                        }
+                        finally
+                        {
+                            semaphore.Release();
+                        }
+                    }));
+                }
+            }
+
+            await Task.WhenAll(tasks);
+
+            System.Diagnostics.Debug.WriteLine(
+                $"[MetricsCache] UpdateAll: updated={updated}, " +
+                $"skipped={skipped}, failed={failed}");
+
+            return Ok(new
+            {
+                success = true,
+                updated,
+                skipped,
+                failed,
+                totalRacks = allRacks.Count
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { success = false, error = ex.Message });
+        }
+    }
+
+    // *** פונקציית עזר: קבלת כל הארונות לצורך עדכון קאש ***
+    private List<(string RackId, string DataCenterType)> GetAllRacksForCache()
+    {
+        var result = new List<(string RackId, string DataCenterType)>();
+
+        foreach (var dcType in new[] { "RG", "PT" })
+        {
+            try
+            {
+                var racksData = LoadRacksDataFromExcel(dcType);
+                foreach (var rackId in racksData.Keys)
+                {
+                    result.Add((rackId, dcType));
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[MetricsCache] Error loading racks for {dcType}: {ex.Message}");
+            }
+        }
+
+        return result;
+    }
+
+    // ===== פונקציות עזר פרטיות =====
+
+    private string GetScrapFilePath(string dataCenterType) =>
+        Path.Combine(_scrapFolderPath, $"scrap_{dataCenterType}.json");
+
+    private void WriteJsonAtomic<T>(string filePath, T data)
+    {
+        string json = JsonSerializer.Serialize(data,
+            new JsonSerializerOptions { WriteIndented = true });
+        string tmp  = filePath + ".tmp";
+        System.IO.File.WriteAllText(tmp, json);
+        System.IO.File.Move(tmp, filePath, overwrite: true);
+    }
+
     public class RackMetricsRequest
     {
         public string RackId { get; set; }
@@ -2325,5 +2835,52 @@ public class DataCenterController : Controller
         public int SizeUnits { get; set; }
         public string Equipment { get; set; }
         public string Type { get; set; }
+    }
+
+    public class ScrapItem
+    {
+        public string Equipment    { get; set; }
+        public string RackId       { get; set; }
+        public int    StartPosition { get; set; }
+        public int    SizeUnits    { get; set; }
+        public string Type         { get; set; }
+        public string DataCenterType { get; set; }
+        public string RemovedAt    { get; set; }  // ISO timestamp
+        public string RemovedBy    { get; set; }  // שם משתמש
+        public string Notes        { get; set; }  // הערות אופציונליות
+    }
+
+    public class AddToScrapRequest
+    {
+        public string Equipment      { get; set; }
+        public string RackId         { get; set; }
+        public int    StartPosition  { get; set; }
+        public int    SizeUnits      { get; set; }
+        public string Type           { get; set; }
+        public string DataCenterType { get; set; }
+        public string RemovedBy      { get; set; }
+        public string Notes          { get; set; }
+    }
+
+    public class RemoveFromScrapRequest
+    {
+        public string DataCenterType { get; set; }
+        public string Equipment      { get; set; }
+        public string RackId         { get; set; }
+        public int    StartPosition  { get; set; }
+        public string RemovedAt      { get; set; }
+    }
+    
+    // *** מחלקה לשמירת קאש מטריקות ***
+    public class MetricsCacheEntry
+    {
+        public string   RackId             { get; set; }
+        public string   Side               { get; set; }
+        public string   DataCenterType     { get; set; }
+        public bool     Success            { get; set; }
+        public double?  CurrentPower       { get; set; }
+        public double?  CurrentTemperature { get; set; }
+        public string   Error              { get; set; }
+        public DateTime CachedAt           { get; set; }
     }
 }

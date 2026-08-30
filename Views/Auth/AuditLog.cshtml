@@ -1,0 +1,861 @@
+@{
+    Layout = "~/Views/Shared/_AdminLayout.cshtml";
+    ViewData["Title"] = "לוג פעילות מערכת";
+    var logs       = ViewBag.Logs       as List<NocPortal.Services.AuditLogEntry>;
+    var eventTypes = ViewBag.EventTypes as string[];
+    var israelTz   = TimeZoneInfo.FindSystemTimeZoneById("Israel Standard Time");
+
+    int totalCount   = ViewBag.TotalCount    ?? 0;
+    int loginOk      = ViewBag.StatsLoginOk      ?? 0;
+    int loginFail    = ViewBag.StatsLoginFail     ?? 0;
+    int registers    = ViewBag.StatsRegisters     ?? 0;
+    int adminActions = ViewBag.StatsAdminActions  ?? 0;
+    int emailsSent   = ViewBag.StatsEmailsSent   ?? 0;
+    int emailsFailed = ViewBag.StatsEmailsFailed ?? 0;
+}
+
+@functions {
+    string GetEventLabel(string et) => et switch
+    {
+        "LOGIN"                => "כניסה",
+        "LOGIN_FAILED"         => "כניסה כושלת",
+        "LOGOUT"               => "יציאה",
+        "REGISTER"             => "הרשמה",
+        "USER_APPROVED"        => "אישור משתמש",
+        "USER_DELETED"         => "מחיקת משתמש",
+        "ROLE_CHANGED"         => "שינוי תפקיד",
+        "PERMISSIONS_CHANGED"  => "שינוי הרשאות",
+        "MESSAGE_CREATED"      => "יצירת הודעה",
+        "MESSAGE_EDITED"       => "עריכת הודעה",
+        "MESSAGE_DEACTIVATED"  => "ביטול הודעה",
+        "MESSAGE_ACKNOWLEDGED" => "אישור קריאת הודעה",
+        "EMAIL_SENT"         => "מייל נשלח",
+        "EMAIL_FAILED"       => "מייל נכשל",
+        "EMAIL_TEMP_PASS"    => "סיסמה זמנית",
+        "EMAIL_RESET"        => "איפוס סיסמה",
+        "EMAIL_APPROVED"     => "אישור חשבון",
+        "EMAIL_REJECTED"     => "דחיית חשבון",
+        "EMAIL_CHANGED_PASS" => "שינוי סיסמה",
+        "EMAIL_REGISTER"     => "הרשמה חדשה",
+        "EMAIL_CALENDAR"     => "הזמנת פגישה",
+        "EMAIL_VALIDATION"   => "תיקוף מערכת",
+        "PasswordChanged"  =>       "שינוי סיסמה",
+        "PasswordReset"  =>         "איפוס סיסמה",
+        "PasswordResetRequested"  =>   "בקשת איפוס סיסמה",
+        _                      => et
+    };
+
+    string GetEventIcon(string et) => et switch
+    {
+        "LOGIN"                => "fa-sign-in-alt",
+        "LOGIN_FAILED"         => "fa-ban",
+        "LOGOUT"               => "fa-sign-out-alt",
+        "REGISTER"             => "fa-user-plus",
+        "USER_APPROVED"        => "fa-user-check",
+        "USER_DELETED"         => "fa-user-times",
+        "ROLE_CHANGED"         => "fa-user-tag",
+        "PERMISSIONS_CHANGED"  => "fa-desktop",
+
+        "MESSAGE_CREATED"      => "fa-bell",
+        "MESSAGE_EDITED"       => "fa-pen",
+        "MESSAGE_DEACTIVATED"  => "fa-bell-slash",
+        "MESSAGE_ACKNOWLEDGED" => "fa-check-circle",
+
+        "PasswordChanged"         => "fa-key",
+        "PasswordReset"           => "fa-unlock-alt",
+        "PasswordResetRequested"  => "fa-question-circle",
+
+        "EMAIL_SENT"         => "fa-envelope-open-text",
+        "EMAIL_FAILED"       => "fa-envelope-open",
+        "EMAIL_TEMP_PASS"    => "fa-key",
+        "EMAIL_RESET"        => "fa-unlock-alt",
+        "EMAIL_APPROVED"     => "fa-envelope-circle-check",
+        "EMAIL_REJECTED"     => "fa-envelope-open",
+        "EMAIL_CHANGED_PASS" => "fa-lock",
+        "EMAIL_REGISTER"     => "fa-user-plus",
+        "EMAIL_CALENDAR"     => "fa-calendar-check",
+        "EMAIL_VALIDATION"   => "fa-shield",
+
+        _ => "fa-circle"
+    };
+}
+
+@* ── CSS ספציפי לדף ── *@
+@section Styles {
+    <link rel="stylesheet" href="https://cdn.menoramivt.co.il/public/fonts/fonts.css">
+    <link rel="stylesheet" href="/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="~/css/admin-panel.css">
+}
+
+@* ── Scripts ספציפיים לדף ── *@
+@section Scripts {
+    <script src="/lib/xlsx/exceljs.min.js"></script>
+    <script src="/lib/xlsx/FileSaver.min.js"></script>
+<script>
+const AuditLogExporter = {
+
+    async loadExcelJS() {
+        if (typeof ExcelJS === 'undefined') {
+            await new Promise((res, rej) => {
+                const script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/' +
+                             'exceljs/4.3.0/exceljs.min.js';
+                script.onload  = res;
+                script.onerror = () => rej(new Error('נכשלה טעינת ExcelJS'));
+                document.head.appendChild(script);
+            });
+        }
+        if (typeof saveAs === 'undefined') {
+            await new Promise((res, rej) => {
+                const script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/' +
+                             'FileSaver.js/2.0.5/FileSaver.min.js';
+                script.onload  = res;
+                script.onerror = () => rej(new Error('נכשלה טעינת FileSaver'));
+                document.head.appendChild(script);
+            });
+        }
+    },
+
+    parseDdMmYyyy(str) {
+        if (!str || str.length !== 10) return null;
+        const parts = str.split('/');
+        if (parts.length !== 3) return null;
+        const day   = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const year  = parseInt(parts[2], 10);
+        if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
+        if (day < 1 || day > 31)        return null;
+        if (month < 0 || month > 11)    return null;
+        if (year < 2000 || year > 2100) return null;
+        const d = new Date(year, month, day);
+        if (d.getDate() !== day || d.getMonth() !== month) return null;
+        return d;
+    },
+
+    toIso(d) {
+        return `${d.getFullYear()}-` +
+               `${String(d.getMonth() + 1).padStart(2, '0')}-` +
+               `${String(d.getDate()).padStart(2, '0')}`;
+    },
+
+    showExportDialog() {
+        const existing = document.getElementById('exportLogsDialog');
+        if (existing) existing.remove();
+
+        const today    = new Date();
+        const monthAgo = new Date();
+        monthAgo.setMonth(monthAgo.getMonth() - 1);
+
+        const fmt = (d) =>
+            `${String(d.getDate()).padStart(2,'0')}/` +
+            `${String(d.getMonth()+1).padStart(2,'0')}/` +
+            `${d.getFullYear()}`;
+
+        const dialog = document.createElement('div');
+        dialog.id = 'exportLogsDialog';
+        dialog.innerHTML = `
+            <div class="popup-overlay" id="exportLogsOverlay"></div>
+            <div class="popup-content export-dialog-content">
+                <div class="popup-header">
+                    <h3>
+                        <i class="fas fa-file-excel"></i>
+                        ייצוא לוגים לאקסל
+                    </h3>
+                    <button class="popup-close" id="exportLogsClose">✕</button>
+                </div>
+                <div class="popup-body">
+                    <p>בחר סוג ייצוא:</p>
+                    <div class="export-options">
+                        <button class="export-option-btn" id="exportLogsAll">
+                            <i class="fas fa-table"></i>
+                            <span class="export-option-title">ייצוא הכל</span>
+                            <span class="export-option-desc">כל הלוגים במערכת</span>
+                        </button>
+                        <button class="export-option-btn" id="exportLogsRange">
+                            <i class="fas fa-calendar-alt"></i>
+                            <span class="export-option-title">ייצוא לפי טווח תאריכים</span>
+                            <span class="export-option-desc">בחר תאריך התחלה וסיום</span>
+                        </button>
+                    </div>
+
+                    <div id="logsDateRangeSection" style="display:none; margin-top:16px;">
+                        <div class="date-range-container">
+                            <div class="date-range-field">
+                                <label for="logsFromDate">מתאריך:</label>
+                                <div class="date-input-wrapper">
+                                    <input type="text"
+                                           id="logsFromDate"
+                                           class="date-text-input"
+                                           value="${fmt(monthAgo)}"
+                                           placeholder="dd/mm/yyyy"
+                                           maxlength="10" />
+                                    <i class="fas fa-calendar-alt date-input-icon"></i>
+                                </div>
+                            </div>
+                            <div class="date-range-field">
+                                <label for="logsToDate">עד תאריך:</label>
+                                <div class="date-input-wrapper">
+                                    <input type="text"
+                                           id="logsToDate"
+                                           class="date-text-input"
+                                           value="${fmt(today)}"
+                                           placeholder="dd/mm/yyyy"
+                                           maxlength="10" />
+                                    <i class="fas fa-calendar-alt date-input-icon"></i>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="text-align:center; margin-top:12px;">
+                            <button class="export-confirm-btn" id="exportLogsRangeConfirm">
+                                <i class="fas fa-file-excel"></i>
+                                ייצא טווח נבחר
+                            </button>
+                        </div>
+                        <div id="exportLogsRangeError"
+                             style="color:#dc2626; text-align:center;
+                                    margin-top:8px; display:none; font-size:13px;">
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+
+        document.body.appendChild(dialog);
+
+        const close = () => dialog.remove();
+        document.getElementById('exportLogsClose')
+                .addEventListener('click', close);
+        document.getElementById('exportLogsOverlay')
+                .addEventListener('click', close);
+        document.addEventListener('keydown',
+            (e) => { if (e.key === 'Escape') close(); },
+            { once: true });
+
+        document.getElementById('exportLogsAll')
+                .addEventListener('click', () => {
+            close();
+            this.buildAndDownloadExcel('all', {});
+        });
+
+        document.getElementById('exportLogsRange')
+                .addEventListener('click', () => {
+            document.querySelectorAll(
+                '#exportLogsDialog .export-option-btn')
+                .forEach(b => b.classList.remove('selected'));
+            document.getElementById('exportLogsRange')
+                    .classList.add('selected');
+            document.getElementById('logsDateRangeSection')
+                    .style.display = 'block';
+        });
+
+        document.getElementById('exportLogsRangeConfirm')
+                .addEventListener('click', () => {
+            const fromVal = document.getElementById('logsFromDate').value;
+            const toVal   = document.getElementById('logsToDate').value;
+            const errEl   = document.getElementById('exportLogsRangeError');
+
+            if (!fromVal || !toVal) {
+                errEl.textContent   = 'יש לבחור תאריך התחלה וסיום';
+                errEl.style.display = 'block';
+                return;
+            }
+            const fromDate = this.parseDdMmYyyy(fromVal);
+            const toDate   = this.parseDdMmYyyy(toVal);
+
+            if (!fromDate) {
+                errEl.textContent   = 'תאריך ההתחלה אינו תקין (dd/mm/yyyy)';
+                errEl.style.display = 'block';
+                return;
+            }
+            if (!toDate) {
+                errEl.textContent   = 'תאריך הסיום אינו תקין (dd/mm/yyyy)';
+                errEl.style.display = 'block';
+                return;
+            }
+            if (fromDate > toDate) {
+                errEl.textContent   = 'תאריך ההתחלה חייב להיות לפני תאריך הסיום';
+                errEl.style.display = 'block';
+                return;
+            }
+
+            errEl.style.display = 'none';
+            close();
+            this.buildAndDownloadExcel('range', {
+                from:        this.toIso(fromDate),
+                to:          this.toIso(toDate),
+                fromDisplay: fromVal,
+                toDisplay:   toVal
+            });
+        });
+    },
+
+    async buildAndDownloadExcel(exportType, options) {
+        try {
+            await this.loadExcelJS();
+
+            let params = new URLSearchParams({ pageSize: 9999, page: 1 });
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('filterType'))
+                params.set('filterType', urlParams.get('filterType'));
+            if (urlParams.get('filterUsername'))
+                params.set('filterUsername', urlParams.get('filterUsername'));
+
+            const res  = await fetch(`/Auth/GetAuditLogs?${params}`);
+            const data = await res.json();
+
+            if (!data.success) {
+                alert('שגיאה בשליפת לוגים: ' + data.message);
+                return;
+            }
+
+            let logsToExport = data.logs || [];
+            let sheetTitle   = '';
+            let fileName     = '';
+
+            if (exportType === 'range') {
+                const fromD = new Date(options.from);
+                const toD   = new Date(options.to);
+                toD.setDate(toD.getDate() + 1);
+
+                logsToExport = logsToExport.filter(log => {
+                    const d       = new Date(log.timestamp);
+                    const dayOnly = new Date(
+                        d.getFullYear(), d.getMonth(), d.getDate());
+                    return dayOnly >= fromD && dayOnly < toD;
+                });
+
+                if (logsToExport.length === 0) {
+                    alert('לא נמצאו לוגים בטווח התאריכים שנבחר');
+                    return;
+                }
+
+                sheetTitle = `לוגים ${options.fromDisplay} - ${options.toDisplay}`;
+                fileName   = `AuditLogs_${options.from}_to_${options.to}.xlsx`;
+            } else {
+                sheetTitle = 'כל הלוגים';
+                fileName   = `AuditLogs_All_` +
+                             `${new Date().toISOString().slice(0,10)}.xlsx`;
+            }
+
+            logsToExport.sort((a, b) =>
+                new Date(b.timestamp) - new Date(a.timestamp));
+
+            const C = {
+                headerBg:     '320F5B',
+                headerFont:   'FFFFFF',
+                subHeaderBg:  '667eea',
+                subHeaderFont:'FFFFFF',
+                altRowBg:     'F0F4FF',
+                borderColor:  'D0D5DD',
+                successGreen: '1D6F42',
+                failRed:      'DC2626',
+            };
+
+            const thinBorder = () => ({
+                top:    { style:'thin', color:{ argb:'FF'+C.borderColor } },
+                bottom: { style:'thin', color:{ argb:'FF'+C.borderColor } },
+                left:   { style:'thin', color:{ argb:'FF'+C.borderColor } },
+                right:  { style:'thin', color:{ argb:'FF'+C.borderColor } },
+            });
+
+            const applyStyle = (cell, {
+                bgColor   = null,
+                fontColor = '000000',
+                bold      = false,
+                hAlign    = 'center',
+                fontSize  = 11,
+                wrapText  = false,
+            } = {}) => {
+                cell.font = {
+                    name:  'Arial',
+                    size:  fontSize,
+                    bold,
+                    color: { argb: 'FF' + fontColor },
+                };
+                cell.alignment = {
+                    horizontal:   hAlign,
+                    vertical:     'middle',
+                    wrapText,
+                    readingOrder: 'rightToLeft',
+                };
+                cell.border = thinBorder();
+                if (bgColor) {
+                    cell.fill = {
+                        type:    'pattern',
+                        pattern: 'solid',
+                        fgColor: { argb: 'FF' + bgColor },
+                    };
+                }
+            };
+
+            const wb = new ExcelJS.Workbook();
+            wb.creator  = 'NOC Portal';
+            wb.created  = new Date();
+            wb.modified = new Date();
+
+            const wsName = sheetTitle
+                .replace(/[*?:\\/\[\]]/g, '-')
+                .substring(0, 31);
+
+            const ws = wb.addWorksheet(wsName, {
+                views:      [{ rightToLeft: true, state: 'frozen', ySplit: 2 }],
+                properties: { defaultRowHeight: 18 },
+            });
+
+            ws.mergeCells('A1:G1');
+            const titleCell = ws.getCell('A1');
+            titleCell.value = sheetTitle;
+            applyStyle(titleCell, {
+                bgColor:   C.headerBg,
+                fontColor: C.headerFont,
+                bold:      true,
+                hAlign:    'center',
+                fontSize:  14,
+            });
+            ws.getRow(1).height = 30;
+
+            const headers   = [
+                'תאריך ושעה', 'סוג אירוע', 'משתמש',
+                'בוצע על ידי', 'כתובת IP', 'פרטים', 'סטטוס'
+            ];
+            const colWidths = [20, 20, 20, 20, 18, 40, 12];
+
+            headers.forEach((h, i) => {
+                const cell = ws.getCell(2, i + 1);
+                cell.value = h;
+                applyStyle(cell, {
+                    bgColor:   C.subHeaderBg,
+                    fontColor: C.subHeaderFont,
+                    bold:      true,
+                    hAlign:    'center',
+                    fontSize:  11,
+                });
+                ws.getColumn(i + 1).width = colWidths[i];
+            });
+            ws.getRow(2).height = 22;
+
+            const getEventLabel = (et) => ({
+                'LOGIN':               'כניסה',
+                'LOGIN_FAILED':        'כניסה כושלת',
+                'LOGOUT':              'יציאה',
+                'REGISTER':            'הרשמה',
+                'USER_APPROVED':       'אישור משתמש',
+                'USER_DELETED':        'מחיקת משתמש',
+                'ROLE_CHANGED':        'שינוי תפקיד',
+                'PERMISSIONS_CHANGED': 'שינוי הרשאות',
+
+                'MESSAGE_CREATED':      'יצירת הודעה',
+                'MESSAGE_EDITED':       'עריכת הודעה',
+                'MESSAGE_DEACTIVATED':  'ביטול הודעה',
+                'MESSAGE_ACKNOWLEDGED': 'אישור קריאת הודעה',
+
+                'PasswordChanged':          'שינוי סיסמה',
+                'PasswordReset':            'איפוס סיסמה',
+                'PasswordResetRequested':   'בקשת איפוס סיסמה',
+
+                'EMAIL_SENT':         'מייל נשלח',
+                'EMAIL_FAILED':       'שליחת מייל נכשלה',
+                'EMAIL_TEMP_PASS':    'סיסמה זמנית',
+                'EMAIL_RESET':        'איפוס סיסמה',
+                'EMAIL_APPROVED':     'אישור חשבון',
+                'EMAIL_REJECTED':     'דחיית חשבון',
+                'EMAIL_CHANGED_PASS': 'שינוי סיסמה',
+                'EMAIL_REGISTER':     'הרשמה חדשה',
+                'EMAIL_CALENDAR':     'הזמנת פגישה',
+                'EMAIL_VALIDATION':   'תיקוף מערכת',
+            }[et] || et);
+
+            let excelRow = 3;
+            let isAlt    = false;
+
+            logsToExport.forEach(log => {
+                const ts = new Date(log.timestamp);
+                const formattedTime = ts.toLocaleString('he-IL', {
+                    timeZone: 'Asia/Jerusalem',
+                    day:      '2-digit',
+                    month:    '2-digit',
+                    year:     'numeric',
+                    hour:     '2-digit',
+                    minute:   '2-digit',
+                    second:   '2-digit',
+                    hour12:   false,
+                });
+
+                const rowBg  = isAlt ? C.altRowBg : null;
+                const rowData = [
+                    formattedTime,
+                    getEventLabel(log.eventType || ''),
+                    log.username    || '',
+                    log.performedBy || '',
+                    log.ipAddress   || '',
+                    log.details     || '',
+                    log.success ? 'הצלחה' : 'כישלון',
+                ];
+
+                rowData.forEach((val, colIdx) => {
+                    const cell = ws.getCell(excelRow, colIdx + 1);
+                    cell.value = val;
+                    applyStyle(cell, {
+                        bgColor:  rowBg,
+                        hAlign:   colIdx === 5 ? 'right' : 'center',
+                        wrapText: colIdx === 5,
+                        fontSize: 10,
+                    });
+
+                    if (colIdx === 6) {
+                        cell.font = {
+                            name:  'Arial',
+                            size:  10,
+                            bold:  true,
+                            color: {
+                                argb: log.success
+                                    ? 'FF' + C.successGreen
+                                    : 'FF' + C.failRed
+                            },
+                        };
+                    }
+                });
+
+                ws.getRow(excelRow).height = 17;
+                isAlt = !isAlt;
+                excelRow++;
+            });
+
+            const buffer = await wb.xlsx.writeBuffer();
+            const blob   = new Blob([buffer], {
+                type: 'application/vnd.openxmlformats-officedocument' +
+                      '.spreadsheetml.sheet'
+            });
+            saveAs(blob, fileName);
+
+        } catch (error) {
+            console.error('שגיאה בייצוא לוגים:', error);
+            alert('שגיאה בייצוא לאקסל: ' + error.message);
+        }
+    },
+};
+
+document.getElementById('exportLogsBtn')
+        ?.addEventListener('click',
+            () => AuditLogExporter.showExportDialog());
+</script>
+}
+
+@* ══ תוכן הדף ══ *@
+<div class="admin-main-content admin-content">
+
+    @* ── Stats Bar ── *@
+    <div class="stats-bar">
+        <div class="stat-card">
+            <div class="stat-icon blue">
+                <i class="fas fa-database"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-value">@totalCount</span>
+                <span class="stat-label">סה"כ רשומות</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon green">
+                <i class="fas fa-sign-in-alt"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-value">@loginOk</span>
+                <span class="stat-label">כניסות מוצלחות</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon red">
+                <i class="fas fa-ban"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-value">@loginFail</span>
+                <span class="stat-label">כניסות כושלות</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon orange">
+                <i class="fas fa-user-plus"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-value">@registers</span>
+                <span class="stat-label">הרשמות חדשות</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon purple">
+                <i class="fas fa-shield-alt"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-value">@adminActions</span>
+                <span class="stat-label">פעולות ניהול</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon teal">
+                <i class="fas fa-envelope"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-value">@emailsSent</span>
+                <span class="stat-label">מיילים נשלחו</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon red">
+                <i class="fas fa-envelope-open"></i>
+            </div>
+            <div class="stat-info">
+                <span class="stat-value">@emailsFailed</span>
+                <span class="stat-label">מיילים נכשלו</span>
+            </div>
+        </div>
+    </div>
+
+        @* ── Filter Card ── *@
+    <div class="section-card mb-28">
+        <div class="section-card-header">
+            <h2>
+                <i class="fas fa-filter" style="color:#4a9eff"></i>
+                סינון רשומות
+            </h2>
+            @if (!string.IsNullOrEmpty(ViewBag.FilterType as string)
+              || !string.IsNullOrEmpty(ViewBag.FilterUsername as string))
+            {
+                <a href="/Auth/AuditLog" class="btn btn-secondary btn-sm">
+                    <i class="fas fa-times"></i> נקה סינון
+                </a>
+            }
+        </div>
+
+        <div class="audit-filter-body">
+            <form method="get" class="audit-filter-form">
+
+                @* סוג אירוע *@
+                <div class="audit-filter-group">
+                    <label class="audit-filter-label">
+                        <i class="fas fa-tag"></i> סוג אירוע
+                    </label>
+                    <select name="filterType" class="audit-select">
+                        <option value="">הכל</option>
+                        @foreach (var et in eventTypes ?? Array.Empty<string>())
+                        {
+                            <option value="@et"
+                                    selected="@((ViewBag.FilterType as string) == et)">
+                                @GetEventLabel(et)
+                            </option>
+                        }
+                    </select>
+                </div>
+
+                @* שם משתמש *@
+                <div class="audit-filter-group">
+                    <label class="audit-filter-label">
+                        <i class="fas fa-user"></i> שם משתמש
+                    </label>
+                    <div class="audit-search-input-wrap">
+                        <i class="fas fa-search audit-search-icon"></i>
+                        <input type="text"
+                               name="filterUsername"
+                               class="audit-input"
+                               value="@ViewBag.FilterUsername"
+                               placeholder="חפש לפי שם משתמש..." />
+                    </div>
+                </div>
+
+                @* כפתורים *@
+                <div class="audit-filter-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search"></i> חפש
+                    </button>
+                    <a href="/Auth/AuditLog" class="btn btn-secondary">
+                        <i class="fas fa-redo"></i> אפס
+                    </a>
+                </div>
+
+            </form>
+
+            @* Quick Chips *@
+            <div class="audit-chips">
+                <a href="/Auth/AuditLog"
+                   class="audit-chip @(string.IsNullOrEmpty(
+                       ViewBag.FilterType as string) ? "active" : "")">
+                    הכל
+                </a>
+                @foreach (var et in eventTypes ?? Array.Empty<string>())
+                {
+                    <a href="/Auth/AuditLog?filterType=@et"
+                       class="audit-chip audit-chip-@et.ToLower().Replace("_","-")
+                              @((ViewBag.FilterType as string) == et ? "active" : "")">
+                        <i class="fas @GetEventIcon(et)"></i>
+                        @GetEventLabel(et)
+                    </a>
+                }
+            </div>
+        </div>
+    </div>
+
+    @* ── Log Table ── *@
+    <div class="section-card">
+        <div class="section-card-header">
+            <h2>
+                <i class="fas fa-list-alt" style="color:#b39ddb"></i>
+                רשומות פעילות
+                <span class="badge badge-purple">@totalCount</span>
+            </h2>
+            <div style="display:flex; gap:10px; align-items:center;">
+                <span style="font-size:0.82rem; color:rgba(255,255,255,0.35)">
+                    <i class="fas fa-sort-amount-down"></i>
+                    ממוין מהחדש לישן
+                </span>
+                <button id="exportLogsBtn" class="btn btn-primary btn-sm">
+                    <i class="fas fa-file-excel"></i>
+                    ייצוא לאקסל
+                </button>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <table class="users-table audit-table">
+                <thead>
+                    <tr>
+                        <th style="width:150px">
+                            <i class="fas fa-clock"></i> תאריך ושעה
+                        </th>
+                        <th style="width:160px">סוג אירוע</th>
+                        <th>משתמש</th>
+                        <th>בוצע על ידי</th>
+                        <th style="width:130px">
+                            <i class="fas fa-network-wired"></i> כתובת IP
+                        </th>
+                        <th>פרטים</th>
+                        <th style="width:70px; text-align:center">סטטוס</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (logs == null || !logs.Any())
+                    {
+                        <tr>
+                            <td colspan="7">
+                                <div class="empty-state">
+                                    <i class="fas fa-clipboard"></i>
+                                    <p>אין רשומות להצגה</p>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var log in logs)
+                        {
+                            var localTime = TimeZoneInfo
+                                .ConvertTimeFromUtc(log.Timestamp, israelTz);
+                            var rowClass  = log.Success ? "" : "audit-row-fail";
+
+                            <tr class="@rowClass">
+
+                                @* תאריך *@
+                                <td class="audit-time-cell">
+                                    <div class="audit-date">
+                                        @localTime.ToString("dd/MM/yyyy")
+                                    </div>
+                                    <div class="audit-time">
+                                        @localTime.ToString("HH:mm:ss")
+                                    </div>
+                                </td>
+
+                                @* סוג אירוע *@
+                                <td>
+                                    <span class="audit-event-badge
+                                                 audit-event-@log.EventType
+                                                    .ToLower().Replace("_","-")">
+                                        <i class="fas @GetEventIcon(log.EventType)"></i>
+                                        @GetEventLabel(log.EventType)
+                                    </span>
+                                </td>
+
+                                @* משתמש *@
+                                <td>
+                                    <div class="user-cell">
+                                        <div class="user-avatar avatar-default"
+                                             style="width:28px;height:28px;
+                                                    font-size:0.75rem">
+                                            @(log.Username.Length > 0
+                                                ? log.Username[0].ToString().ToUpper()
+                                                : "?")
+                                        </div>
+                                        <span class="audit-username">
+                                            @log.Username
+                                        </span>
+                                    </div>
+                                </td>
+
+                                @* בוצע על ידי *@
+                                <td>
+                                    @if (!string.IsNullOrEmpty(log.PerformedBy))
+                                    {
+                                        <span class="audit-performed-by">
+                                            <i class="fas fa-user-shield"></i>
+                                            @log.PerformedBy
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color:rgba(255,255,255,0.2)">—</span>
+                                    }
+                                </td>
+
+                                @* IP *@
+                                <td>
+                                    <code class="audit-ip">@log.IpAddress</code>
+                                </td>
+
+                                @* פרטים *@
+                                <td class="audit-details">
+                                    @log.Details
+                                </td>
+
+                                @* סטטוס *@
+                                <td style="text-align:center">
+                                    @if (log.Success)
+                                    {
+                                        <span class="audit-status-ok" title="הצלחה">
+                                            <i class="fas fa-check-circle"></i>
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="audit-status-fail" title="כישלון">
+                                            <i class="fas fa-times-circle"></i>
+                                        </span>
+                                    }
+                                </td>
+
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @* ── Pagination ── *@
+        @if ((int)(ViewBag.TotalPages ?? 0) > 1)
+        {
+            <div class="audit-pagination">
+                <span class="audit-page-info">
+                    עמוד @ViewBag.Page מתוך @ViewBag.TotalPages
+                </span>
+                <div class="audit-page-btns">
+                    @for (int i = 1; i <= (int)ViewBag.TotalPages; i++)
+                    {
+                        <a class="audit-page-btn @(i == (int)ViewBag.Page ? "active" : "")"
+                           href="?page=@i&filterType=@ViewBag.FilterType
+                                 &filterUsername=@ViewBag.FilterUsername">
+                            @i
+                        </a>
+                    }
+                </div>
+            </div>
+        }
+
+    </div>
+</div>

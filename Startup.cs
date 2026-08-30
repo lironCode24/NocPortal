@@ -58,8 +58,12 @@ namespace MyWebApp
                     policy.RequireRole("NOC", "DASHBOARD", "Admin"));
             });
 
-            // ── UserService ──────────────────────────────────────────
+            // ── App services ────────────────────────────────────────
             services.AddSingleton<UserService>();
+            services.AddSingleton<AuditLogService>();
+            services.AddSingleton<EmailService>();
+            services.AddSingleton<PasswordResetService>();
+            services.AddSingleton<SecretsService>();
         }
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)

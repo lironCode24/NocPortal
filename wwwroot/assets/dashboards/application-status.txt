@@ -1,0 +1,2238 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 164260,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "bmchelix-ade-datasource",
+        "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "links": [
+            {
+              "title": "Branches",
+              "url": "https://menora-itom.onbmc.com/dashboards/d/shkbzkr2/network-hub-view"
+            }
+          ],
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value (lastNotNull)"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "from": 0,
+                      "result": {
+                        "color": "red",
+                        "index": 0,
+                        "text": "Critical"
+                      },
+                      "to": 9.9e-12
+                    },
+                    "type": "range"
+                  },
+                  {
+                    "options": {
+                      "from": 9.9e-12,
+                      "result": {
+                        "index": 1,
+                        "text": "UP"
+                      },
+                      "to": 100000
+                    },
+                    "type": "range"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 7,
+        "x": 0,
+        "y": 0
+      },
+      "id": 59,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "limit": 5000,
+          "values": true
+        },
+        "showPercentChange": false,
+        "text": {
+          "valueSize": 10
+        },
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "refId": "A",
+          "sourceQuery": {
+            "expr": "label_replace(\n  label_replace(\n    label_replace(\n      {__name__=\"ICMPLatency\", entityId=~\"(?i)Entuity:.*(Arad|B7|Haifa_Bzq_Online|Moked|Haifa_HQ|brak|Jerusalem|Call|Talpiot|bab|Rishon|Sapiens|hativa|RMG-|DR-|PT-|VPLS_PT|FortiGate|PA-|LanFW|Router|HPE|F5|internal|Campus|SW-Internet|WLC).*\"},\n      \"IP\", \"$1\", \"entityId\", \"Entuity:([^:]+):.*\"\n    ),\n    \"Hostname\", \"$1\", \"entityId\", \"Entuity:[^:]+:([^:]+):.*\"\n  ),\n  \"SN\", \"$1\", \"entityId\", \"Entuity:[^:]+:[^:]+:[^:]+:([^:]+):.*\"\n)",
+            "format": "table",
+            "instant": false,
+            "interval": "",
+            "legendFormat": "icmp",
+            "source": "Monitor"
+          },
+          "sourceType": "metric"
+        }
+      ],
+      "title": "All Network Devices",
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": [
+                "Time",
+                "Hostname",
+                "hostname",
+                "Value"
+              ]
+            }
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "Hostname": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "Time": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "Value": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "hostname": {
+                "aggregations": []
+              }
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "default": true,
+        "type": "bmchelix-ade-datasource",
+        "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+      },
+      "description": "מנהל מערכת - רן שלום 050-8818766",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "fieldMinMax": false,
+          "links": [
+            {
+              "title": "NEXT",
+              "url": "https://menora-itom.onbmc.com/dashboards/d/afean9m1c94owf/next-prod?orgId=976648405"
+            }
+          ],
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "Status UP"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "Status Critical"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 3,
+        "x": 7,
+        "y": 0
+      },
+      "id": 47,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "/^Value \\(lastNotNull\\)$/",
+          "limit": 50,
+          "values": true
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "bmchelix-ade-datasource",
+            "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+          },
+          "refId": "A",
+          "sourceQuery": {
+            "expr": "Availability{hostname=~\"(?i).*(HFWBLE|elem|dqfnxt).*\",entityTypeId=\"PPM_Device\"}",
+            "format": "table",
+            "instant": false,
+            "interval": "",
+            "legendFormat": "",
+            "source": "Monitor"
+          },
+          "sourceType": "metric"
+        }
+      ],
+      "title": "NEXT",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "VictoriaMetrics_AccountID": true,
+              "__name__": true,
+              "deviceIPAddress": true,
+              "deviceId": true,
+              "entityId": true,
+              "entityName": true,
+              "entityTypeId": true,
+              "isblackout": true,
+              "source": true
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "Value": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "hostname": {
+                "aggregations": [],
+                "operation": "groupby"
+              }
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "default": true,
+        "type": "bmchelix-ade-datasource",
+        "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+      },
+      "description": "מנהל מערכת - יפעת הר נוף 054-7107552",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "fieldMinMax": false,
+          "links": [
+            {
+              "title": "Siebel",
+              "url": "https://menora-itom.onbmc.com/dashboards/d/dfewkq8v2248wa/niud-prod?orgId=976648405"
+            }
+          ],
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "Status UP"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "Status Critical"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 3,
+        "x": 10,
+        "y": 0
+      },
+      "id": 48,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "/^Value \\(lastNotNull\\)$/",
+          "limit": 20,
+          "values": true
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "bmchelix-ade-datasource",
+            "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+          },
+          "refId": "A",
+          "sourceQuery": {
+            "expr": "Availability{hostname=~\"(?i)(bawmgrpd|bawonln|bawbtch|bawcntpd|appgnr0|bpmtom-p1|JavaBatch01|Dom21-P1APW1|Dom21A-P1APW1).*\", entityTypeId=\"PPM_Device\"}",
+            "format": "table",
+            "instant": false,
+            "interval": "",
+            "legendFormat": "Availability",
+            "source": "Monitor"
+          },
+          "sourceType": "metric"
+        }
+      ],
+      "title": "NIYUD",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "VictoriaMetrics_AccountID": true,
+              "__name__": true,
+              "deviceIPAddress": true,
+              "deviceId": true,
+              "entityId": true,
+              "entityName": true,
+              "entityTypeId": true,
+              "isblackout": true,
+              "source": true
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "Value": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "hostname": {
+                "aggregations": [],
+                "operation": "groupby"
+              }
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "default": true,
+        "type": "bmchelix-ade-datasource",
+        "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+      },
+      "description": "מנהל מערכת - משה סגל 054-4850062",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "fieldMinMax": false,
+          "links": [
+            {
+              "title": "GO ANYWHERE",
+              "url": "https://menora-itom.onbmc.com/dashboards/d/cff48mjzar3eob/go-anywhere?orgId=976648405&from=now-30m&to=now&timezone=Asia%2FJerusalem&var-Filters="
+            }
+          ],
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "Status UP"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "Status Critical"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 3,
+        "x": 13,
+        "y": 0
+      },
+      "id": 50,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "/^Value \\(lastNotNull\\)$/",
+          "limit": 20,
+          "values": true
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "bmchelix-ade-datasource",
+            "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+          },
+          "refId": "A",
+          "sourceQuery": {
+            "expr": "Availability{hostname=~\"(?i).*goany.*\",entityTypeId=\"PPM_Device\"}",
+            "format": "table",
+            "instant": false,
+            "interval": "",
+            "legendFormat": "Availability",
+            "source": "Monitor"
+          },
+          "sourceType": "metric"
+        }
+      ],
+      "title": "GO ANYWHERE",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "VictoriaMetrics_AccountID": true,
+              "__name__": true,
+              "deviceIPAddress": true,
+              "deviceId": true,
+              "entityId": true,
+              "entityName": true,
+              "entityTypeId": true,
+              "isblackout": true,
+              "source": true
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "Value": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "hostname": {
+                "aggregations": [],
+                "operation": "groupby"
+              }
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "default": true,
+        "type": "bmchelix-ade-datasource",
+        "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "fieldMinMax": false,
+          "links": [
+            {
+              "title": "Control M",
+              "url": "https://menora-itom.onbmc.com/dashboards/d/cfcwrz838odtsc/control-m?orgId=976648405"
+            }
+          ],
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "Status UP"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "Status Critical"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 3,
+        "x": 16,
+        "y": 0
+      },
+      "id": 51,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "/^Value \\(lastNotNull\\)$/",
+          "limit": 20,
+          "values": true
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "bmchelix-ade-datasource",
+            "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+          },
+          "refId": "A",
+          "sourceQuery": {
+            "expr": "Availability{hostname=~\"(?i).*goany.*\",entityTypeId=\"PPM_Device\"}",
+            "format": "table",
+            "instant": false,
+            "interval": "",
+            "legendFormat": "Availability",
+            "source": "Monitor"
+          },
+          "sourceType": "metric"
+        }
+      ],
+      "title": "Control M",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "VictoriaMetrics_AccountID": true,
+              "__name__": true,
+              "deviceIPAddress": true,
+              "deviceId": true,
+              "entityId": true,
+              "entityName": true,
+              "entityTypeId": true,
+              "isblackout": true,
+              "source": true
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "Value": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "hostname": {
+                "aggregations": [],
+                "operation": "groupby"
+              }
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "default": true,
+        "type": "bmchelix-ade-datasource",
+        "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+      },
+      "description": "מנהל מערכת - שרון ירמיה 050-6014503",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "fieldMinMax": false,
+          "links": [
+            {
+              "title": "DATA360",
+              "url": "https://menora-itom.onbmc.com/dashboards/d/bfdca76klvhmod/data360?orgId=976648405"
+            }
+          ],
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "Status UP"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "Status Critical"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 3,
+        "x": 19,
+        "y": 0
+      },
+      "id": 49,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "/^Value \\(lastNotNull\\)$/",
+          "limit": 50,
+          "values": true
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "bmchelix-ade-datasource",
+            "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+          },
+          "refId": "A",
+          "sourceQuery": {
+            "expr": "Availability{hostname=~\"(?i)(aceload-p1apw1|anaconda-p1apw1|jedox-p1apl2|jedox-prod|qlikn-p1apl4|qlikn-p1apw5|quilliup-prod|sas01-p1apw1|sybasem-p1dbw1|octopai|cmwebprod|cmcomputeprod|cmmetadataprod)\\\\.menoramivt\\\\.net|acoustic-p2apw1\\\\.menoramivtext\\\\.net\", entityTypeId=\"PPM_Device\"}",
+            "format": "table",
+            "instant": false,
+            "interval": "",
+            "legendFormat": "Availability",
+            "source": "Monitor"
+          },
+          "sourceType": "metric"
+        }
+      ],
+      "title": "DATA360",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "VictoriaMetrics_AccountID": true,
+              "__name__": true,
+              "deviceIPAddress": true,
+              "deviceId": true,
+              "entityId": true,
+              "entityName": true,
+              "entityTypeId": true,
+              "isblackout": true,
+              "source": true
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "Value": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "hostname": {
+                "aggregations": [],
+                "operation": "groupby"
+              }
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "default": true,
+        "type": "bmchelix-ade-datasource",
+        "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+      },
+      "description": "מנהל מערכת - דקל רם 054-7515457",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "fieldMinMax": false,
+          "links": [
+            {
+              "title": "CloudBeat",
+              "url": "https://menora-itom.onbmc.com/dashboards/d/efczsxve3p1q8a/jira-prod?orgId=976648405"
+            }
+          ],
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "Status UP"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "Status Critical"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 2,
+        "x": 22,
+        "y": 0
+      },
+      "id": 55,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "/^Value \\(lastNotNull\\)$/",
+          "limit": 50,
+          "values": true
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "bmchelix-ade-datasource",
+            "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+          },
+          "refId": "A",
+          "sourceQuery": {
+            "expr": "Availability{hostname=~\"(?i)(jira-p1).*\"}",
+            "format": "table",
+            "instant": false,
+            "interval": "",
+            "legendFormat": "Availability",
+            "source": "Monitor"
+          },
+          "sourceType": "metric"
+        }
+      ],
+      "title": "Jira",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "VictoriaMetrics_AccountID": true,
+              "__name__": true,
+              "deviceIPAddress": true,
+              "deviceId": true,
+              "entityId": true,
+              "entityName": true,
+              "entityTypeId": true,
+              "isblackout": true,
+              "source": true
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "Value": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "hostname": {
+                "aggregations": [],
+                "operation": "groupby"
+              }
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "default": true,
+        "type": "bmchelix-ade-datasource",
+        "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+      },
+      "description": "מנהל מערכת - ירון היקרי 052-2511720",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "fieldMinMax": false,
+          "links": [
+            {
+              "title": "Siebel",
+              "url": "https://menora-itom.onbmc.com/dashboards/d/afd3dn99gjthcav/siebel-prod?orgId=976648405"
+            }
+          ],
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "Status UP"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "Status Critical"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 3,
+        "x": 0,
+        "y": 7
+      },
+      "id": 44,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "/^Value \\(lastNotNull\\)$/",
+          "limit": 20,
+          "values": true
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "bmchelix-ade-datasource",
+            "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+          },
+          "refId": "A",
+          "sourceQuery": {
+            "expr": "Availability{hostname=~\"(?i).*(Siebel).*\",entityTypeId=\"PPM_Device\"}",
+            "format": "table",
+            "instant": false,
+            "interval": "",
+            "legendFormat": "",
+            "source": "Monitor"
+          },
+          "sourceType": "metric"
+        }
+      ],
+      "title": "Siebel",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "VictoriaMetrics_AccountID": true,
+              "__name__": true,
+              "deviceIPAddress": true,
+              "deviceId": true,
+              "entityId": true,
+              "entityName": true,
+              "entityTypeId": true,
+              "isblackout": true,
+              "source": true
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "Value": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "hostname": {
+                "aggregations": [],
+                "operation": "groupby"
+              }
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "default": true,
+        "type": "bmchelix-ade-datasource",
+        "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+      },
+      "description": "מנהל מערכת - יפעת הר נוף 054-7107552",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "fieldMinMax": false,
+          "links": [
+            {
+              "title": "Claims Health Life",
+              "url": "https://menora-itom.onbmc.com/dashboards/d/ddmvdo2cn78xsf/claims-health-life"
+            }
+          ],
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "Status UP"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "Status Critical"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 3,
+        "x": 3,
+        "y": 7
+      },
+      "id": 45,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "/^Value \\(lastNotNull\\)$/",
+          "limit": 20,
+          "values": true
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "bmchelix-ade-datasource",
+            "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+          },
+          "refId": "A",
+          "sourceQuery": {
+            "expr": "Availability{hostname=~\"(?i)(bawmgrpd-p1apl1|bawonln-p1apl1|bawonln-p1apl2|bawonln-p1dbl1|bawbtch-p1apl1|bawbtch-p1apl2|bawbtch-p1dbl1|bawcntpd-p1apl1|bawcntpd-p1dbl1|bpmtom-p1apl1|bpmtom-p1apl2|javaapp-p1apl1|javaapp-p1apl2).*\", entityTypeId=\"PPM_Device\"}",
+            "format": "table",
+            "instant": false,
+            "interval": "",
+            "legendFormat": "Availability",
+            "source": "Monitor"
+          },
+          "sourceType": "metric"
+        }
+      ],
+      "title": "Claims Health Life",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "VictoriaMetrics_AccountID": true,
+              "__name__": true,
+              "deviceIPAddress": true,
+              "deviceId": true,
+              "entityId": true,
+              "entityName": true,
+              "entityTypeId": true,
+              "isblackout": true,
+              "source": true
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "Value": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "hostname": {
+                "aggregations": [],
+                "operation": "groupby"
+              }
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "default": true,
+        "type": "bmchelix-ade-datasource",
+        "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+      },
+      "description": "מנהל מערכת - יעד גבע 050-4049303",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "fieldMinMax": false,
+          "links": [
+            {
+              "title": "My Pensia",
+              "url": "https://menora-itom.onbmc.com/dashboards/d/cfe45e7lqjocga/mypensia?orgId=976648405"
+            }
+          ],
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "Status UP"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "Status Critical"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 3,
+        "x": 6,
+        "y": 7
+      },
+      "id": 46,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "/^Value \\(lastNotNull\\)$/",
+          "limit": 20,
+          "values": true
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "bmchelix-ade-datasource",
+            "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+          },
+          "refId": "A",
+          "sourceQuery": {
+            "expr": "Availability{hostname=~\"(?i)(mypensiaprd01|mypensiaprd02|mypensiaprd03|mypensiaprd04|easa-p1apw1|easa-p1apw2)\\\\.menoramivt\\\\.net\",entityTypeId=\"PPM_Device\"}",
+            "format": "table",
+            "instant": false,
+            "interval": "",
+            "legendFormat": "",
+            "source": "Monitor"
+          },
+          "sourceType": "metric"
+        }
+      ],
+      "title": "My Pensia",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "VictoriaMetrics_AccountID": true,
+              "__name__": true,
+              "deviceIPAddress": true,
+              "deviceId": true,
+              "entityId": true,
+              "entityName": true,
+              "entityTypeId": true,
+              "isblackout": true,
+              "source": true
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "Value": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "hostname": {
+                "aggregations": [],
+                "operation": "groupby"
+              }
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "default": true,
+        "type": "bmchelix-ade-datasource",
+        "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "fieldMinMax": false,
+          "links": [
+            {
+              "title": "Quadient(MetaPost)",
+              "url": "https://menora-itom.onbmc.com/dashboards/d/dfg9ofonggcn4c/soc-dashboard?orgId=976648405"
+            }
+          ],
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "Status UP"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "Status Critical"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 3,
+        "x": 9,
+        "y": 7
+      },
+      "id": 58,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "/^Value \\(lastNotNull\\)$/",
+          "limit": 50,
+          "values": true
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "bmchelix-ade-datasource",
+            "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+          },
+          "refId": "A",
+          "sourceQuery": {
+            "expr": "Availability{hostname=~\"(?i)(KibanaSOC|ArcsightLogger|SOCSrv-p1apw1|QRadar-DMZ-2|LogstachSOC|arcdmz-p1apw1|arc-p1apw1|qradarconsole-primary|QradarEC-AM|QradarDataNode2|QradarEC-LAN2|SocSensor|xsoar-p1apl1|QradarDataNode1|ElasticsearchSOC|QradarEC-LAN1|QradarEP|qradar-apphost|Qradar-ECDMZ|QradarEC-LAN3|WINCLAN-P1APW1|xsoareng-p2apl1|QRadarEP2|xsoar-p1apl4)(\\\\.(menora\\\\.co\\\\.il|menoramivt\\\\.net))?\",entityTypeId=\"PPM_Device\"}\nor\nAvailability{hostname=~\"(?i)(KibanaSOC|ArcsightLogger|SOCSrv-p1apw1|QRadar-DMZ-2|LogstachSOC|arcdmz-p1apw1|arc-p1apw1|qradarconsole-primary|QradarEC-AM|QradarDataNode2|QradarEC-LAN2|SocSensor|xsoar-p1apl1|QradarDataNode1|ElasticsearchSOC|QradarEC-LAN1|QradarEP|qradar-apphost|Qradar-ECDMZ|QradarEC-LAN3|WINCLAN-P1APW1|xsoareng-p2apl1|QRadarEP2|xsoar-p1apl4)(\\\\.(menora\\\\.co\\\\.il|menoramivt\\\\.net))?\",entityTypeId=\"PPM_Device\"}",
+            "format": "table",
+            "instant": false,
+            "interval": "",
+            "legendFormat": "Availability",
+            "source": "Monitor"
+          },
+          "sourceType": "metric"
+        }
+      ],
+      "title": "SOC",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "VictoriaMetrics_AccountID": true,
+              "__name__": true,
+              "deviceIPAddress": true,
+              "deviceId": true,
+              "entityId": true,
+              "entityName": true,
+              "entityTypeId": true,
+              "isblackout": true,
+              "source": true
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "Value": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "hostname": {
+                "aggregations": [],
+                "operation": "groupby"
+              }
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "default": true,
+        "type": "bmchelix-ade-datasource",
+        "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+      },
+      "description": "מנהל מערכת - אריאל כהן 054-7108068",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "fieldMinMax": false,
+          "links": [
+            {
+              "title": "Quadient(MetaPost)",
+              "url": "https://menora-itom.onbmc.com/dashboards/d/dfeswkcv4g5j4b/quadient-metapost?orgId=976648405"
+            }
+          ],
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "Status UP"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "Status Critical"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 3,
+        "x": 12,
+        "y": 7
+      },
+      "id": 56,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "/^Value \\(lastNotNull\\)$/",
+          "limit": 50,
+          "values": true
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "bmchelix-ade-datasource",
+            "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+          },
+          "refId": "A",
+          "sourceQuery": {
+            "expr": "Availability{hostname=~\"(?i)(quadlcmg-p1apl1|quadlcmg-p1apl2|quadient-p1apl1|quadient-p1apl2|quadient-p1apl3|quadient-p1apl4|quadient-p1apl5)\\\\.menora\\\\.co\\\\.il\", entityTypeId=\"PPM_Device\"}",
+            "format": "table",
+            "instant": false,
+            "interval": "",
+            "legendFormat": "Availability",
+            "source": "Monitor"
+          },
+          "sourceType": "metric"
+        }
+      ],
+      "title": "Quadient(MetaPost)",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "VictoriaMetrics_AccountID": true,
+              "__name__": true,
+              "deviceIPAddress": true,
+              "deviceId": true,
+              "entityId": true,
+              "entityName": true,
+              "entityTypeId": true,
+              "isblackout": true,
+              "source": true
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "Value": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "hostname": {
+                "aggregations": [],
+                "operation": "groupby"
+              }
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "default": true,
+        "type": "bmchelix-ade-datasource",
+        "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+      },
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "fieldMinMax": false,
+          "links": [
+            {
+              "title": "DB",
+              "url": "https://menora-itom.onbmc.com/dashboards/dashboards/f/bfb7yo1go9m2of/menora-db"
+            }
+          ],
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "Status UP"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "Status Critical"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 9,
+        "x": 15,
+        "y": 7
+      },
+      "id": 57,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "/^Value \\(lastNotNull\\)$/",
+          "limit": 200,
+          "values": true
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "bmchelix-ade-datasource",
+            "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+          },
+          "refId": "A",
+          "sourceQuery": {
+            "expr": "Availability{hostname=~\"(?i)(ds|cnf|elasticsearch.*|elastic-p1apl.*|logstash-p1dbl.*|kibana-p1dbl.*|kafka-p1apl.*|mongor-p1dbl1|mongor-p1dbl2|mongor-p1dbl3|mongor-p1dbl4|mongowl-p1dbl2|Mongo4PRD01|Mongo4PRD02|Mongo4PRD03|Mongo4PRD04|SQL2017TEST|SQL2016TEST|MENORASQL2014PRD|SSIS2016PRD|SQL2014PRODNEW|SQLBIDB|SQL2016PROD2|ACTUARY-P1DBW1|SQLFORCEPOINT|SQL-2012PROD-01|SQL2017-P1DBW2|SQL2017PRD01|SOURCEONESQL01|SQL2016PRD|SQL2017-Q1DBW2|SQL2017-Q1DBW1|SQL-TEST|MENORASQL2014T|SQL2017PRD02|SQL2019-P1DBW1|MSSQLMID-P1DBW1|GOANYSQL-P1DBW1|SOLARSQL-P1DBW1|CTXPRVM-P1APW1|SQLBI01|VERTSQL-p1dbw1|sql2017-p1dbw1|SQLNODE-P1DBW1|SQLNODE-P1DBW2|SSAS2019-P1DBW1|SECIQDB-P1APW1|Sqlnode-Q1DBW1|Sqlnode-Q1DBW2|SQL2019-Q1DBW1|SQL-DR|SQL19UTF-P1DBW1|SQL19UTF-Q1DBW1|QCSQL19-P1DPW1|Observe-P1DBW1|mssqlmid-p1dbw2|sqlprod-p1dbw1|sqldev-d1dbw1|SQL22-P1DBW1|SQL2022-P1APW1|SQL2022-Q1APW1|NechesBD-P1DBW1|olp2022-p1dbw1|GSTAT-P1APW1|sql19-q1dbw1|CTCC-Q1APW1|SQLBI19-Q1DBW1|SQLBI-Q1DBW1|SQL22-Q1DBW1|reinsur-Q1DBW1|CostPer-P1DBW1|SQLOper-P1APW1|reinsur-P1DBW1|PostgresPrd1|postgr-p1dbl01|postgr-p1dbl02|psgrsql-p1dbl1|psgrsql-p1dbl2|psgrsql-p1dbl3|postgres-p1apl1|postgres-p1apl2|postgres-p1apl3|postgwi-p1apl1|postgwi-p1apl2|postsm-p1dbl1|postjira-p1dbl1|postmw-p1dbl1|postgn-p1dbl1|postgn-p1dbl2|postg-p1dbl1|redis-p1dbl1|redis-p1dbl2|redis-p1dbl3|redis-p1dbl4|redis-p1dbl5|redis-p1dbl6|redis-p1dbl7|redis-p1dbl8|redis-p1dbl9|redisprd01|redisprd02|redisprd03|rediscv-p1dbl1|rediscv-p1dbl2|rediscv-p1dbl3|tlndods-p1apl1|tlndods-p1apl2|tlndidm-p1apl1|tlndidm-p1apl2|tlndj-p1apl1|tlndj-p1apl2|TLNDJSRV-P1APL3|tlndri-p1apl1|tlndta-p1apl1|tlndta-p1apl2|ODS-P1APL1|ODS-P1APL2|TLNDJSRV-P1APL1|TLNDJSRV-P1APL2|TLNDTACP-P1APL1|TLNDTACP-P1APL2).*\", entityTypeId=\"PPM_Device\"}",
+            "format": "table",
+            "instant": false,
+            "interval": "",
+            "legendFormat": "Availability",
+            "source": "Monitor"
+          },
+          "sourceType": "metric"
+        }
+      ],
+      "title": "DB",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "VictoriaMetrics_AccountID": true,
+              "__name__": true,
+              "deviceIPAddress": true,
+              "deviceId": true,
+              "entityId": true,
+              "entityName": true,
+              "entityTypeId": true,
+              "isblackout": true,
+              "source": true
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "Value": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "hostname": {
+                "aggregations": [],
+                "operation": "groupby"
+              }
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "default": true,
+        "type": "bmchelix-ade-datasource",
+        "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+      },
+      "description": "מנהל מערכת - שי ביטון 054-7107546",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "fieldMinMax": false,
+          "links": [
+            {
+              "title": "Actuaria",
+              "url": "https://menora-itom.onbmc.com/dashboards/d/ffd1v7pbw5dkwf/actuaria?orgId=976648405"
+            }
+          ],
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "Status UP"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "Status Critical"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 3,
+        "x": 0,
+        "y": 15
+      },
+      "id": 52,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "/^Value \\(lastNotNull\\)$/",
+          "limit": 50,
+          "values": true
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "bmchelix-ade-datasource",
+            "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+          },
+          "refId": "A",
+          "sourceQuery": {
+            "expr": "Availability{hostname=~\"(?i)(hpcnode-p1apw(1|5|10|13)|hpcmain-p1apw(1|2|3)|unifye-p1apw1|sas01-p1apw1|easa-p1apw(1|2)|hpclic-p1apw1)\\\\.menoramivt\\\\.net\", entityTypeId=\"PPM_Device\"}",
+            "format": "table",
+            "instant": false,
+            "interval": "",
+            "legendFormat": "Availability",
+            "source": "Monitor"
+          },
+          "sourceType": "metric"
+        }
+      ],
+      "title": "Actuaria",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "VictoriaMetrics_AccountID": true,
+              "__name__": true,
+              "deviceIPAddress": true,
+              "deviceId": true,
+              "entityId": true,
+              "entityName": true,
+              "entityTypeId": true,
+              "isblackout": true,
+              "source": true
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "Value": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "hostname": {
+                "aggregations": [],
+                "operation": "groupby"
+              }
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "default": true,
+        "type": "bmchelix-ade-datasource",
+        "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+      },
+      "description": "מנהל מערכת - גיא מונטל 054-9198228",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "fieldMinMax": false,
+          "links": [
+            {
+              "title": "DATA360",
+              "url": "https://menora-itom.onbmc.com/dashboards/d/afd3dn99gjthca/cognos?orgId=976648405"
+            }
+          ],
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "Status UP"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "Status Critical"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 3,
+        "x": 3,
+        "y": 15
+      },
+      "id": 53,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "/^Value \\(lastNotNull\\)$/",
+          "limit": 50,
+          "values": true
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "bmchelix-ade-datasource",
+            "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+          },
+          "refId": "A",
+          "sourceQuery": {
+            "expr": "Availability{hostname=~\"(?i)(cgcem10-p1apw1|cggw10-p1apw1|cgpcm-p1apw(1|2)|cgpdisp-p1apw(1|2|3|4|5)|cgpgw-p1apw(1|2)|cgpmm-p1apw1)\\\\.menoramivt\\\\.net\", entityTypeId=\"PPM_Device\"}",
+            "format": "table",
+            "instant": false,
+            "interval": "",
+            "legendFormat": "Availability",
+            "source": "Monitor"
+          },
+          "sourceType": "metric"
+        }
+      ],
+      "title": "Cognos",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "VictoriaMetrics_AccountID": true,
+              "__name__": true,
+              "deviceIPAddress": true,
+              "deviceId": true,
+              "entityId": true,
+              "entityName": true,
+              "entityTypeId": true,
+              "isblackout": true,
+              "source": true
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "Value": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "hostname": {
+                "aggregations": [],
+                "operation": "groupby"
+              }
+            }
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "default": true,
+        "type": "bmchelix-ade-datasource",
+        "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+      },
+      "description": "מנהל מערכת - דקל רם 054-7515457",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "fieldMinMax": false,
+          "links": [
+            {
+              "title": "CloudBeat",
+              "url": "https://menora-itom.onbmc.com/dashboards/d/cfbeccc2-3cc6-4532-8061-a0dcd5854dc2/cloudbeat?orgId=976648405"
+            }
+          ],
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "green",
+                  "index": 0,
+                  "text": "Status UP"
+                },
+                "1": {
+                  "color": "red",
+                  "index": 1,
+                  "text": "Status Critical"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 3,
+        "x": 6,
+        "y": 15
+      },
+      "id": 54,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "last"
+          ],
+          "fields": "/^Value \\(lastNotNull\\)$/",
+          "limit": 50,
+          "values": true
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.4",
+      "targets": [
+        {
+          "datasource": {
+            "type": "bmchelix-ade-datasource",
+            "uid": "e6fd4fb9-df59-4226-a1aa-d7e88054b6e9"
+          },
+          "refId": "A",
+          "sourceQuery": {
+            "expr": "Availability{hostname=~\"(?i)(cb|cloudb|CB).*\"}",
+            "format": "table",
+            "instant": false,
+            "interval": "",
+            "legendFormat": "Availability",
+            "source": "Monitor"
+          },
+          "sourceType": "metric"
+        }
+      ],
+      "title": "CloudBeat",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "VictoriaMetrics_AccountID": true,
+              "__name__": true,
+              "deviceIPAddress": true,
+              "deviceId": true,
+              "entityId": true,
+              "entityName": true,
+              "entityTypeId": true,
+              "isblackout": true,
+              "source": true
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "Value": {
+                "aggregations": [
+                  "lastNotNull"
+                ],
+                "operation": "aggregate"
+              },
+              "hostname": {
+                "aggregations": [],
+                "operation": "groupby"
+              }
+            }
+          }
+        },
+        {
+          "id": "filterByValue",
+          "options": {
+            "filters": [
+              {
+                "config": {
+                  "id": "equal",
+                  "options": {
+                    "value": "cloudbeat-prod.menora.co.il"
+                  }
+                },
+                "fieldName": "hostname"
+              }
+            ],
+            "match": "any",
+            "type": "exclude"
+          }
+        }
+      ],
+      "type": "stat"
+    }
+  ],
+  "preload": false,
+  "refresh": "5s",
+  "schemaVersion": 42,
+  "tags": [],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "Asia/Jerusalem",
+  "title": "APPLICATION_STATUS CONCEPT",
+  "uid": "tavtqgh",
+  "version": 10,
+  "weekStart": ""
+}

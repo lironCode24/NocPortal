@@ -80,6 +80,23 @@ public class OfficeInteropHelper : IDisposable
         }
     }
 
+    public dynamic GetDocument()
+    {
+        try
+        {
+            if (_applicationType == OfficeApplication.Word && _document != null)
+            {
+                return _document;
+            }
+
+            throw new InvalidOperationException("GetDocument is only available for Word application");
+        }
+        catch (Exception ex)
+        {
+            throw new Exception($"Failed to get document: {ex.Message}", ex);
+        }
+    }
+
     public void SaveAs(string path, int format)
     {
         try

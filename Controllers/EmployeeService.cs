@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Hosting;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -9,30 +8,14 @@ public class EmployeeService
 {
     private readonly string _employeesFilePath;
 
-    public EmployeeService()
+    public EmployeeService() : this(null)
     {
-        _employeesFilePath = Path.Combine(
-            Directory.GetCurrentDirectory(),
-            "assets",
-            "files",
-            "employees.txt"
-        );
     }
 
-    public EmployeeService(IWebHostEnvironment env)
+    public EmployeeService(IWebHostEnvironment? env)
     {
-        _employeesFilePath = Path.Combine(
-            env.WebRootPath,
-            "assets",
-            "files",
-            "employees.txt"
-        );
-    }
-
-    // Constructor for dependency injection with custom path
-    public EmployeeService(string employeesFilePath)
-    {
-        _employeesFilePath = employeesFilePath;
+        var webRoot = env?.WebRootPath ?? AppContext.BaseDirectory;
+        _employeesFilePath = Path.Combine(webRoot, "assets", "files", "employees.txt");
     }
 
     /// <summary>

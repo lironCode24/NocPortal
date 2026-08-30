@@ -8,7 +8,7 @@
             _              => "fa-chart-bar"
         };
     }
-    Layout = null;
+    Layout = "~/Views/Shared/_AdminLayout.cshtml";
     ViewData["Title"] = "ניהול משתמשים";
     var allUsers        = ViewBag.AllUsers        as List<NocPortal.Models.AppUser>;
     var unapprovedUsers = ViewBag.UnapprovedUsers as List<NocPortal.Models.AppUser>;
@@ -29,51 +29,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@ViewData["Title"]</title>
-    <link rel="icon" type="image/png" href="~/images/logo.png" >
+    <link rel="icon" type="image/x-icon"
+          href="https://www.menoramivt.co.il/customers-homepage/static/img/favicon.ico">
     <link rel="stylesheet" href="https://cdn.menoramivt.co.il/public/fonts/fonts.css">
-    <link rel="stylesheet" href="/assets/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="/fontawesome/css/all.min.css">
     <link rel="stylesheet" href="~/css/admin-panel.css">
 </head>
 <body>
-
-<!-- ============ HEADER ============ -->
-<header class="admin-header">
-    <h1>
-        <i class="fas fa-users-cog"></i>
-        ניהול משתמשים — NOC Portal
-    </h1>
-    <div class="header-actions">
-        <span class="header-user-info">
-            <i class="fas fa-user-shield"></i>
-            @User.FindFirst("DisplayName")?.Value
-        </span>
-        <div class="back-dropdown-wrapper">
-            <button class="btn btn-secondary back-dropdown-toggle" 
-                    id="backDropdownBtn"
-                    type="button"
-                    onclick="toggleBackDropdown()">
-                חזור ל...
-                <i class="fas fa-chevron-down back-chevron" id="backChevron"></i>
-            </button>
-            <div class="back-dropdown-menu" id="backDropdownMenu">
-                <a href="/Home" class="back-dropdown-item">
-                    <i class="fas fa-home"></i>
-                    פורטל
-                </a>
-                <a href="/dashboards" class="back-dropdown-item">
-                    <i class="fas fa-chart-bar"></i>
-                    דשבורדים
-                </a>
-            </div>
-        </div>
-        <form method="post" asp-action="Logout" asp-controller="Auth" style="margin:0">
-            @Html.AntiForgeryToken()
-            <button type="submit" class="btn btn-secondary">
-                <i class="fas fa-sign-out-alt"></i> יציאה
-            </button>
-        </form>
-    </div>
-</header>
 
 <!-- ============ MAIN CONTENT ============ -->
 <div class="admin-content">
@@ -304,13 +266,19 @@
                                             </button>
                                         </form>
                                         <form method="post"
-                                              asp-action="DeleteUser"
-                                              asp-controller="Auth"
-                                              style="margin:0"
-                                              onsubmit="return confirmDelete('@user.Username')">
+                                            asp-action="DeleteUser"
+                                            asp-controller="Auth"
+                                            style="margin:0"
+                                            onsubmit="return confirmDelete('@user.Username')">
                                             @Html.AntiForgeryToken()
                                             <input type="hidden" name="userId" value="@user.Id" />
-                                            <button type="submit" class="btn btn-danger btn-sm">
+                                            <button type="button"
+                                                    class="btn btn-danger btn-sm"
+                                                    onclick="openRejectModal(
+                                                        '@user.Id',
+                                                        '@user.Username',
+                                                        '@user.DisplayName',
+                                                        '@(user.Email ?? "")')">
                                                 <i class="fas fa-times"></i> דחה
                                             </button>
                                         </form>
@@ -548,6 +516,29 @@
                                     @if (user.Role != NocPortal.Models.UserRole.Admin)
                                     {
                                         <div class="actions-cell">
+                                            <!-- כפתור עריכה -->
+                                            <button type="button"
+                                                    class="btn btn-edit-user btn-sm"
+                                                    onclick="openEditUserModal(
+                                                        '@user.Id',
+                                                        '@user.DisplayName',
+                                                        '@user.Username',
+                                                        '@user.Email')"
+                                                    title="עריכת פרטי משתמש">
+                                                <i class="fas fa-user-edit"></i>
+                                                עריכה
+                                            </button>
+                                            <!-- כפתור איפוס סיסמה -->
+                                            <button type="button"
+                                                    class="btn btn-warning btn-sm"
+                                                    onclick="openResetPasswordModal(
+                                                        '@user.Id',
+                                                        '@user.DisplayName',
+                                                        '@user.Username')"
+                                                    title="איפוס סיסמה">
+                                                <i class="fas fa-key"></i> איפוס סיסמה
+                                            </button>
+                                            <!-- כפתור מחיקה -->
                                             <form method="post"
                                                 asp-action="DeleteUser"
                                                 asp-controller="Auth"
@@ -593,8 +584,7 @@
 
 
 <!-- ============ PERMISSIONS MODAL ============ -->
-<div class="modal-overlay" id="permissionsModal" style="display:none"
-     onclick="if(event.target===this) closePermissionsModal()">
+<div class="modal-overlay" id="permissionsModal" style="display:none">
     <div class="modal-box">
 
         <div class="modal-header">
@@ -623,6 +613,8 @@
             <div class="permissions-grid" id="permissionsGrid">
                 @foreach (var dashboard in allDashboards)
                 {
+                    @if (dashboard.DashboardId != "systems-catalog")
+                    {
                     <label class="permission-card" id="perm-card-@dashboard.DashboardId">
                         <input type="checkbox"
                                name="dashboardIds"
@@ -637,6 +629,7 @@
                             <i class="fas fa-check"></i>
                         </div>
                     </label>
+                   }
                 }
             </div>
 
@@ -648,6 +641,467 @@
                         class="btn btn-secondary"
                         onclick="closePermissionsModal()">
                     <i class="fas fa-times"></i> ביטול
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ============ RESET PASSWORD MODAL ============ -->
+<div class="modal-overlay" id="resetPasswordModal" style="display:none">
+    <div class="modal-box">
+
+        <div class="modal-loader" id="resetPasswordLoader" style="display:none">
+            <div class="loader-spinner"></div>
+            <p class="loader-text">מאפס סיסמה, אנא המתן...</p>
+        </div>
+        <div class="modal-header">
+            <div class="modal-title">
+                <i class="fas fa-key"></i>
+                איפוס סיסמה
+            </div>
+            <button class="modal-close-btn" onclick="closeResetPasswordModal()">
+                &times;
+            </button>
+        </div>
+
+        <div class="modal-user-info" id="resetModalUserInfo">
+            <!-- ימולא ב-JS -->
+        </div>
+
+        <form method="post"
+            asp-action="AdminResetPassword"
+            asp-controller="Auth"
+            id="resetPasswordForm"
+            onsubmit="return handleResetFormSubmit()">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="UserId" id="resetPasswordUserId" />
+
+            <div class="modal-section-label">סיסמה חדשה:</div>
+
+            <div class="reset-password-fields">
+
+                <!-- שדה סיסמה חדשה -->
+                <div class="form-group">
+                    <label for="resetNewPassword">
+                        <i class="fas fa-lock"></i>
+                        סיסמה חדשה
+                    </label>
+                    <div class="password-input-wrapper">
+                        <input type="password"
+                               id="resetNewPassword"
+                               name="NewPassword"
+                               class="form-control"
+                               placeholder="הכנס סיסמה חדשה"
+                               minlength="6"
+                               autocomplete="new-password" />
+                        <button type="button"
+                                class="toggle-password-btn"
+                                onclick="togglePasswordVisibility(
+                                    'resetNewPassword',
+                                    'eyeIcon1')"
+                                tabindex="-1">
+                            <i class="fas fa-eye" id="eyeIcon1"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- שדה אימות סיסמה -->
+                <div class="form-group">
+                    <label for="resetConfirmPassword">
+                        <i class="fas fa-lock"></i>
+                        אימות סיסמה
+                    </label>
+                    <div class="password-input-wrapper">
+                        <input type="password"
+                               id="resetConfirmPassword"
+                               class="form-control"
+                               placeholder="הכנס סיסמה שוב לאימות"
+                               autocomplete="new-password" />
+                        <button type="button"
+                                class="toggle-password-btn"
+                                onclick="togglePasswordVisibility(
+                                    'resetConfirmPassword',
+                                    'eyeIcon2')"
+                                tabindex="-1">
+                            <i class="fas fa-eye" id="eyeIcon2"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- אינדיקטור חוזק סיסמה -->
+                <div class="password-strength-wrapper" id="passwordStrengthWrapper"
+                     style="display:none">
+                    <div class="password-strength-label">
+                        חוזק סיסמה:
+                        <span id="passwordStrengthText"></span>
+                    </div>
+                    <div class="password-strength-bar">
+                        <div class="password-strength-fill"
+                             id="passwordStrengthFill"></div>
+                    </div>
+                </div>
+
+                <!-- הודעת שגיאה -->
+                <div class="reset-error-msg" id="resetErrorMsg"
+                     style="display:none">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span id="resetErrorText"></span>
+                </div>
+
+            </div>
+
+            <div class="modal-actions">
+                <button type="submit" class="btn btn-warning">
+                    <i class="fas fa-key"></i> אפס סיסמה
+                </button>
+                <button type="button"
+                        class="btn btn-secondary"
+                        onclick="closeResetPasswordModal()">
+                    <i class="fas fa-times"></i> ביטול
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ============ EMAIL MODAL ============ -->
+<div class="modal-overlay"
+     id="emailModal"
+     style="display:none">
+
+    <div class="modal-box">
+
+        <div class="modal-header">
+            <div class="modal-title">
+                <i class="fas fa-envelope"></i>
+                עדכון כתובת מייל
+            </div>
+
+            <button class="modal-close-btn"
+                    onclick="closeEmailModal()">
+                &times;
+            </button>
+        </div>
+
+        <div class="modal-user-info" id="emailModalUserInfo"></div>
+
+        <form asp-action="UpdateUserEmail"
+              asp-controller="Auth"
+              method="post">
+
+            @Html.AntiForgeryToken()
+
+            <input type="hidden"
+                   name="UserId"
+                   id="emailUserId" />
+
+            <div class="modal-section-label">
+                כתובת מייל:
+            </div>
+
+            <div class="form-group">
+                <input type="email"
+                       name="Email"
+                       id="emailAddress"
+                       class="form-control"
+                       placeholder="name@company.com"
+                       required />
+            </div>
+
+            <div class="modal-actions">
+                <button type="submit"
+                        class="btn btn-success">
+                    <i class="fas fa-save"></i>
+                    שמור
+                </button>
+
+                <button type="button"
+                        class="btn btn-secondary"
+                        onclick="closeEmailModal()">
+                    <i class="fas fa-times"></i>
+                    ביטול
+                </button>
+            </div>
+
+        </form>
+
+    </div>
+</div>
+
+<!-- ============ EDIT USER MODAL ============ -->
+<div class="modal-overlay"
+     id="editUserModal"
+     style="display:none">
+
+    <div class="modal-box" style="position:relative; max-width:480px">
+
+        <!-- Loader -->
+        <div class="edit-modal-loader"
+             id="editUserLoader"
+             style="display:none">
+            <div class="edit-loader-spinner"></div>
+            <p class="edit-loader-text">שומר שינויים...</p>
+        </div>
+
+        <!-- Header -->
+        <div class="modal-header">
+            <div class="modal-title">
+                <i class="fas fa-user-edit"></i>
+                עריכת משתמש
+            </div>
+            <button class="modal-close-btn"
+                    onclick="closeEditUserModal()">
+                &times;
+            </button>
+        </div>
+
+        <!-- פרטי משתמש -->
+        <div class="modal-user-info" id="editModalUserInfo"></div>
+
+        <!-- טופס -->
+        <form asp-action="EditUser"
+              asp-controller="Auth"
+              method="post"
+              id="editUserForm"
+              onsubmit="return handleEditFormSubmit()">
+
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="UserId" id="editUserId" />
+
+            <div class="modal-section-label" style="margin-bottom:14px">
+                פרטי משתמש:
+            </div>
+
+            <div class="edit-user-fields">
+
+                <!-- שם תצוגה -->
+                <div class="edit-field-group">
+                    <label class="edit-field-label" for="editDisplayName">
+                        <i class="fas fa-id-card"></i>
+                        שם תצוגה
+                    </label>
+                    <input type="text"
+                           id="editDisplayName"
+                           name="DisplayName"
+                           class="edit-field-input"
+                           placeholder="שם מלא לתצוגה"
+                           maxlength="50"
+                           required
+                           oninput="trackEditChange(this, 'displayName')" />
+                </div>
+
+                <!-- שם משתמש -->
+                <div class="edit-field-group">
+                    <label class="edit-field-label" for="editUsername">
+                        <i class="fas fa-at"></i>
+                        שם משתמש
+                    </label>
+                    <input type="text"
+                           id="editUsername"
+                           name="Username"
+                           class="edit-field-input"
+                           placeholder="username"
+                           maxlength="30"
+                           required
+                           style="direction:ltr; text-align:left"
+                           oninput="trackEditChange(this, 'username')" />
+                    <span class="edit-field-hint">
+                        <i class="fas fa-info-circle"></i>
+                        אותיות באנגלית, מספרים ו- . _ - בלבד
+                    </span>
+                </div>
+
+                <hr class="edit-section-divider" />
+
+                <!-- מייל -->
+                <div class="edit-field-group">
+                    <label class="edit-field-label" for="editEmail">
+                        <i class="fas fa-envelope"></i>
+                        כתובת מייל
+                    </label>
+                    <input type="email"
+                           id="editEmail"
+                           name="Email"
+                           class="edit-field-input"
+                           placeholder="name@company.com"
+                           style="direction:ltr; text-align:left"
+                           oninput="trackEditChange(this, 'email')" />
+                    <span class="edit-field-hint">
+                        <i class="fas fa-info-circle"></i>
+                        שדה אופציונלי
+                    </span>
+                </div>
+
+                <!-- סיכום שינויים -->
+                <div class="edit-changes-summary" id="editChangesSummary">
+                    <i class="fas fa-pencil-alt"></i>
+                    <span id="editChangesSummaryText">
+                        לא בוצעו שינויים עדיין
+                    </span>
+                </div>
+
+                <!-- הודעת שגיאה -->
+                <div class="edit-error-msg"
+                     id="editErrorMsg"
+                     style="display:none">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span id="editErrorText"></span>
+                </div>
+
+            </div>
+
+            <!-- כפתורים -->
+            <div class="modal-actions" style="margin-top:20px">
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-save"></i>
+                    שמור שינויים
+                </button>
+                <button type="button"
+                        class="btn btn-secondary"
+                        onclick="closeEditUserModal()">
+                    <i class="fas fa-times"></i>
+                    ביטול
+                </button>
+            </div>
+
+        </form>
+    </div>
+</div>
+
+<!-- ============ REJECT USER MODAL ============ -->
+<div class="modal-overlay" id="rejectUserModal" style="display:none">
+    <div class="modal-box" style="max-width:440px">
+
+        <div class="modal-header">
+            <div class="modal-title">
+                <i class="fas fa-user-times" style="color:#e74c3c"></i>
+                דחיית משתמש
+            </div>
+            <button class="modal-close-btn" onclick="closeRejectModal()">
+                &times;
+            </button>
+        </div>
+
+        <!-- פרטי משתמש -->
+        <div class="modal-user-info" id="rejectModalUserInfo"></div>
+
+        <form method="post"
+              asp-action="DeleteUser"
+              asp-controller="Auth"
+              id="rejectUserForm">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="userId" id="rejectUserId" />
+
+            <!-- ── אפשרות שליחת מייל ── -->
+            <div style="padding: 16px 0 8px 0">
+
+                <!-- הצג רק אם יש מייל -->
+                <div id="rejectEmailSection">
+                    <div class="modal-section-label" style="margin-bottom:12px">
+                        <i class="fas fa-envelope"
+                           style="color:#4a9eff; margin-left:6px"></i>
+                        הודעת מייל למשתמש:
+                    </div>
+
+                    <label class="reject-email-toggle"
+                           id="rejectEmailToggleLabel"
+                           style="
+                               display: flex;
+                               align-items: center;
+                               gap: 10px;
+                               padding: 12px 16px;
+                               background: rgba(255,255,255,0.05);
+                               border: 1px solid rgba(255,255,255,0.1);
+                               border-radius: 8px;
+                               cursor: pointer;
+                               transition: all 0.2s;
+                           ">
+                        <input type="checkbox"
+                               name="sendRejectionEmail"
+                               id="sendRejectionEmailCheck"
+                               value="true"
+                               style="
+                                   width: 18px;
+                                   height: 18px;
+                                   cursor: pointer;
+                                   accent-color: #4a9eff;
+                               " />
+                        <div>
+                            <div style="
+                                color: rgba(255,255,255,0.85);
+                                font-size: 0.9rem;
+                                font-weight: 500;
+                            ">
+                                שלח מייל דחייה למשתמש
+                            </div>
+                            <div style="
+                                color: rgba(255,255,255,0.4);
+                                font-size: 0.78rem;
+                                margin-top: 2px;
+                            " id="rejectEmailPreview">
+                                <!-- ימולא ב-JS עם כתובת המייל -->
+                            </div>
+                        </div>
+                        <i class="fas fa-envelope"
+                           style="
+                               margin-right: auto;
+                               color: rgba(255,255,255,0.2);
+                               font-size: 1.1rem;
+                           "
+                           id="rejectEmailIcon"></i>
+                    </label>
+                </div>
+
+                <!-- אם אין מייל -->
+                <div id="rejectNoEmailSection" style="display:none">
+                    <div style="
+                        padding: 10px 14px;
+                        background: rgba(240,165,0,0.1);
+                        border: 1px solid rgba(240,165,0,0.3);
+                        border-radius: 8px;
+                        color: rgba(255,255,255,0.5);
+                        font-size: 0.82rem;
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                    ">
+                        <i class="fas fa-exclamation-triangle"
+                           style="color:#f0a500"></i>
+                        למשתמש זה אין כתובת מייל מוגדרת
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- אזהרה -->
+            <div style="
+                margin: 12px 0;
+                padding: 10px 14px;
+                background: rgba(231,76,60,0.1);
+                border: 1px solid rgba(231,76,60,0.3);
+                border-radius: 8px;
+                color: rgba(255,255,255,0.6);
+                font-size: 0.82rem;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            ">
+                <i class="fas fa-exclamation-triangle"
+                   style="color:#e74c3c"></i>
+                פעולה זו תמחק את המשתמש ואינה ניתנת לביטול
+            </div>
+
+            <div class="modal-actions">
+                <button type="submit" class="btn btn-danger">
+                    <i class="fas fa-user-times"></i>
+                    דחה משתמש
+                </button>
+                <button type="button"
+                        class="btn btn-secondary"
+                        onclick="closeRejectModal()">
+                    <i class="fas fa-times"></i>
+                    ביטול
                 </button>
             </div>
         </form>
@@ -927,12 +1381,26 @@ function showToast(message, type = 'info') {
 // ─────────────────────────────────────────
 //  KEYBOARD SHORTCUT  Ctrl+F → focus search
 // ─────────────────────────────────────────
+// ── מאחד את כל ה-Escape handlers ──
 document.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
-        e.preventDefault();
-        searchInput.focus();
-        searchInput.select();
-    }
+    if (e.key !== 'Escape') return;
+
+    // סגור מודאלים פתוחים
+    closePermissionsModal();
+    closeResetPasswordModal();
+    closeEmailModal();
+    closeEditUserModal();
+    closeRejectModal();
+
+    // סגור role edit forms
+    document.querySelectorAll('.role-edit-form').forEach(form => {
+        if (form.style.display !== 'none') {
+            const userId   = form.id.replace('role-form-', '');
+            const select   = document.getElementById(`role-select-${userId}`);
+            const origRole = select?.getAttribute('data-original-role');
+            if (origRole) closeRoleEdit(userId, origRole);
+        }
+    });
 });
 
 // ─────────────────────────────────────────
@@ -1019,21 +1487,6 @@ function updateRolePreview(userId, currentRole, newRole) {
         <span style="color:rgba(255,255,255,0.25)">יישמר לאחר אישור</span>
     `;
 }
-
-// סגירת עריכה בלחיצה על Escape
-document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-        // סגור כל טפסי עריכת תפקיד פתוחים
-        document.querySelectorAll('.role-edit-form').forEach(form => {
-            if (form.style.display !== 'none') {
-                const userId = form.id.replace('role-form-', '');
-                const select = document.getElementById(`role-select-${userId}`);
-                const origRole = select?.getAttribute('data-original-role');
-                if (origRole) closeRoleEdit(userId, origRole);
-            }
-        });
-    }
-});
 
 // ─────────────────────────────────────────
 //  BACK DROPDOWN
@@ -1126,12 +1579,429 @@ document.querySelectorAll('.permission-card').forEach(card => {
     });
 });
 
-// סגירה ב-Escape
-document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') {
-        closePermissionsModal();
+// ─────────────────────────────────────────
+//  RESET PASSWORD MODAL
+// ─────────────────────────────────────────
+
+function openResetPasswordModal(userId, displayName, username) {
+    const modal       = document.getElementById('resetPasswordModal');
+    const userInfo    = document.getElementById('resetModalUserInfo');
+    const userIdInput = document.getElementById('resetPasswordUserId');
+
+    // מלא פרטי משתמש
+    userInfo.innerHTML = `
+        <i class="fas fa-user"></i>
+        <strong>${displayName}</strong>
+        <span style="color:rgba(255,255,255,0.4); font-size:0.85rem">
+            (${username})
+        </span>
+    `;
+
+    userIdInput.value = userId;
+
+    // נקה שדות
+    document.getElementById('resetNewPassword').value     = '';
+    document.getElementById('resetConfirmPassword').value = '';
+    document.getElementById('resetErrorMsg').style.display = 'none';
+
+    // הסתר אינדיקטור חוזק
+    document.getElementById('passwordStrengthWrapper').style.display = 'none';
+
+    modal.style.display  = 'flex';
+    document.body.style.overflow = 'hidden';
+
+    // פוקוס על שדה הסיסמה
+    setTimeout(() => {
+        document.getElementById('resetNewPassword').focus();
+    }, 100);
+}
+
+function closeResetPasswordModal() {
+    hideResetLoader();
+    
+    const modal = document.getElementById('resetPasswordModal');
+    modal.style.display = 'none';
+    document.body.style.overflow = '';
+
+    document.getElementById('resetNewPassword').value = '';
+    document.getElementById('resetConfirmPassword').value = '';
+    document.getElementById('resetErrorMsg').style.display = 'none';
+    document.getElementById('passwordStrengthWrapper').style.display = 'none';
+}
+
+// ולידציה לפני שליחת הטופס
+function validateResetForm() {
+    const newPass     = document.getElementById('resetNewPassword').value;
+    const confirmPass = document.getElementById('resetConfirmPassword').value;
+    const errorMsg    = document.getElementById('resetErrorMsg');
+    const errorText   = document.getElementById('resetErrorText');
+
+    // בדיקת אורך מינימלי
+    if (newPass.length < 6) {
+        errorText.textContent  = 'הסיסמה חייבת להכיל לפחות 6 תווים';
+        errorMsg.style.display = 'flex';
+        return false;
     }
-});
+
+    // בדיקת התאמה
+    if (newPass !== confirmPass) {
+        errorText.textContent  = 'הסיסמאות אינן תואמות';
+        errorMsg.style.display = 'flex';
+        return false;
+    }
+
+    errorMsg.style.display = 'none';
+    return true;
+}
+
+function handleResetFormSubmit() {
+    const isValid = validateResetForm();
+
+    if (isValid) {
+        showResetLoader(); // ← מציג loader רק אם הולידציה עברה
+    }
+
+    return isValid; // ← אם false, הטופס לא נשלח (כמו קודם)
+}
+
+
+function showResetLoader() {
+    const loader = document.getElementById('resetPasswordLoader');
+    const form   = document.getElementById('resetPasswordForm');
+    
+    if (loader) loader.style.display = 'flex';
+    
+    // מנטרל את כפתורי הטופס למניעת לחיצה כפולה
+    form.querySelectorAll('button').forEach(btn => {
+        btn.disabled = true;
+    });
+}
+
+// הסתר loader (לשימוש בסגירת המודל)
+function hideResetLoader() {
+    const loader = document.getElementById('resetPasswordLoader');
+    const form   = document.getElementById('resetPasswordForm');
+    
+    if (loader) loader.style.display = 'none';
+    
+    form.querySelectorAll('button').forEach(btn => {
+        btn.disabled = false;
+    });
+}
+
+// הצגת/הסתרת סיסמה
+function togglePasswordVisibility(inputId, iconId) {
+    const input = document.getElementById(inputId);
+    const icon  = document.getElementById(iconId);
+
+    if (input.type === 'password') {
+        input.type      = 'text';
+        icon.className  = 'fas fa-eye-slash';
+    } else {
+        input.type      = 'password';
+        icon.className  = 'fas fa-eye';
+    }
+}
+
+// אינדיקטור חוזק סיסמה
+document.getElementById('resetNewPassword')
+    .addEventListener('input', function () {
+        const val     = this.value;
+        const wrapper = document.getElementById('passwordStrengthWrapper');
+        const fill    = document.getElementById('passwordStrengthFill');
+        const text    = document.getElementById('passwordStrengthText');
+
+        if (val.length === 0) {
+            wrapper.style.display = 'none';
+            return;
+        }
+
+        wrapper.style.display = 'block';
+
+        // חישוב חוזק
+        let strength = 0;
+        if (val.length >= 6)                        strength++;
+        if (val.length >= 10)                       strength++;
+        if (/[A-Z]/.test(val))                      strength++;
+        if (/[0-9]/.test(val))                      strength++;
+        if (/[^A-Za-z0-9]/.test(val))               strength++;
+
+        const levels = [
+            { label: 'חלשה מאוד', color: '#e74c3c', width: '20%'  },
+            { label: 'חלשה',      color: '#e67e22', width: '40%'  },
+            { label: 'בינונית',   color: '#f0a500', width: '60%'  },
+            { label: 'חזקה',      color: '#2ecc71', width: '80%'  },
+            { label: 'חזקה מאוד', color: '#27ae60', width: '100%' }
+        ];
+
+        const level       = levels[Math.min(strength - 1, 4)] || levels[0];
+        fill.style.width  = level.width;
+        fill.style.background = level.color;
+        text.textContent  = level.label;
+        text.style.color  = level.color;
+    });
+
+    // ─────────────────────────────────────────
+    //  EDIT USER MODAL
+    // ─────────────────────────────────────────
+
+    // ערכים מקוריים לזיהוי שינויים
+    let _editOriginalValues = {};
+
+    function openEditUserModal(userId, displayName, username, email) {
+        const modal     = document.getElementById('editUserModal');
+        const userInfo  = document.getElementById('editModalUserInfo');
+        const userIdBox = document.getElementById('editUserId');
+
+        // מלא פרטי משתמש בכותרת
+        userInfo.innerHTML = `
+            <i class="fas fa-user"></i>
+            <strong>${displayName}</strong>
+            <span style="color:rgba(255,255,255,0.4); font-size:0.85rem">
+                (${username})
+            </span>
+        `;
+
+        // שמור ערכים מקוריים
+        _editOriginalValues = {
+            displayName: displayName,
+            username:    username,
+            email:       email || ''
+        };
+
+        // מלא שדות
+        userIdBox.value = userId;
+        document.getElementById('editDisplayName').value = displayName;
+        document.getElementById('editUsername').value    = username;
+        document.getElementById('editEmail').value       = email || '';
+
+        // נקה סטייט
+        document.getElementById('editErrorMsg').style.display = 'none';
+        resetEditChangesUI();
+
+        // הצג מודאל
+        modal.style.display          = 'flex';
+        document.body.style.overflow = 'hidden';
+
+        // פוקוס
+        setTimeout(() => {
+            document.getElementById('editDisplayName').focus();
+        }, 100);
+    }
+
+    function closeEditUserModal() {
+        const modal = document.getElementById('editUserModal');
+
+        hideEditLoader();
+        modal.style.display          = 'none';
+        document.body.style.overflow = '';
+
+        // נקה שדות
+        ['editDisplayName', 'editUsername', 'editEmail'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.value = '';
+                el.classList.remove('changed');
+            }
+        });
+
+        document.getElementById('editErrorMsg').style.display = 'none';
+        resetEditChangesUI();
+        _editOriginalValues = {};
+    }
+
+    // ── מעקב שינויים ──
+    function trackEditChange(input, fieldKey) {
+        const original = _editOriginalValues[fieldKey] || '';
+        const current  = input.value;
+
+        // סמן שדה שהשתנה
+        input.classList.toggle('changed',
+            current.trim() !== original.trim()
+        );
+
+        updateEditChangesSummary();
+    }
+
+    function updateEditChangesSummary() {
+        const summary     = document.getElementById('editChangesSummary');
+        const summaryText = document.getElementById('editChangesSummaryText');
+
+        const fields = [
+            {
+                id:    'editDisplayName',
+                key:   'displayName',
+                label: 'שם תצוגה'
+            },
+            {
+                id:    'editUsername',
+                key:   'username',
+                label: 'שם משתמש'
+            },
+            {
+                id:    'editEmail',
+                key:   'email',
+                label: 'מייל'
+            }
+        ];
+
+        const changed = fields.filter(f => {
+            const el = document.getElementById(f.id);
+            return el && el.value.trim() !== (_editOriginalValues[f.key] || '').trim();
+        });
+
+        if (changed.length === 0) {
+            summary.classList.remove('has-changes');
+            summaryText.textContent = 'לא בוצעו שינויים עדיין';
+        } else {
+            summary.classList.add('has-changes');
+            const labels = changed.map(f => f.label).join(', ');
+            summaryText.textContent =
+                `${changed.length} שינוי${changed.length > 1 ? 'ם' : ''}: ${labels}`;
+        }
+    }
+
+    function resetEditChangesUI() {
+        const summary     = document.getElementById('editChangesSummary');
+        const summaryText = document.getElementById('editChangesSummaryText');
+
+        if (summary) {
+            summary.classList.remove('has-changes');
+        }
+        if (summaryText) {
+            summaryText.textContent = 'לא בוצעו שינויים עדיין';
+        }
+    }
+
+    // ── ולידציה ──
+    function validateEditForm() {
+        const displayName = document.getElementById('editDisplayName').value.trim();
+        const username    = document.getElementById('editUsername').value.trim();
+        const email       = document.getElementById('editEmail').value.trim();
+        const errorMsg    = document.getElementById('editErrorMsg');
+        const errorText   = document.getElementById('editErrorText');
+
+        const showError = (msg) => {
+            errorText.textContent  = msg;
+            errorMsg.style.display = 'flex';
+            return false;
+        };
+
+        // שם תצוגה
+        if (displayName.length < 2) {
+            return showError('שם תצוגה חייב להכיל לפחות 2 תווים');
+        }
+
+        // שם משתמש
+        if (username.length < 3) {
+            return showError('שם משתמש חייב להכיל לפחות 3 תווים');
+        }
+
+        if (!/^[a-zA-Z0-9._-]+$/.test(username)) {
+            return showError(
+                'שם משתמש יכול להכיל רק אותיות באנגלית, מספרים ו- . _ -'
+            );
+        }
+
+        // מייל (אופציונלי)
+        if (email && !/^[^\s@@]+@@[^\s@@]+\.[^\s@@]+$/.test(email)) {
+            return showError('כתובת מייל לא תקינה');
+        }
+
+        errorMsg.style.display = 'none';
+        return true;
+    }
+
+    // ── שליחת טופס ──
+    function handleEditFormSubmit() {
+        if (!validateEditForm()) return false;
+
+        showEditLoader();
+        return true;
+    }
+
+    // ── Loader ──
+    function showEditLoader() {
+        const loader = document.getElementById('editUserLoader');
+        const form   = document.getElementById('editUserForm');
+
+        if (loader) loader.style.display = 'flex';
+
+        form.querySelectorAll('button').forEach(btn => {
+            btn.disabled = true;
+        });
+    }
+
+    function hideEditLoader() {
+        const loader = document.getElementById('editUserLoader');
+        const form   = document.getElementById('editUserForm');
+
+        if (loader) loader.style.display = 'none';
+
+        if (form) {
+            form.querySelectorAll('button').forEach(btn => {
+                btn.disabled = false;
+            });
+        }
+    }
+
+    // ─────────────────────────────────────────
+    //  REJECT USER MODAL
+    // ─────────────────────────────────────────
+
+    function openRejectModal(userId, username, displayName, email) {
+        const modal     = document.getElementById('rejectUserModal');
+        const userInfo  = document.getElementById('rejectModalUserInfo');
+        const userIdBox = document.getElementById('rejectUserId');
+
+        // מלא פרטי משתמש
+        userInfo.innerHTML = `
+            <i class="fas fa-user"></i>
+            <strong>${displayName}</strong>
+            <span style="color:rgba(255,255,255,0.4); font-size:0.85rem">
+                (${username})
+            </span>
+        `;
+
+        userIdBox.value = userId;
+
+        // טיפול בסטייט המייל
+        const emailSection   = document.getElementById('rejectEmailSection');
+        const noEmailSection = document.getElementById('rejectNoEmailSection');
+        const emailPreview   = document.getElementById('rejectEmailPreview');
+        const emailCheck     = document.getElementById('sendRejectionEmailCheck');
+        const emailIcon      = document.getElementById('rejectEmailIcon');
+
+        if (email && email.trim() !== '') {
+            // יש מייל - הצג אפשרות
+            emailSection.style.display   = 'block';
+            noEmailSection.style.display = 'none';
+
+            emailPreview.textContent = email;
+
+            // ברירת מחדל: מסומן לשליחה
+            emailCheck.checked = true;
+            emailIcon.style.color = '#4a9eff';
+        } else {
+            // אין מייל - הסתר אפשרות
+            emailSection.style.display   = 'none';
+            noEmailSection.style.display = 'block';
+            emailCheck.checked = false;
+        }
+
+        modal.style.display          = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeRejectModal() {
+        const modal = document.getElementById('rejectUserModal');
+        modal.style.display          = 'none';
+        document.body.style.overflow = '';
+
+        // נקה
+        document.getElementById('rejectUserId').value = '';
+        document.getElementById('sendRejectionEmailCheck').checked = false;
+    }
 </script>
 </body>
 </html>
