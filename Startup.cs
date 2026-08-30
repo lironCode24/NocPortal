@@ -60,6 +60,7 @@ namespace MyWebApp
 
             // ── App services ────────────────────────────────────────
             services.AddSingleton<UserService>();
+            services.AddSingleton<SystemMessageService>();
             services.AddSingleton<AuditLogService>();
             services.AddSingleton<EmailService>();
             services.AddSingleton<PasswordResetService>();
