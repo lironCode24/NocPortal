@@ -10,14 +10,50 @@ class DashboardsManager {
             },
             {
                 id: 'rack-metrics',
-                name: 'PDU Racks',
+                name: 'Data Center',
                 component: 'RackMetricsDashboard',
                 allowedUsers: []
             },
             {
                 id: 'suite-results',
-                name: 'Automation Results',
+                name: 'Suites Results',
                 component: 'SuiteResultsDashboard',
+                allowedUsers: []
+            },
+            {
+                id: 'recent-tests',
+                name: 'Tests Results',
+                component: 'RecentTestsDashboard',
+                allowedUsers: []
+            },
+            {
+                id: 'servers',
+                name: 'Servers & Systems',
+                component: 'ServersDashboard',
+                allowedUsers: []
+            },
+            {
+                id: 'systems-catalog',
+                name: 'Systems Catalog',
+                component: 'SystemsCatalogDashboard',
+                allowedUsers: []
+            },
+            {
+                id: 'changes',
+                name: 'Changes & CAB',
+                component: 'ChangesDashboard',
+                allowedUsers: []
+            },
+            {
+                id: 'activities',
+                name: 'Activity Manager',
+                component: 'ActivitiesDashboard',
+                allowedUsers: []
+            },
+            {
+                id: 'org-tree',
+                name: 'IT Structure',
+                component: 'OrgTreeDashboard',
                 allowedUsers: []
             },
             {
@@ -26,6 +62,18 @@ class DashboardsManager {
                 component: 'EmployeeTasksDashboard',
                 allowedUsers: []
             },
+            {
+                id: 'achievements',
+                name: 'Achievements & Goals',
+                component: 'AchievementsDashboard',
+                allowedUsers: []
+            },
+            // {
+            //     id: 'grafana-dashboard',
+            //     name: 'Grafana Dashboard',
+            //     component: 'GrafanaDashboard',
+            //     allowedUsers: []
+            // },
         ];
         this.currentUser = null;
 
@@ -37,11 +85,43 @@ class DashboardsManager {
         this.autoSwitchIntervalTime = 180 * 1000;
         this.autoSwitchProgressTimer = null;
         this.autoSwitchProgressElapsed = 0;
+
+        this.dashboardOrder = [];
+
+        // *** ניהול Dark/Light Mode ***
+        this.colorTheme = localStorage.getItem('dashboardColorTheme') || 'dark';
+    }
+
+    applyColorTheme(theme) {
+        this.colorTheme = theme;
+        localStorage.setItem('dashboardColorTheme', theme);
+
+        const root = document.documentElement;
+
+        if (theme === 'light') {
+            root.setAttribute('data-theme', 'light');
+        } else {
+            root.setAttribute('data-theme', 'dark');
+        }
+
+        // עדכן אייקון הכפתור
+        const btn = document.getElementById('colorThemeBtn');
+        if (btn) {
+            btn.innerHTML = theme === 'light'
+                ? '<i class="fas fa-moon" style="font-size:18px"></i>'
+                : '<i class="fas fa-sun"  style="font-size:18px"></i>';
+            btn.title = theme === 'light'
+                ? 'עבור ל-Dark Mode'
+                : 'עבור ל-Light Mode';
+
+            btn.classList.toggle('theme-light-active', theme === 'light');
+        }
     }
 
     async initialize() {
         try {
             await this.fetchCurrentUser();
+            this.loadDashboardOrder();
 
             if (!this.currentUser) {
                 this.showError('לא ניתן לאמת את המשתמש');
@@ -71,6 +151,9 @@ class DashboardsManager {
             // הוסף כותרת לדשבורד
             this.addDashboardTitle();
 
+            // *** החל theme שמור ***
+            this.applyColorTheme(this.colorTheme);
+
             // *** הוסף: הפעל מחדש טיימר אחרי רענון ***
             if (this.autoSwitchEnabled) {
                 this.autoSwitchInterval = setInterval(() => {
@@ -90,6 +173,50 @@ class DashboardsManager {
             console.error('Error initializing dashboards manager:', error);
             this.showError('שגיאה באתחול מנהל הדשבורדים');
         }
+    }
+
+    loadDashboardOrder() {
+        if (!this.currentUser) return;
+
+        const key = `dashboardOrder_${this.currentUser.username}`;
+        const saved = localStorage.getItem(key);
+
+        if (saved) {
+            try {
+                const savedOrder = JSON.parse(saved);
+                const validIds = this.availableDashboards.map(d => d.id);
+                const filteredOrder = savedOrder.filter(id => validIds.includes(id));
+                // הוסף דשבורדים חדשים שלא היו בסדר השמור
+                const missingIds = validIds.filter(id => !filteredOrder.includes(id));
+                this.dashboardOrder = [...filteredOrder, ...missingIds];
+            } catch (e) {
+                console.warn('Failed to parse dashboard order:', e);
+                this.dashboardOrder = this.availableDashboards.map(d => d.id);
+            }
+        } else {
+            this.dashboardOrder = this.availableDashboards.map(d => d.id);
+        }
+
+        this._applyDashboardOrder();
+    }
+
+    saveDashboardOrder() {
+        if (!this.currentUser) return;
+        const key = `dashboardOrder_${this.currentUser.username}`;
+        localStorage.setItem(key, JSON.stringify(this.dashboardOrder));
+    }
+
+    _applyDashboardOrder() {
+        const ordered = [];
+        this.dashboardOrder.forEach(id => {
+            const dashboard = this.availableDashboards.find(d => d.id === id);
+            if (dashboard) ordered.push(dashboard);
+        });
+        // הוסף דשבורדים שלא נמצאו בסדר
+        this.availableDashboards.forEach(d => {
+            if (!ordered.find(o => o.id === d.id)) ordered.push(d);
+        });
+        this.availableDashboards = ordered;
     }
 
     showBackToPortalButtonIfAllowed() {
@@ -130,12 +257,24 @@ class DashboardsManager {
             if (cached) {
                 this.currentUser = JSON.parse(cached);
                 return this.currentUser;
+            } else {
+                this.currentUser = {
+                    username: "",
+                    role: "",
+                    displayName: "",
+                    userId: "",
+                    allowedDashboards: []
+                };
+                return this.currentUser;
             }
             return null;
         }
     }
 
     isUserAllowedForDashboard(dashboard) {
+        if (dashboard.id == "systems-catalog") {
+            return true;
+        }
         if (!this.currentUser) return false;
 
         const { role, allowedDashboards } = this.currentUser;
@@ -233,8 +372,32 @@ class DashboardsManager {
                 case 'SuiteResultsDashboard':
                     this.loadSuiteResultsDashboard();
                     break;
+                case 'RecentTestsDashboard':
+                    this.loadRecentTestsDashboard();
+                    break;
                 case 'EmployeeTasksDashboard':
                     this.loadEmployeeTasksDashboard();
+                    break;
+                case 'ServersDashboard':
+                    this.loadServersDashboard();
+                    break;
+                case 'SystemsCatalogDashboard':
+                    this.loadSystemsCatalogDashboard();
+                    break;
+                case 'ChangesDashboard':
+                    this.loadChangesDashboard();
+                    break;
+                case 'AchievementsDashboard':
+                    this.loadAchievementsDashboard();
+                    break;
+                case 'ActivitiesDashboard':
+                    this.loadActivitiesDashboard();
+                    break;
+                case 'OrgTreeDashboard':
+                    this.loadOrgTreeDashboard();
+                    break;
+                case 'GrafanaDashboard':
+                    this.loadGrafanaDashboard();
                     break;
                 default:
                     this.showError(`סוג דשבורד לא נתמך: ${dashboard.component}`);
@@ -243,6 +406,55 @@ class DashboardsManager {
             console.error(`Error loading dashboard ${dashboard.id}:`, error);
             this.showError(`שגיאה בטעינת דשבורד: ${error.message}`);
         }
+    }
+
+    // הוסף את הפונקציות:
+    loadOrgTreeDashboard() {
+        if (typeof OrgTreeDashboard === 'undefined') {
+            const script = document.createElement('script');
+            script.src = '/js/OrgTreeDashboard.js';
+            script.onload = () => {
+                if (typeof OrgTreeDashboard !== 'undefined') {
+                    this.initializeOrgTreeDashboard();
+                } else {
+                    setTimeout(() => {
+                        if (typeof OrgTreeDashboard !== 'undefined') {
+                            this.initializeOrgTreeDashboard();
+                        } else {
+                            this.showError('OrgTreeDashboard לא נטען כראוי');
+                        }
+                    }, 100);
+                }
+            };
+            script.onerror = () =>
+                this.showError('שגיאה בטעינת OrgTreeDashboard');
+            document.head.appendChild(script);
+        } else {
+            this.initializeOrgTreeDashboard();
+        }
+    }
+
+    initializeOrgTreeDashboard() {
+        if (typeof OrgTreeDashboard === 'undefined') {
+            this.showError('OrgTreeDashboard class is not defined');
+            return;
+        }
+
+        let container = document.getElementById('dashboardContent');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'dashboardContent';
+            container.className = 'dashboard-content';
+            document.body.appendChild(container);
+        }
+        container.innerHTML = '<div id="orgTreeDashboardRoot"></div>';
+
+        window.orgTreeDashboard = new OrgTreeDashboard(
+            'orgTreeDashboardRoot',
+            this.currentUser
+        );
+        window.orgTreeDashboard.initialize();
+        setTimeout(() => this.reinitScrollToTopButton(), 600);
     }
 
     loadRackMetricsDashboard() {
@@ -277,6 +489,7 @@ class DashboardsManager {
             window.dataCenterManager.canEdit =
                 window.dataCenterManager.checkEditPermission();
         }
+        setTimeout(() => this.reinitScrollToTopButton(), 600);
     }
 
 
@@ -334,6 +547,7 @@ class DashboardsManager {
             user
         );
         window.suiteResultsDashboard.initialize();
+        setTimeout(() => this.reinitScrollToTopButton(), 600);
     }
 
     // הוסף את שתי הפונקציות:
@@ -362,6 +576,57 @@ class DashboardsManager {
             'stickyNotesDashboardRoot'
         );
         window.stickyNotesDashboard.initialize();
+        setTimeout(() => this.reinitScrollToTopButton(), 600);
+    }
+
+    loadRecentTestsDashboard() {
+        if (typeof RecentTestsDashboard === 'undefined') {
+            const script = document.createElement('script');
+            script.src = '/js/RecentTestsDashboard.js';
+            script.onload = () => {
+                if (typeof RecentTestsDashboard !== 'undefined') {
+                    this.initializeRecentTestsDashboard();
+                } else {
+                    setTimeout(() => {
+                        if (typeof RecentTestsDashboard !== 'undefined') {
+                            this.initializeRecentTestsDashboard();
+                        } else {
+                            this.showError('RecentTestsDashboard לא נטען כראוי');
+                        }
+                    }, 100);
+                }
+            };
+            script.onerror = () => {
+                this.showError('שגיאה בטעינת RecentTestsDashboard');
+            };
+            document.head.appendChild(script);
+        } else {
+            this.initializeRecentTestsDashboard();
+        }
+    }
+
+    initializeRecentTestsDashboard() {
+        if (typeof RecentTestsDashboard === 'undefined') {
+            this.showError('RecentTestsDashboard class is not defined');
+            return;
+        }
+
+        let container = document.getElementById('dashboardContent');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'dashboardContent';
+            container.className = 'dashboard-content';
+            document.body.appendChild(container);
+        }
+        container.innerHTML = '<div id="recentTestsDashboardRoot"></div>';
+
+        const user = this.currentUser;
+        window.recentTestsDashboard = new RecentTestsDashboard(
+            'recentTestsDashboardRoot',
+            user
+        );
+        window.recentTestsDashboard.initialize();
+        setTimeout(() => this.reinitScrollToTopButton(), 600);
     }
 
     loadAlertsManager() {
@@ -523,13 +788,21 @@ class DashboardsManager {
                 };
             }
 
-            // הוסף כפתור סינונים שמורים ל-header
+            // הוסף כפתור סינונים שמורים
             setTimeout(async () => {
+
+                // *** שלב 1: צור את alertsInlineButtons קודם ***
+                if (this._pendingAlertsButtons) {
+                    this._injectAlertsControlButtons();
+                    this._pendingAlertsButtons = false;
+                }
+
+                // *** שלב 2: אחרי שה-wrapper קיים, הכנס savedFilters לתוכו ***
                 if (window.alertsManager.savedFiltersManager) {
-                    const leftControls = document.querySelector('.dashboard-left-controls');
-                    if (leftControls) {
+                    const alertsInlineButtons = document.getElementById('alertsInlineButtons');
+                    if (alertsInlineButtons) {
                         window.alertsManager.savedFiltersManager
-                            .renderSavedFiltersButton(leftControls);
+                            .renderSavedFiltersButton(alertsInlineButtons);
                     }
 
                     setTimeout(() => {
@@ -587,11 +860,253 @@ class DashboardsManager {
                     }
                 });
             }
+            setTimeout(() => this.reinitScrollToTopButton(), 600);
 
         } catch (error) {
             console.error('Error initializing AlertsManager:', error);
             this.showError(`שגיאה באתחול AlertsManager: ${error.message}`);
         }
+    }
+
+    _injectAlertsControlButtons() {
+        const alertsContainer = document.querySelector('.alerts-container');
+        if (!alertsContainer) return;
+
+        if (document.getElementById('dashboardColorModeBtn')) return;
+
+        // *** wrapper חיצוני - שורה אחת עם justify-content: space-between ***
+        const topBar = document.createElement('div');
+        topBar.id = 'alertsInlineControlsBar';
+        topBar.style.cssText = `
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 4px 10px;
+        gap: 8px;
+        flex-wrap: nowrap;
+        min-height: 36px;
+    `;
+
+        // *** Slot ל-alertsLastUpdated - צד ימין (RTL) ***
+        const lastUpdatedPlaceholder = document.createElement('div');
+        lastUpdatedPlaceholder.id = 'alertsLastUpdatedSlot';
+        lastUpdatedPlaceholder.style.cssText = `
+        display: flex;
+        align-items: center;
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+    `;
+
+        // *** wrapper לכפתורים - צד שמאל ***
+        const btnWrapper = document.createElement('div');
+        btnWrapper.id = 'alertsInlineButtons';
+        btnWrapper.style.cssText = `
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+    `;
+
+        // *** Color Mode Toggle Button ***
+        const colorModeBtn = document.createElement('button');
+        colorModeBtn.id = 'dashboardColorModeBtn';
+        colorModeBtn.className = 'toggle-filters-btn';
+
+        const savedDashboardColorMode = localStorage.getItem('dashboardColorMode');
+        const initialDashboardMode = savedDashboardColorMode
+            ? JSON.parse(savedDashboardColorMode)
+            : 'background';
+
+        colorModeBtn.innerHTML = initialDashboardMode === 'background'
+            ? '<i class="fas fa-fill-drip"></i>'
+            : '<i class="fas fa-font"></i>';
+        colorModeBtn.title = initialDashboardMode === 'background'
+            ? 'עבור לצבע טקסט'
+            : 'עבור לצבע רקע';
+
+        colorModeBtn.addEventListener('click', () => {
+            if (window.alertsManager) {
+                window.alertsManager.toggleColorMode();
+                const currentMode = window.alertsManager.colorMode;
+                colorModeBtn.innerHTML = currentMode === 'background'
+                    ? '<i class="fas fa-fill-drip"></i>'
+                    : '<i class="fas fa-font"></i>';
+                colorModeBtn.title = currentMode === 'background'
+                    ? 'עבור לצבע טקסט'
+                    : 'עבור לצבע רקע';
+            }
+        });
+
+        // *** Toggle Filters Button ***
+        const toggleFiltersBtn = document.createElement('button');
+        toggleFiltersBtn.id = 'toggleFiltersBtn1';
+        toggleFiltersBtn.className = 'toggle-filters-btn';
+        toggleFiltersBtn.innerHTML = this.toggleButtonLook();
+
+        toggleFiltersBtn.addEventListener('click', () => {
+            const filterGroups = document.querySelectorAll('.alerts-filter-group');
+            const searchContainer = document.querySelector('.alerts-search');
+
+            if (filterGroups.length > 0) {
+                const isVisible = filterGroups[0].style.display !== 'none';
+
+                const controls = document.querySelector('.alerts-controls');
+                if (controls) controls.style.display = isVisible ? 'none' : '';
+
+                filterGroups.forEach(group => {
+                    group.style.display = isVisible ? 'none' : '';
+                });
+
+                if (searchContainer) {
+                    searchContainer.style.display = isVisible ? 'none' : '';
+                }
+
+                toggleFiltersBtn.innerHTML = this.toggleButtonLook();
+                localStorage.setItem('dashboardFiltersHidden', isVisible ? 'true' : 'false');
+            }
+        });
+
+        // *** הרכב: כפתורים קודם, אחר כך savedFilters יתווסף מבחוץ ***
+        btnWrapper.appendChild(colorModeBtn);
+        btnWrapper.appendChild(toggleFiltersBtn);
+
+        // *** הרכב topBar: lastUpdated משמאל, כפתורים מימין ***
+        // בגלל RTL: lastUpdatedSlot בצד ימין, btnWrapper בצד שמאל
+        topBar.appendChild(lastUpdatedPlaceholder);  // ימין (flex: 1)
+        topBar.appendChild(btnWrapper);               // שמאל (flex-shrink: 0)
+
+        // *** הכנס בתחילת alerts-container ***
+        alertsContainer.insertBefore(topBar, alertsContainer.firstChild);
+    }
+
+    loadServersDashboard() {
+        if (typeof ServersDashboard === 'undefined') {
+            const script = document.createElement('script');
+            script.src = '/js/ServersDashboard.js';
+            script.onload = () => this.initializeServersDashboard();
+            script.onerror = () =>
+                this.showError('שגיאה בטעינת ServersDashboard');
+            document.head.appendChild(script);
+        } else {
+            this.initializeServersDashboard();
+        }
+    }
+
+    initializeServersDashboard() {
+        let container = document.getElementById('dashboardContent');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'dashboardContent';
+            container.className = 'dashboard-content';
+            document.body.appendChild(container);
+        }
+        container.innerHTML =
+            '<div id="serversDashboardRoot"></div>';
+
+        window.serversDashboard = new ServersDashboard(
+            'serversDashboardRoot'
+        );
+        window.serversDashboard.initialize();
+        setTimeout(() => this.reinitScrollToTopButton(), 600);
+    }
+
+    loadSystemsCatalogDashboard() {
+        if (typeof SystemsCatalogDashboard === 'undefined') {
+            const script = document.createElement('script');
+            script.src = '/js/SystemsCatalogDashboard.js';
+            script.onload = () => {
+                if (typeof SystemsCatalogDashboard !== 'undefined') {
+                    this.initializeSystemsCatalogDashboard();
+                } else {
+                    setTimeout(() => {
+                        if (typeof SystemsCatalogDashboard !== 'undefined') {
+                            this.initializeSystemsCatalogDashboard();
+                        } else {
+                            this.showError('SystemsCatalogDashboard לא נטען כראוי');
+                        }
+                    }, 100);
+                }
+            };
+            script.onerror = () =>
+                this.showError('שגיאה בטעינת SystemsCatalogDashboard');
+            document.head.appendChild(script);
+        } else {
+            this.initializeSystemsCatalogDashboard();
+        }
+    }
+
+    initializeSystemsCatalogDashboard() {
+        if (typeof SystemsCatalogDashboard === 'undefined') {
+            this.showError('SystemsCatalogDashboard class is not defined');
+            return;
+        }
+
+        let container = document.getElementById('dashboardContent');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'dashboardContent';
+            container.className = 'dashboard-content';
+            document.body.appendChild(container);
+        }
+        container.innerHTML =
+            '<div id="systemsCatalogDashboardRoot"></div>';
+
+        window.systemsCatalogDashboard = new SystemsCatalogDashboard(
+            'systemsCatalogDashboardRoot'
+        );
+        window.systemsCatalogDashboard.initialize();
+        setTimeout(() => this.reinitScrollToTopButton(), 600);
+    }
+
+    loadChangesDashboard() {
+        if (typeof ChangesDashboard === 'undefined') {
+            const script = document.createElement('script');
+            script.src = '/js/ChangesDashboard.js';
+            script.onload = () => {
+                if (typeof ChangesDashboard !== 'undefined') {
+                    this.initializeChangesDashboard();
+                } else {
+                    setTimeout(() => {
+                        if (typeof ChangesDashboard !== 'undefined') {
+                            this.initializeChangesDashboard();
+                        } else {
+                            this.showError('ChangesDashboard לא נטען כראוי');
+                        }
+                    }, 100);
+                }
+            };
+            script.onerror = () =>
+                this.showError('שגיאה בטעינת ChangesDashboard');
+            document.head.appendChild(script);
+        } else {
+            this.initializeChangesDashboard();
+        }
+    }
+
+    initializeChangesDashboard() {
+        if (typeof ChangesDashboard === 'undefined') {
+            this.showError('ChangesDashboard class is not defined');
+            return;
+        }
+
+        let container = document.getElementById('dashboardContent');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'dashboardContent';
+            container.className = 'dashboard-content';
+            document.body.appendChild(container);
+        }
+        container.innerHTML =
+            '<div id="changesDashboardRoot"></div>';
+
+        const user = this.currentUser;
+        window.changesDashboard = new ChangesDashboard(
+            'changesDashboardRoot',
+            user
+        );
+        window.changesDashboard.initialize();
+        setTimeout(() => this.reinitScrollToTopButton(), 600);
     }
 
     saveSortState() {
@@ -679,21 +1194,6 @@ class DashboardsManager {
         /* שורות הטבלה - hover */
         .alerts-table tbody tr:hover {
             background-color: #dec1c1;
-        }
-        
-        /* אזור החיפוש */        
-        .alerts-search input {
-            background-color: #2c2c2c;
-            color: #e0e0e0;
-            border: none;
-        }
-        
-        .alerts-search input::placeholder {
-            color: #999;
-        }
-
-        .alerts-search input:not(:placeholder-shown) {
-            background: linear-gradient(185deg, #2c2c2c, #000);
         }
         
         /* כפתורי סינון */
@@ -1069,8 +1569,376 @@ class DashboardsManager {
             background-color: rgba(124, 58, 237, 0.2);
             border-color: #7c3aed;
         }
+
+        /* ===== Dark / Light Mode Theme ===== */
+
+        /* כפתור theme פעיל (light mode) */
+        .auto-switch-btn.theme-light-active {
+            background-color: rgba(255, 200, 50, 0.25);
+            border: 1px solid rgba(255, 200, 50, 0.6);
+            color: #fde68a;
+        }
+        .auto-switch-btn.theme-light-active:hover {
+            background-color: rgba(255, 200, 50, 0.4);
+        }
+
+        /* ===== LIGHT MODE — כל הדשבורד ===== */
+        [data-theme="light"] body {
+            background: #f0f2f5;
+            color: #1a1a2e;
+        }
+
+        [data-theme="light"] .dashboard-header {
+            background-color: #4a1a8c;
+        }
+
+        [data-theme="light"] .dashboard-content {
+            background: #f0f2f5;
+        }
+
+        /* ===== LIGHT MODE — Alerts Dashboard ===== */
+        [data-theme="light"] .alerts-container.fullscreen-mode {
+            background-color: #f0f2f5;
+        }
+
+        [data-theme="light"] .alerts-table-container {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+
+        [data-theme="light"] .alerts-table {
+            background-color: #fff;
+            color: #1a1a2e;
+        }
+
+        [data-theme="light"] .alerts-table thead th {
+            background-color: #e8e8f0;
+            color: #1a1a2e;
+            border-bottom: 2px solid #ccc;
+        }
+
+        [data-theme="light"] .alerts-table td {
+            border-bottom: 1px solid #e8e8e8;
+            color: #1a1a2e;
+        }
+
+        [data-theme="light"] .alerts-table tbody tr:hover {
+            background-color: #f0e8ff;
+        }
+
+        [data-theme="light"] .alerts-table tr.status-closed {
+            background-color: #f5f5f5;
+        }
+
+        [data-theme="light"] .alerts-table tr.status-closed:hover {
+            background-color: #e8d8d8;
+        }
+
+        [data-theme="light"] .alerts-controls {
+            background: #fff;
+            border-bottom: 1px solid #ddd;
+        }
+
+        [data-theme="light"] .alerts-filters {
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+        }
+
+        [data-theme="light"] .alerts-filter-group {
+            background-color: #ebebeb;
+            border-bottom: 1px solid #ddd;
+        }
+
+        [data-theme="light"] .alerts-filter-group label {
+            color: #444;
+        }
+
+        [data-theme="light"] .filter-buttons-group button {
+            background-color: #fff;
+            color: #555;
+            border: 1px solid #ccc;
+        }
+
+        [data-theme="light"] .filter-buttons-group button.active {
+            background-color: #4a1a8c;
+            border-color: #6a2aac;
+        }
+
+        [data-theme="light"] .total-alerts-counter {
+            background-color: #f5f5f5 !important;
+            color: #1a1a2e !important;
+            border-top: 1px solid #ddd !important;
+        }
+
+        /* ===== LIGHT MODE — Recent Tests Dashboard ===== */
+        [data-theme="light"] .rt-root {
+            background: #f0f2f5;
+            color: #1a1a2e;
+        }
+
+        [data-theme="light"] .rt-header {
+            background: linear-gradient(135deg, #e8e8f8 0%, #dde0f0 100%);
+            border-bottom: 1px solid #c8c8e0;
+        }
+
+        [data-theme="light"] .rt-search-input {
+            background: #fff;
+            border: 1px solid #ccc;
+            color: #1a1a2e;
+        }
+
+        [data-theme="light"] .rt-search-input::placeholder { color: #aaa; }
+
+        [data-theme="light"] .rt-filter-btn {
+            background: #fff;
+            border: 1px solid #ccc;
+            color: #555;
+        }
+
+        [data-theme="light"] .rt-filter-btn:hover {
+            background: #f0f0f8;
+            color: #333;
+        }
+
+        [data-theme="light"] .rt-filter-btn.active {
+            background: #ede9fe;
+            border-color: #7c3aed;
+            color: #5b21b6;
+        }
+
+        [data-theme="light"] .rt-filter-btn.passed.active {
+            background: #dcfce7;
+            border-color: #22c55e;
+            color: #15803d;
+        }
+
+        [data-theme="light"] .rt-filter-btn.failed.active {
+            background: #fee2e2;
+            border-color: #ef4444;
+            color: #b91c1c;
+        }
+
+        [data-theme="light"] .rt-filter-btn.warning.active {
+            background: #fef9c3;
+            border-color: #f59e0b;
+            color: #b45309;
+        }
+
+        [data-theme="light"] .rt-stats-bar {
+            background: linear-gradient(135deg, #e8e8f8 0%, #dde0f0 100%);
+            border-bottom: 1px solid #c8c8e0;
+        }
+
+        [data-theme="light"] .rt-stat-box {
+            background: #fff;
+            border: 1px solid #ddd;
+        }
+
+        [data-theme="light"] .rt-stat-num { color: #1a1a2e; }
+
+        [data-theme="light"] .rt-stat-label { color: #888; }
+
+        [data-theme="light"] .rt-table-wrap {
+            background: #fff;
+        }
+
+        [data-theme="light"] .rt-table thead tr {
+            background: #e8e8f0;
+        }
+
+        [data-theme="light"] .rt-table th {
+            background: #e8e8f0;
+            color: #4a5568;
+            border-bottom: 2px solid #c8c8e0;
+        }
+
+        [data-theme="light"] .rt-table td {
+            border-bottom: 1px solid #eee;
+            color: #2d3748;
+        }
+
+        [data-theme="light"] .rt-row:hover td {
+            background: rgba(124,58,237,0.04);
+        }
+
+        [data-theme="light"] .rt-test-name { color: #2d3748; }
+
+        [data-theme="light"] .rt-td-duration,
+        [data-theme="light"] .rt-td-lastrun { color: #888; }
+
+        [data-theme="light"] .rt-ms-btn {
+            background: #fff;
+            border: 1px solid #ccc;
+            color: #444;
+        }
+
+        [data-theme="light"] .rt-ms-dropdown {
+            background: #fff;
+            border: 1px solid #ccc;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+        }
+
+        [data-theme="light"] .rt-ms-option { color: #333; }
+        [data-theme="light"] .rt-ms-option:hover { background: rgba(124,58,237,0.06); }
+        [data-theme="light"] .rt-ms-opt-label { color: #333; }
+
+        [data-theme="light"] .rt-ms-search {
+            background: #f5f5f5;
+            border: 1px solid #ccc;
+            color: #333;
+        }
+
+        [data-theme="light"] .rt-filter-banner {
+            background: linear-gradient(
+                135deg,
+                rgba(234,179,8,0.12),
+                rgba(234,179,8,0.06)
+            );
+            border-bottom: 1px solid rgba(234,179,8,0.3);
+        }
+
+        [data-theme="light"] .rt-refresh-btn {
+            background: #fff;
+            border: 1px solid #ccc;
+            color: #555;
+        }
+
+        [data-theme="light"] .rt-refresh-btn:hover {
+            background: #f0f0f8;
+            color: #5b21b6;
+            border-color: #7c3aed;
+        }
+
+        [data-theme="light"] .rt-manage-mappings-btn {
+            background: #e8f0fe;
+            border: 1px solid #93c5fd;
+            color: #1d4ed8;
+        }
+
+        [data-theme="light"] .rt-export-btn {
+            background: #dbeafe;
+            border: 1px solid #93c5fd;
+            color: #1d4ed8;
+        }
+
+        /* ===== LIGHT MODE — Popup ===== */
+        [data-theme="light"] .rt-mapping-popup,
+        [data-theme="light"] .rt-quick-map-popup,
+        [data-theme="light"] .rt-run-test-popup,
+        [data-theme="light"] .rt-contacts-popup {
+            background: #fff;
+            border: 1px solid #c8c8e0;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+
+        [data-theme="light"] .rt-popup-header {
+            background: #f0f0f8;
+            border-bottom: 1px solid #ddd;
+        }
+
+        [data-theme="light"] .rt-map-input {
+            background: #f5f5f5;
+            border: 1px solid #ccc;
+            color: #1a1a2e;
+        }
+
+        [data-theme="light"] .rt-map-input::placeholder { color: #aaa; }
+
+        [data-theme="light"] .rt-contact-row {
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+        }
+
+        [data-theme="light"] .rt-contact-row:hover { background: #ebebf5; }
+
+        [data-theme="light"] .rt-contact-name { color: #1a1a2e; }
+
+        /* ===== LIGHT MODE — Auto Switch Popup ===== */
+        [data-theme="light"] .auto-switch-popup {
+            background: #fff;
+            border: 1px solid #c8c8e0;
+            color: #1a1a2e;
+        }
+
+        [data-theme="light"] .auto-switch-popup-title { color: #1a1a2e; }
+
+        [data-theme="light"] .auto-switch-dashboard-card {
+            background: #f5f5f5;
+            border: 2px solid #ddd;
+        }
+
+        [data-theme="light"] .auto-switch-dashboard-card:hover {
+            background: #ebebf5;
+            border-color: #aaa;
+        }
+
+        [data-theme="light"] .auto-switch-dashboard-card.selected {
+            background: rgba(124,58,237,0.08);
+            border-color: #7c3aed;
+        }
+
+        [data-theme="light"] .auto-switch-interval-row {
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+        }
+
+        [data-theme="light"] .auto-switch-interval-input {
+            background: #fff;
+            border: 1px solid #ccc;
+            color: #1a1a2e;
+        }
+
+        [data-theme="light"] .auto-switch-section-label { color: #666; }
+
+        [data-theme="light"] .auto-switch-progress-bar-container {
+            background: #ddd;
+        }
+
+        /* ===== LIGHT MODE — Dashboards List ===== */
+        [data-theme="light"] .dashboards-list {
+            background: #f0f2f5;
+        }
+
+        [data-theme="light"] .dashboard-card {
+            background-color: #5b21b6;
+            border: 1px solid #7c3aed;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+        }
+
+        [data-theme="light"] .dashboard-card:hover {
+            background-color: #4c1d95;
+            border-color: #a78bfa;
+            box-shadow: 0 10px 30px rgba(124,58,237,0.3);
+        }
     `;
         document.head.appendChild(style);
+    }
+
+    _applyOptimalGrid(gridElement, count) {
+        // חישוב מספר עמודות ושורות אופטימלי
+        let cols, rows;
+
+        if (count <= 2) {
+            cols = count; rows = 1;
+        } else if (count <= 4) {
+            cols = 2; rows = Math.ceil(count / 2);
+        } else if (count <= 6) {
+            cols = 3; rows = Math.ceil(count / 3);
+        } else if (count <= 8) {
+            cols = 4; rows = Math.ceil(count / 4);
+        } else if (count <= 9) {
+            cols = 3; rows = 3;
+        } else if (count <= 12) {
+            cols = 4; rows = Math.ceil(count / 4);
+        } else {
+            cols = 5; rows = Math.ceil(count / 5);
+        }
+
+        gridElement.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+        gridElement.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+        gridElement.style.height = '100%';
+        gridElement.style.gap = '0';
     }
 
     showDashboardsList() {
@@ -1095,45 +1963,339 @@ class DashboardsManager {
         const list = document.createElement('div');
         list.className = 'dashboards-grid';
 
-
         const allowedDashboards = this.getAllowedDashboards();
 
         if (allowedDashboards.length === 0) {
             list.innerHTML = `
-        <div style="grid-column:1/-1; text-align:center; color:#aaa; padding:40px;">
-            <i class="fas fa-lock" style="font-size:2rem; color:#f87171; display:block; margin-bottom:10px;"></i>
-            <p>אין דשבורדים זמינים עבור המשתמש שלך</p>
-        </div>
-    `;
+            <div style="grid-column:1/-1; text-align:center; color:#aaa; padding:40px;">
+                <i class="fas fa-lock" style="font-size:2rem; color:#f87171; display:block; margin-bottom:10px;"></i>
+                <p>אין דשבורדים זמינים עבור המשתמש שלך</p>
+            </div>
+        `;
             listContainer.appendChild(list);
             container.appendChild(listContainer);
-            this.addDashboardsListStyles();
+            this.addDashboardsListStyles(0);
             return;
         }
 
-        allowedDashboards.forEach(dashboard => {
+        // *** חישוב מספר עמודות לפי כמות דשבורדים ***
+        const count = allowedDashboards.length;
+        let cols;
 
+        if (count <= 5) {
+            cols = count; // 1-5: הכל בשורה אחת
+        } else {
+            // מעל 5 - מצא חלוקה זוגית אופטימלית (מקסימום 5 בשורה)
+            cols = 5;
+            // נסה למצוא חלוקה שנותנת שורות שלמות
+            for (let c = 5; c >= 2; c--) {
+                if (count % c === 0) {
+                    cols = c;
+                    break;
+                }
+            }
+            // אם לא נמצאה חלוקה זוגית מושלמת - השתמש ב-5 או פחות
+            if (count % cols !== 0) {
+                cols = Math.min(5, count);
+            }
+        }
+
+        const rows = Math.ceil(count / cols);
+
+        // *** הזרק CSS דינמי לגריד ***
+        list.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+        list.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+
+        allowedDashboards.forEach(dashboard => {
             const dashboardCard = document.createElement('div');
             dashboardCard.className = 'dashboard-card';
+            dashboardCard.draggable = true;
+            dashboardCard.dataset.dashboardId = dashboard.id;
             dashboardCard.innerHTML = `
+                <div class="dashboard-card-drag-handle" title="גרור לסידור מחדש">
+                    <i class="fas fa-grip-vertical"></i>
+                </div>
                 <div class="dashboard-card-icon">
                     <i class="fas ${this.getDashboardIcon(dashboard.id)}"></i>
                 </div>
                 <div class="dashboard-card-title">${dashboard.name}</div>
             `;
 
-            dashboardCard.addEventListener('click', () => {
+            dashboardCard.addEventListener('click', (e) => {
+                // אל תנווט אם לחצו על ידית הגרירה
+                if (e.target.closest('.dashboard-card-drag-handle')) return;
                 window.location.href = `?dashboard=${dashboard.id}`;
             });
 
             list.appendChild(dashboardCard);
         });
 
+        // הפעל גרירה אחרי בניית הרשימה
+        this._initDragAndDrop(list);
+
         listContainer.appendChild(list);
         container.appendChild(listContainer);
-
         // הוסף סגנונות לרשימת הדשבורדים
-        this.addDashboardsListStyles();
+        this.addDashboardsListStyles(allowedDashboards.length);
+    }
+
+    _isOrderChanged() {
+        if (!this.currentUser) return false;
+
+        const key = `dashboardOrder_${this.currentUser.username}`;
+        const saved = localStorage.getItem(key);
+
+        // אם אין שמירה בכלל - הסדר הוא ברירת מחדל
+        if (!saved) return false;
+
+        const defaultOrder = [
+            'alerts', 'rack-metrics', 'suite-results',
+            'recent-tests', 'employee-tasks', 'servers',
+            'systems-catalog', 'changes'
+        ];
+
+        try {
+            const savedOrder = JSON.parse(saved);
+            // השווה רק דשבורדים שקיימים בשני הרשימות
+            const relevantDefault = defaultOrder.filter(id =>
+                savedOrder.includes(id)
+            );
+            const relevantSaved = savedOrder.filter(id =>
+                defaultOrder.includes(id)
+            );
+
+            return JSON.stringify(relevantDefault) !== JSON.stringify(relevantSaved);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    resetDashboardOrder() {
+        if (!this.currentUser) return;
+
+        const key = `dashboardOrder_${this.currentUser.username}`;
+        localStorage.removeItem(key);
+
+        this.dashboardOrder = [
+            'alerts', 'rack-metrics', 'suite-results',
+            'recent-tests', 'employee-tasks', 'servers',
+            'systems-catalog', 'changes'
+        ];
+
+        this._applyDashboardOrder();
+
+        // סדר מחדש את הכרטיסים ב-DOM
+        const grid = document.querySelector('.dashboards-grid');
+        if (grid) {
+            const allowedDashboards = this.getAllowedDashboards();
+            grid.querySelectorAll('.dashboard-card').forEach(card => card.remove());
+
+            allowedDashboards.forEach(dashboard => {
+                const dashboardCard = document.createElement('div');
+                dashboardCard.className = 'dashboard-card';
+                dashboardCard.draggable = true;
+                dashboardCard.dataset.dashboardId = dashboard.id;
+                dashboardCard.innerHTML = `
+                <div class="dashboard-card-drag-handle" title="גרור לסידור מחדש">
+                    <i class="fas fa-grip-vertical"></i>
+                </div>
+                <div class="dashboard-card-icon">
+                    <i class="fas ${this.getDashboardIcon(dashboard.id)}"></i>
+                </div>
+                <div class="dashboard-card-title">${dashboard.name}</div>
+            `;
+                dashboardCard.addEventListener('click', (e) => {
+                    if (e.target.closest('.dashboard-card-drag-handle')) return;
+                    window.location.href = `?dashboard=${dashboard.id}`;
+                });
+                grid.appendChild(dashboardCard);
+            });
+
+            this._initDragAndDrop(grid);
+            // *** עדכן גריד דינמי אחרי איפוס ***
+            const newCount = this.getAllowedDashboards().length;
+            let newCols;
+
+            if (newCount <= 5) {
+                newCols = newCount;
+            } else {
+                newCols = 5;
+                for (let c = 5; c >= 2; c--) {
+                    if (newCount % c === 0) {
+                        newCols = c;
+                        break;
+                    }
+                }
+                if (newCount % newCols !== 0) {
+                    newCols = Math.min(5, newCount);
+                }
+            }
+
+            const newRows = Math.ceil(newCount / newCols);
+            grid.style.gridTemplateColumns = `repeat(${newCols}, 1fr)`;
+            grid.style.gridTemplateRows = `repeat(${newRows}, 1fr)`;
+        }
+
+        // *** הסתר את הכפתור אחרי איפוס ***
+        const resetBtn = document.getElementById('resetOrderBtn');
+        if (resetBtn) resetBtn.style.display = 'none';
+
+        this._showResetToast();
+    }
+
+    _showResetToast() {
+        const existing = document.getElementById('orderResetToast');
+        if (existing) existing.remove();
+
+        const toast = document.createElement('div');
+        toast.id = 'orderResetToast';
+        toast.innerHTML = '<i class="fas fa-undo"></i> הסידור אופס לברירת המחדל';
+        toast.style.cssText = `
+        position: fixed;
+        bottom: 90px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: linear-gradient(135deg, #374151, #6b7280);
+        color: white;
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        z-index: 99999;
+        font-weight: 600;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        direction: rtl;
+        animation: toastFadeIn 0.3s ease;
+    `;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 2500);
+    }
+
+    _initDragAndDrop(container) {
+        let draggedEl = null;
+        let draggedOverEl = null;
+
+        const onDragStart = (e) => {
+            draggedEl = e.currentTarget;
+            draggedEl.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            // נדרש לפיירפוקס
+            e.dataTransfer.setData('text/plain', draggedEl.dataset.dashboardId);
+        };
+
+        const onDragEnd = () => {
+            if (draggedEl) draggedEl.classList.remove('dragging');
+            document.querySelectorAll('.dashboard-card').forEach(card => {
+                card.classList.remove('drag-over');
+            });
+            draggedEl = null;
+            draggedOverEl = null;
+        };
+
+        const onDragOver = (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+
+            const card = e.currentTarget;
+            if (card === draggedEl) return;
+
+            if (draggedOverEl && draggedOverEl !== card) {
+                draggedOverEl.classList.remove('drag-over');
+            }
+            draggedOverEl = card;
+            card.classList.add('drag-over');
+        };
+
+        const onDragLeave = (e) => {
+            e.currentTarget.classList.remove('drag-over');
+        };
+
+        const onDrop = (e) => {
+            e.preventDefault();
+            const targetCard = e.currentTarget;
+            if (!draggedEl || draggedEl === targetCard) return;
+
+            targetCard.classList.remove('drag-over');
+
+            // קבע מיקום הכנסה (לפני או אחרי)
+            const rect = targetCard.getBoundingClientRect();
+            const midX = rect.left + rect.width / 2;
+            const insertBefore = e.clientX < midX;
+
+            if (insertBefore) {
+                container.insertBefore(draggedEl, targetCard);
+            } else {
+                container.insertBefore(draggedEl, targetCard.nextSibling);
+            }
+
+            // שמור סדר חדש
+            this._saveDraggedOrder(container);
+        };
+
+        // צרף אירועים לכל הכרטיסים
+        container.querySelectorAll('.dashboard-card').forEach(card => {
+            card.addEventListener('dragstart', onDragStart);
+            card.addEventListener('dragend', onDragEnd);
+            card.addEventListener('dragover', onDragOver);
+            card.addEventListener('dragleave', onDragLeave);
+            card.addEventListener('drop', onDrop);
+        });
+    }
+
+    _saveDraggedOrder(container) {
+        const newOrder = [];
+        container.querySelectorAll('.dashboard-card').forEach(card => {
+            newOrder.push(card.dataset.dashboardId);
+        });
+
+        this.dashboardOrder = [
+            ...newOrder,
+            ...this.availableDashboards
+                .filter(d => !newOrder.includes(d.id))
+                .map(d => d.id)
+        ];
+
+        this.saveDashboardOrder();
+        this._applyDashboardOrder();
+
+        // *** הצג כפתור איפוס אחרי גרירה ***
+        const resetBtn = document.getElementById('resetOrderBtn');
+        if (resetBtn) resetBtn.style.display = 'flex';
+
+        this._showOrderSavedToast();
+    }
+
+    _showOrderSavedToast() {
+        // הסר toast קיים
+        const existing = document.getElementById('orderSavedToast');
+        if (existing) existing.remove();
+
+        const toast = document.createElement('div');
+        toast.id = 'orderSavedToast';
+        toast.innerHTML = '<i class="fas fa-check-circle"></i> סדר הדשבורדים נשמר';
+        toast.style.cssText = `
+        position: fixed;
+        bottom: 90px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: linear-gradient(135deg, #7c3aed, #a78bfa);
+        color: white;
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        z-index: 99999;
+        font-weight: 600;
+        box-shadow: 0 4px 20px rgba(124,58,237,0.4);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        direction: rtl;
+        animation: toastFadeIn 0.3s ease;
+    `;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 2500);
     }
 
     getDashboardIcon(dashboardId) {
@@ -1142,60 +2304,162 @@ class DashboardsManager {
                 return 'fas fa-list-ul';
             case 'rack-metrics':
                 return 'fas fa-server fa-rotate-90';
+            case 'suite-results':
+                return 'fa-chart-bar';
             case 'employee-tasks':
                 return 'fa-sticky-note';
+            case 'recent-tests':
+                return 'fa-history';
+            case 'servers':
+                return 'fa-server';
+            case 'systems-catalog':
+                return 'fa-layer-group';
+            case 'changes':
+                return 'fa-calendar-check';
+            case 'achievements':
+                return 'fa-trophy';
+            case 'activities':
+                return 'fa-tasks';
+            case 'org-tree':
+                return 'fa-sitemap';
+            case 'grafana-dashboard':
+                return 'fa-external-link-alt';
             default:
                 return 'fa-chart-bar';
         }
     }
 
-    addDashboardsListStyles() {
-        // הוסף סגנונות לרשימת הדשבורדים
+    addDashboardsListStyles(count = 5) {
         const style = document.createElement('style');
         style.textContent = `
+            /* ── מיכל חיצוני ── */
             .dashboards-list {
-                padding: 20px;
+                width: 100%;
+                height: calc(100vh - 62px);
+                padding: 16px;
+                box-sizing: border-box;
                 direction: ltr;
+                overflow: hidden;
             }
-            
+
+            /* ── גריד ── */
             .dashboards-grid {
                 display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-                gap: 20px;
+                gap: 16px;
+                width: 100%;
+                height: 100%;
+                box-sizing: border-box;
             }
-            
-           .dashboard-card {
-                background-color: #320F5B; /* רקע סגול */
-                border: 1px solid #3c0066; /* מסגרת סגולה כהה עדינה */
-                border-radius: 12px;
-                padding: 30px 20px;
+
+            /* ── כרטיס ── */
+            .dashboard-card {
+                background-color: #320F5B;
+                border: 1px solid #3c0066;
+                border-radius: 16px;
+                padding: 20px;
                 text-align: center;
                 cursor: pointer;
                 transition: all 0.3s ease;
                 box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                position: relative;
+                min-height: 0;
+                overflow: hidden;
             }
+
             .dashboard-card:hover {
-                transform: translateY(-8px);
-                background-color: #241b35; /* הרקע נהיה מעט סגול יותר ב-Hover */
-                border-color: #9d50ff; /* מסגרת סגולה בהירה ב-Hover */
+                background-color: #241b35;
+                border-color: #9d50ff;
                 box-shadow: 0 10px 30px rgba(60, 0, 102, 0.6);
+                transform: scale(1.02);
             }
+
+            /* ── אייקון - גודל מותאם לכמות ── */
             .dashboard-card-icon {
-                font-size: 3.2rem;
+                font-size: clamp(1.8rem, 3.5vw, 4rem);
                 color: #fff;
-                margin-bottom: 20px;
+                margin-bottom: clamp(8px, 1.5vh, 20px);
                 filter: drop-shadow(0 0 5px rgba(138, 43, 226, 0.3));
                 transition: all 0.3s ease;
             }
+
             .dashboard-card:hover .dashboard-card-icon {
-                color: #9d50ff; /* הבהרה קלה ב-Hover */
+                color: #9d50ff;
                 filter: drop-shadow(0 0 15px rgba(157, 80, 255, 0.6));
             }
+
+            /* ── כותרת - גודל מותאם לכמות ── */
             .dashboard-card-title {
-                font-size: 1.1rem;
+                font-size: clamp(0.7rem, 1.2vw, 1.2rem);
                 font-weight: 600;
-                color: #efefff; /* לבן עם נגיעה כחולה לסגירה של המראה */
+                color: #efefff;
                 letter-spacing: 0.8px;
+            }
+
+            /* ── ידית גרירה ── */
+            .dashboard-card-drag-handle {
+                position: absolute;
+                top: 8px;
+                right: 10px;
+                color: rgba(255,255,255,0.3);
+                font-size: 0.9rem;
+                cursor: grab;
+                transition: color 0.2s;
+                padding: 4px;
+            }
+
+            .dashboard-card:hover .dashboard-card-drag-handle {
+                color: rgba(255,255,255,0.7);
+            }
+
+            .dashboard-card-drag-handle:active {
+                cursor: grabbing;
+            }
+
+            /* ── מצבי גרירה ── */
+            .dashboard-card.dragging {
+                opacity: 0.4;
+                transform: scale(0.97);
+                border-color: #7c3aed;
+            }
+
+            .dashboard-card.drag-over {
+                border-color: #a78bfa;
+                background-color: rgba(124,58,237,0.25);
+                transform: scale(1.03);
+                box-shadow: 0 8px 24px rgba(124,58,237,0.4);
+            }
+
+            /* ── Toast ── */
+            @keyframes toastFadeIn {
+                from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+                to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+            }
+
+            /* ── כפתור איפוס ── */
+            .reset-order-btn {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                padding: 7px 14px;
+                background-color: rgba(239,68,68,0.25);
+                color: #f87171;
+                border: 1px solid rgba(239,68,68,0.4);
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 0.85rem;
+                font-weight: 500;
+                transition: all 0.2s ease;
+                direction: rtl;
+            }
+
+            .reset-order-btn:hover {
+                background-color: rgba(239,68,68,0.55);
+                color: #f87171;
+                border-color: rgba(239,68,68,0.4);
             }
         `;
         document.head.appendChild(style);
@@ -1226,76 +2490,32 @@ class DashboardsManager {
             title.textContent = this.currentDashboard ? this.currentDashboard.name : 'Dashboards';
 
             // Left controls area
-            const leftControls = document.createElement('div');
-            leftControls.className = 'dashboard-left-controls';
+            this._leftControlsEl = document.createElement('div');
+            this._leftControlsEl.className = 'dashboard-left-controls';
+            const leftControls = this._leftControlsEl;
 
             // Right controls area
             const rightControls = document.createElement('div');
             rightControls.className = 'dashboard-right-controls';
 
+            // *** כפתור איפוס סידור - מוצג רק בדף הראשי (ללא dashboard בURL) ***
+            // *** ורק אם הסדר שונה מברירת המחדל ***
+            const urlParams = new URLSearchParams(window.location.search);
+            const isMainPage = !urlParams.get('dashboard');
+
+            if (isMainPage && this._isOrderChanged()) {
+                const resetOrderBtn = document.createElement('button');
+                resetOrderBtn.id = 'resetOrderBtn';
+                resetOrderBtn.className = 'reset-order-btn';
+                resetOrderBtn.innerHTML = '<i class="fas fa-undo"></i> אפס סידור דשבורדים';
+                resetOrderBtn.title = 'החזר לסידור ברירת המחדל';
+                resetOrderBtn.addEventListener('click', () => this.resetDashboardOrder());
+                leftControls.appendChild(resetOrderBtn);
+            }
+
             // Show/Hide filters button (only for alerts dashboard)
             if (this.currentDashboard && this.currentDashboard.id === 'alerts') {
-                // *** Color Mode Toggle Button ***
-                const colorModeBtn = document.createElement('button');
-                colorModeBtn.id = 'dashboardColorModeBtn';
-                colorModeBtn.className = 'toggle-filters-btn';
-
-                // Get dashboard color mode
-                const savedDashboardColorMode = localStorage.getItem('dashboardColorMode');
-                const initialDashboardMode = savedDashboardColorMode
-                    ? JSON.parse(savedDashboardColorMode)
-                    : 'background';
-
-                // Show icon based on dashboard color mode
-                colorModeBtn.innerHTML = initialDashboardMode === 'background'
-                    ? '<i class="fas fa-fill-drip"></i>'
-                    : '<i class="fas fa-font"></i>';
-                colorModeBtn.title = initialDashboardMode === 'background'
-                    ? 'עבור לצבע טקסט'
-                    : 'עבור לצבע רקע';
-
-                colorModeBtn.addEventListener('click', () => {
-                    if (window.alertsManager) {
-                        window.alertsManager.toggleColorMode();
-                        // Update button icon based on current mode
-                        const currentMode = window.alertsManager.colorMode;
-                        colorModeBtn.innerHTML = currentMode === 'background'
-                            ? '<i class="fas fa-fill-drip"></i>'
-                            : '<i class="fas fa-font"></i>';
-                        colorModeBtn.title = currentMode === 'background'
-                            ? 'עבור לצבע טקסט'
-                            : 'עבור לצבע רקע';
-                    }
-                });
-
-                const toggleFiltersBtn = document.createElement('button');
-                toggleFiltersBtn.id = 'toggleFiltersBtn1';
-                toggleFiltersBtn.className = 'toggle-filters-btn';
-                toggleFiltersBtn.innerHTML = this.toggleButtonLook();
-                toggleFiltersBtn.addEventListener('click', () => {
-                    const filterGroups = document.querySelectorAll('.alerts-filter-group');
-                    const searchContainer = document.querySelector('.alerts-search');
-
-                    if (filterGroups.length > 0) {
-                        const isVisible = filterGroups[0].style.display !== 'none';
-
-                        const controls = document.querySelector('.alerts-controls');
-                        controls.style.display = isVisible ? 'none' : '';
-                        filterGroups.forEach(group => {
-                            group.style.display = isVisible ? 'none' : '';
-                        });
-
-                        if (searchContainer) {
-                            searchContainer.style.display = isVisible ? 'none' : '';
-                        }
-                        toggleFiltersBtn.innerHTML = this.toggleButtonLook();
-
-                        localStorage.setItem('dashboardFiltersHidden', isVisible ? 'true' : 'false');
-                    }
-                });
-
-                leftControls.appendChild(colorModeBtn);
-                leftControls.appendChild(toggleFiltersBtn);
+                this._pendingAlertsButtons = true; // *** דגל להכנסה מאוחרת ***
             }
 
             if (this.currentDashboard) {
@@ -1308,6 +2528,24 @@ class DashboardsManager {
             activeIndicator.className = 'auto-switch-active-indicator';
             activeIndicator.innerHTML = '<div class="auto-switch-active-dot"></div><span id="autoSwitchCountdown"></span>';
             rightControls.appendChild(activeIndicator);
+
+            // Dark/Light Mode Toggle Button
+            const colorThemeBtn = document.createElement('button');
+            colorThemeBtn.id = 'colorThemeBtn';
+            colorThemeBtn.className = 'auto-switch-btn';
+            colorThemeBtn.innerHTML = this.colorTheme === 'light'
+                ? '<i class="fas fa-moon" style="font-size:18px"></i>'
+                : '<i class="fas fa-sun"  style="font-size:18px"></i>';
+            colorThemeBtn.title = this.colorTheme === 'light'
+                ? 'עבור ל-Dark Mode'
+                : 'עבור ל-Light Mode';
+            colorThemeBtn.classList.toggle(
+                'theme-light-active', this.colorTheme === 'light');
+            colorThemeBtn.addEventListener('click', () => {
+                const newTheme = this.colorTheme === 'dark' ? 'light' : 'dark';
+                this.applyColorTheme(newTheme);
+            });
+            rightControls.appendChild(colorThemeBtn);
 
             // Auto Switch button
             const autoSwitchBtn = document.createElement('button');
@@ -1327,16 +2565,31 @@ class DashboardsManager {
             // *** כפתור "דשבורד הבא" ***
             const nextDashboardBtn = document.createElement('button');
             nextDashboardBtn.id = 'nextDashboardBtn';
-            nextDashboardBtn.className = 'auto-switch-btn'; // אותו סגנון כמו כפתור ה-auto switch
+            nextDashboardBtn.className = 'auto-switch-btn';
             nextDashboardBtn.innerHTML = `
             <span style="display: flex; align-items: center; gap: 3px;">
                 <i class="fas fa-forward" style="font-size: 16px;"></i>
-                            <i class="fas fa-desktop" style="font-size: 20px;"></i>
+                <i class="fas fa-desktop" style="font-size: 20px;"></i>
             </span>
 `;
             nextDashboardBtn.title = 'עבור לדשבורד הבא';
             nextDashboardBtn.addEventListener('click', () => this.goToNextDashboard());
             rightControls.appendChild(nextDashboardBtn);
+
+            // *** כפתור "דשבורד קודם" ***
+            const prevDashboardBtn = document.createElement('button');
+            prevDashboardBtn.id = 'prevDashboardBtn';
+            prevDashboardBtn.className = 'auto-switch-btn';
+            prevDashboardBtn.innerHTML = `
+    <span style="display: flex; align-items: center; gap: 3px;">
+        <i class="fas fa-desktop" style="font-size: 20px;"></i>
+        <i class="fas fa-backward" style="font-size: 16px;"></i>
+    </span>
+`;
+            prevDashboardBtn.title = 'עבור לדשבורד הקודם';
+            prevDashboardBtn.addEventListener('click', () => this.goToPrevDashboard());
+            rightControls.appendChild(prevDashboardBtn);
+
 
             header.appendChild(rightControls);
             header.appendChild(title);
@@ -1345,11 +2598,12 @@ class DashboardsManager {
             if (userMenuTemplate) {
                 const userMenu = userMenuTemplate.firstElementChild;
                 if (userMenu) {
-                    userMenu.style.display = 'flex'; // או block לפי הצורך
-                    header.appendChild(userMenu);
+                    userMenu.style.display = 'flex';
+                    leftControls.appendChild(userMenu); // *** הועבר לתוך leftControls ***
                 }
             }
             header.appendChild(leftControls);
+
             // Add header to the beginning of body
             document.body.insertBefore(header, document.body.firstChild);
         }
@@ -1374,6 +2628,240 @@ class DashboardsManager {
         if (titleElement && this.currentDashboard) {
             titleElement.textContent = this.currentDashboard.name;
         }
+        this.addScrollToTopButton();
+    }
+
+    addScrollToTopButton() {
+        const btn = document.createElement('button');
+        btn.id = 'scrollToTopBtn';
+        btn.innerHTML = '<i class="fas fa-arrow-up"></i>';
+        btn.title = 'חזרה לראש הדף';
+        btn.setAttribute('aria-label', 'חזרה לראש הדף');
+
+        btn.style.cssText = `
+        position: fixed;
+        bottom: 30px;
+        left: 30px;
+        width: 46px;
+        height: 46px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #7c3aed, #a78bfa);
+        color: white;
+        border: none;
+        cursor: pointer;
+        font-size: 1.1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 16px rgba(124,58,237,0.45);
+        z-index: 9999;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease, transform 0.3s ease;
+        transform: translateY(10px);
+    `;
+
+        document.body.appendChild(btn);
+
+        // *** נקה listeners קודמים ***
+        this._scrollListeners = this._scrollListeners || [];
+        this._scrollListeners.forEach(({ target, fn }) => {
+            target.removeEventListener('scroll', fn);
+        });
+        this._scrollListeners = [];
+
+        const showBtn = () => {
+            btn.style.opacity = '1';
+            btn.style.pointerEvents = 'auto';
+            btn.style.transform = 'translateY(0)';
+        };
+
+        const hideBtn = () => {
+            btn.style.opacity = '0';
+            btn.style.pointerEvents = 'none';
+            btn.style.transform = 'translateY(10px)';
+        };
+
+        const checkScroll = (scrollTop) => {
+            const halfScreen = window.innerHeight / 2;
+            if (scrollTop > halfScreen) {
+                showBtn();
+            } else {
+                hideBtn();
+            }
+        };
+
+        const addListenerTo = (target) => {
+            // מנע כפילויות
+            const alreadyAdded = this._scrollListeners.some(
+                ({ target: t }) => t === target
+            );
+            if (alreadyAdded) return;
+
+            const onScroll = () => {
+                const scrollTop = target === window
+                    ? (window.scrollY || document.documentElement.scrollTop)
+                    : target.scrollTop;
+                checkScroll(scrollTop);
+            };
+
+            target.addEventListener('scroll', onScroll, { passive: true });
+            this._scrollListeners.push({ target, fn: onScroll });
+        };
+
+        // *** האזן תמיד ל-window ***
+        addListenerTo(window);
+
+        // *** האזן לכל הקונטיינרים הספציפיים שקיימים עכשיו ***
+        const specificSelectors = [
+            '.alerts-table-container',
+            '.sn-board',
+            '.rmd-wrapper',
+            '.sd-columns-wrap',
+            '.sd-list-table-wrap',
+            '#dashboardContent',
+            '.dashboard-content',
+            '.srv-scroll-wrapper',
+        ];
+
+        specificSelectors.forEach(selector => {
+            const el = document.querySelector(selector);
+            if (el) addListenerTo(el);
+        });
+
+        // *** MutationObserver - מוסיף listeners לאלמנטים שייטענו בעתיד ***
+        this._setupScrollObserver(addListenerTo);
+
+        // לחיצה - גלול לראש בכל הקונטיינרים
+        btn.addEventListener('click', () => {
+            // גלול את כל הקונטיינרים לראש
+            specificSelectors.forEach(selector => {
+                const el = document.querySelector(selector);
+                if (el) el.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            document.documentElement.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+
+        // hover effect
+        btn.addEventListener('mouseenter', () => {
+            btn.style.transform = 'translateY(-3px) scale(1.08)';
+            btn.style.boxShadow = '0 8px 24px rgba(124,58,237,0.55)';
+        });
+        btn.addEventListener('mouseleave', () => {
+            btn.style.transform = 'translateY(0) scale(1)';
+            btn.style.boxShadow = '0 4px 16px rgba(124,58,237,0.45)';
+        });
+    }
+
+    // *** MutationObserver - מאזין לשינויים ב-DOM ומוסיף listeners חדשים ***
+    _setupScrollObserver(addListenerTo) {
+        // נקה observer קודם
+        if (this._scrollObserver) {
+            this._scrollObserver.disconnect();
+            this._scrollObserver = null;
+        }
+
+        const selectors = [
+            '.alerts-table-container',
+            '.sn-board',
+            '.rmd-wrapper',
+            '.sd-columns-wrap',
+            '.sd-list-table-wrap',
+            '#dashboardContent',
+            '.dashboard-content',
+        ];
+
+        this._scrollObserver = new MutationObserver(() => {
+            selectors.forEach(selector => {
+                const el = document.querySelector(selector);
+                if (el) addListenerTo(el);
+            });
+        });
+
+        this._scrollObserver.observe(document.body, {
+            childList: true,
+            subtree: false, // *** subtree: false - מהיר יותר ***
+        });
+
+        // עצור אחרי 15 שניות
+        setTimeout(() => {
+            if (this._scrollObserver) {
+                this._scrollObserver.disconnect();
+                this._scrollObserver = null;
+            }
+        }, 15000);
+    }
+
+    // פונקציית עזר - מחזירה את מיכל הגלילה הרלוונטי לכל דשבורד
+    getScrollContainer() {
+        const candidates = [
+            document.querySelector('.alerts-table-container'),
+            document.querySelector('.sn-board'),
+            document.querySelector('.rmd-wrapper'),
+            document.querySelector('.sd-columns-wrap'),
+            document.querySelector('.sd-list-table-wrap'),
+            document.getElementById('dashboardContent'),
+            document.querySelector('.dashboard-content'),
+            document.querySelector('.srv-scroll-wrapper'),
+        ];
+
+        for (const el of candidates) {
+            if (!el) continue;
+
+            const style = window.getComputedStyle(el);
+            const overflowY = style.overflowY;
+            const overflow = style.overflow;
+
+            if (
+                overflowY === 'auto' ||
+                overflowY === 'scroll' ||
+                overflow === 'auto' ||
+                overflow === 'scroll'
+            ) {
+                if (el.scrollHeight > el.clientHeight) {
+                    return el;
+                }
+            }
+        }
+
+        // *** Fallback: בדוק אם document.documentElement או body גולל ***
+        if (document.documentElement.scrollHeight > window.innerHeight) {
+            return window;
+        }
+
+        return window;
+    }
+
+    reinitScrollToTopButton() {
+        // הסר כפתור קיים
+        const existing = document.getElementById('scrollToTopBtn');
+        if (existing) existing.remove();
+
+        // נקה listeners קודמים
+        if (this._scrollListeners) {
+            this._scrollListeners.forEach(({ target, fn }) => {
+                target.removeEventListener('scroll', fn);
+            });
+            this._scrollListeners = [];
+        }
+
+        // נקה observer קודם
+        if (this._scrollObserver) {
+            this._scrollObserver.disconnect();
+            this._scrollObserver = null;
+        }
+
+        // *** נסה מספר פעמים עד שהדשבורד נטען ***
+        const attempts = [300, 800, 1500, 3000];
+        attempts.forEach(delay => {
+            setTimeout(() => {
+                const existing = document.getElementById('scrollToTopBtn');
+                if (!existing) {
+                    this.addScrollToTopButton();
+                }
+            }, delay);
+        });
     }
 
     showAccessDenied(dashboard) {
@@ -1425,9 +2913,6 @@ class DashboardsManager {
         const overlay = document.createElement('div');
         overlay.id = 'autoSwitchOverlay';
         overlay.className = 'auto-switch-overlay';
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) this.closeAutoSwitchPopup();
-        });
 
         const intervalSeconds = this.autoSwitchIntervalTime / 1000;
 
@@ -1733,6 +3218,172 @@ class DashboardsManager {
                 card.style.outline = 'none';
             }
         });
+    }
+
+    loadAchievementsDashboard() {
+        if (typeof AchievementsDashboard === 'undefined') {
+            const script = document.createElement('script');
+            script.src = '/js/AchievementsDashboard.js';
+            script.onload = () => {
+                if (typeof AchievementsDashboard !== 'undefined') {
+                    this.initializeAchievementsDashboard();
+                } else {
+                    setTimeout(() => {
+                        if (typeof AchievementsDashboard !== 'undefined') {
+                            this.initializeAchievementsDashboard();
+                        } else {
+                            this.showError(
+                                'AchievementsDashboard לא נטען כראוי');
+                        }
+                    }, 100);
+                }
+            };
+            script.onerror = () =>
+                this.showError('שגיאה בטעינת AchievementsDashboard');
+            document.head.appendChild(script);
+        } else {
+            this.initializeAchievementsDashboard();
+        }
+    }
+
+    loadActivitiesDashboard() {
+        if (typeof ActivitiesDashboard === 'undefined') {
+            const script = document.createElement('script');
+            script.src = '/js/ActivitiesDashboard.js';
+            script.onload = () => {
+                if (typeof ActivitiesDashboard !== 'undefined') {
+                    this.initializeActivitiesDashboard();
+                } else {
+                    setTimeout(() => {
+                        if (typeof ActivitiesDashboard !== 'undefined') {
+                            this.initializeActivitiesDashboard();
+                        } else {
+                            this.showError('ActivitiesDashboard לא נטען כראוי');
+                        }
+                    }, 100);
+                }
+            };
+            script.onerror = () =>
+                this.showError('שגיאה בטעינת ActivitiesDashboard');
+            document.head.appendChild(script);
+        } else {
+            this.initializeActivitiesDashboard();
+        }
+    }
+
+    initializeActivitiesDashboard() {
+        if (typeof ActivitiesDashboard === 'undefined') {
+            this.showError('ActivitiesDashboard class is not defined');
+            return;
+        }
+
+        let container = document.getElementById('dashboardContent');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'dashboardContent';
+            container.className = 'dashboard-content';
+            document.body.appendChild(container);
+        }
+        container.innerHTML = '<div id="activitiesDashboardRoot"></div>';
+
+        window.activitiesDashboard = new ActivitiesDashboard(
+            'activitiesDashboardRoot',
+            this.currentUser
+        );
+        window.activitiesDashboard.initialize();
+        setTimeout(() => this.reinitScrollToTopButton(), 600);
+    }
+
+    initializeAchievementsDashboard() {
+        if (typeof AchievementsDashboard === 'undefined') {
+            this.showError('AchievementsDashboard class is not defined');
+            return;
+        }
+
+        let container = document.getElementById('dashboardContent');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'dashboardContent';
+            container.className = 'dashboard-content';
+            document.body.appendChild(container);
+        }
+        container.innerHTML =
+            '<div id="achievementsDashboardRoot"></div>';
+
+        window.achievementsDashboard = new AchievementsDashboard(
+            'achievementsDashboardRoot'
+        );
+        window.achievementsDashboard.initialize();
+        setTimeout(() => this.reinitScrollToTopButton(), 600);
+    }
+
+    loadGrafanaDashboard() {
+        if (typeof GrafanaDashboard === 'undefined') {
+            const script = document.createElement('script');
+            script.src = '/js/GrafanaDashboardManager.js';
+            script.onload = () => {
+                if (typeof GrafanaDashboard !== 'undefined') {
+                    this.initializeGrafanaDashboard();
+                } else {
+                    setTimeout(() => {
+                        if (typeof GrafanaDashboard !== 'undefined') {
+                            this.initializeGrafanaDashboard();
+                        } else {
+                            this.showError('GrafanaDashboard לא נטען כראוי');
+                        }
+                    }, 100);
+                }
+            };
+            script.onerror = () =>
+                this.showError('שגיאה בטעינת GrafanaDashboard');
+            document.head.appendChild(script);
+        } else {
+            this.initializeGrafanaDashboard();
+        }
+    }
+
+    initializeGrafanaDashboard() {
+        if (typeof GrafanaDashboard === 'undefined') {
+            this.showError('GrafanaDashboard class is not defined');
+            return;
+        }
+
+        let container = document.getElementById('dashboardContent');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'dashboardContent';
+            container.className = 'dashboard-content';
+            document.body.appendChild(container);
+        }
+        container.innerHTML = '<div id="itsmDashboardRoot"></div>';
+
+        window.itsmDashboard = new GrafanaDashboard('itsmDashboardRoot');
+        window.itsmDashboard.initialize();
+
+        setTimeout(() => this.reinitScrollToTopButton(), 600);
+    }
+
+    goToPrevDashboard() {
+        const allowedDashboards = this.getAllowedDashboards();
+
+        if (allowedDashboards.length === 0) return;
+
+        const currentId = this.currentDashboard ? this.currentDashboard.id : null;
+
+        let prevIndex = allowedDashboards.length - 1; // ברירת מחדל: אחרון
+
+        if (currentId) {
+            const currentIndex = allowedDashboards.findIndex(d => d.id === currentId);
+            // אם לא נמצא (-1) - עבור לאחרון, אחרת עבור לקודם
+            if (currentIndex <= 0) {
+                prevIndex = allowedDashboards.length - 1; // חזור לאחרון
+            } else {
+                prevIndex = currentIndex - 1;
+            }
+        }
+
+        const prevDashboard = allowedDashboards[prevIndex];
+        window.location.href = `?dashboard=${prevDashboard.id}`;
     }
 
     goToNextDashboard() {
