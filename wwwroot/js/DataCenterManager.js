@@ -1498,22 +1498,21 @@ class DataCenterManager {
  * יצירת מודל לתצוגת חדר שרתים
  */
     createDataCenterModal() {
+        // Check if modal already exists
         if (document.getElementById('dataCenterModal')) return;
 
         const modalHTML = `
     <div id="dataCenterModal" class="modal-overlay">
         <div class="modal-content datacenter-modal">
             <div class="modal-header">
-                <h3><i class="fas fa-server"></i> 
-                    <span id="dataCenterTitle">חדר שרתים</span>
-                </h3>
-                <button class="modal-close" 
-                        onclick="dataCenterManager.closeDataCenterModal()">
+                <h3><i class="fas fa-server"></i> <span id="dataCenterTitle">חדר שרתים</span></h3>
+                <button class="modal-close" onclick="dataCenterManager.closeDataCenterModal()">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
             <div class="modal-body">
-                <div class="datacenter-search-container">
+               <div class="datacenter-search-container">
+                    <!-- שורת חיפוש ציוד -->
                     <div class="datacenter-search-row">
                         <div class="search-box search-box-equipment">
                             <input type="text" id="dataCenterSearchInput"
@@ -1521,23 +1520,20 @@ class DataCenterManager {
                                 onkeyup="dataCenterManager.searchEquipment()">
                             <i class="fas fa-search" style="color:#667eea;"></i>
                         </div>
-                        <div id="searchResultsInfo" 
-                             class="search-results-info" 
-                             style="display: none;">
+                        <div id="searchResultsInfo" class="search-results-info" style="display: none;">
                             <span id="searchResultsCount">0</span> ארונות נמצאו
-                            <button class="btn-clear-search" 
-                                    onclick="dataCenterManager.clearEquipmentSearch()">
+                            <button class="btn-clear-search" onclick="dataCenterManager.clearEquipmentSearch()">
                                 <i class="fas fa-times"></i> נקה
                             </button>
                         </div>
                     </div>
+
+                    <!-- שורת חיפוש מקום פנוי - נפרדת -->
                     <div class="datacenter-search-row datacenter-free-row">
                         <button id="findFreeSpaceBtn">
                             <i class="fas fa-search"></i> חפש מקום פנוי
                         </button>
-                        <div id="freeSpaceResultsInfo" 
-                             class="search-results-info free-space-results" 
-                             style="display: none;">
+                        <div id="freeSpaceResultsInfo" class="search-results-info free-space-results" style="display: none;">
                             <span id="freeSpaceResultsCount">0</span> ארונות עם מקום פנוי
                             <button class="btn-clear-search btn-clear-free-space-search"
                                     onclick="dataCenterManager.clearFreeSpaceSearch()">
@@ -1546,19 +1542,13 @@ class DataCenterManager {
                         </div>
                     </div>
                 </div>
-
-                <!-- *** wrapper לסקייל *** -->
-                <div class="datacenter-scale-wrapper">
-                    <div class="datacenter-scale-inner" id="datacenterScaleInner">
-                        <div id="dataCenterContainer" 
-                             class="datacenter-container"></div>
-                    </div>
-                </div>
+                <div id="dataCenterContainer" class="datacenter-container"></div>
             </div>
             <div class="modal-footer">
                 <button class="btn-primary" onclick="dataCenterManager.showAllRacks()">
                     <i class="fas fa-th-list"></i> צפה בכל הארונות
                 </button>
+
                 <button class="btn-cancel" onclick="dataCenterManager.closeDataCenterModal()">
                     <i class="fas fa-times"></i> סגור
                 </button>
@@ -1571,93 +1561,16 @@ class DataCenterManager {
 
         const freeSpaceButton = document.getElementById('findFreeSpaceBtn');
         if (freeSpaceButton) {
-            freeSpaceButton.addEventListener('click',
-                () => this.openFindFreeSpaceModal());
+            freeSpaceButton.addEventListener('click', () => this.openFindFreeSpaceModal());
         }
 
+        // Add event listener to refresh button
         const refreshButton = document.getElementById('refreshCurrentDataCenter');
         if (refreshButton) {
-            refreshButton.addEventListener('click',
-                () => this.refreshCurrentDataCenter());
+            refreshButton.addEventListener('click', () => this.refreshCurrentDataCenter());
         }
     }
 
-    /**
-     * התאמת גודל מפת חדר השרתים לגודל המסך
-     * משתמש ב-CSS transform scale
-     */
-    applyResponsiveScale() {
-        const scaleInner = document.getElementById('datacenterScaleInner');
-        const scaleWrapper = document.querySelector('.datacenter-scale-wrapper');
-
-        if (!scaleInner || !scaleWrapper) return;
-
-        // קבלת הגודל הטבעי של התוכן
-        const content = scaleInner.firstElementChild;
-        if (!content) return;
-
-        // איפוס transform לקבלת גודל אמיתי
-        scaleInner.style.transform = 'none';
-
-        // גודל התוכן הטבעי
-        const naturalWidth = content.scrollWidth || content.offsetWidth;
-        const naturalHeight = content.scrollHeight || content.offsetHeight;
-
-        if (!naturalWidth || !naturalHeight) return;
-
-        // גודל המיכל הזמין
-        const wrapperWidth = scaleWrapper.clientWidth - 20; // padding
-        const wrapperHeight = scaleWrapper.clientHeight - 20;
-
-        if (!wrapperWidth || !wrapperHeight) return;
-
-        // חישוב scale
-        const scaleX = wrapperWidth / naturalWidth;
-        const scaleY = wrapperHeight / naturalHeight;
-
-        // השתמש בסקייל הקטן יותר כדי שהכל יתאים
-        // אבל לא יותר מ-1 (לא להגדיל)
-        const scale = Math.min(scaleX, scaleY, 1);
-
-        // החל את הסקייל
-        scaleInner.style.transform = `scale(${scale})`;
-        scaleInner.style.transformOrigin = 'top right';
-
-        // עדכן גובה ה-wrapper לפי הגובה האמיתי אחרי סקייל
-        const scaledHeight = naturalHeight * scale;
-        scaleWrapper.style.height = `${scaledHeight + 20}px`;
-    }
-
-    /**
-     * הפעלת מאזין לשינוי גודל חלון
-     */
-    setupResizeObserver() {
-        if (this._resizeObserver) {
-            this._resizeObserver.disconnect();
-        }
-
-        const scaleWrapper = document.querySelector('.datacenter-scale-wrapper');
-        if (!scaleWrapper) return;
-
-        // ResizeObserver - מגיב לשינוי גודל המיכל
-        this._resizeObserver = new ResizeObserver(() => {
-            // debounce קטן למניעת קריאות מיותרות
-            clearTimeout(this._resizeTimer);
-            this._resizeTimer = setTimeout(() => {
-                this.applyResponsiveScale();
-            }, 50);
-        });
-
-        this._resizeObserver.observe(scaleWrapper);
-
-        // גם מאזין לשינוי גודל חלון
-        window.addEventListener('resize', () => {
-            clearTimeout(this._resizeTimer);
-            this._resizeTimer = setTimeout(() => {
-                this.applyResponsiveScale();
-            }, 100);
-        });
-    }
 
     createFindFreeSpaceModal() {
         if (document.getElementById('findFreeSpaceModal')) return;
@@ -1832,57 +1745,47 @@ class DataCenterManager {
         if (!this.currentDataCenter) return;
 
         const refreshButton = document.getElementById('refreshCurrentDataCenter');
-        if (refreshButton) refreshButton.style.display = 'none';
 
+        if (refreshButton) {
+            refreshButton.style.display = 'none';
+        }
+        // הצגת מצב טעינה
         const container = document.getElementById('dataCenterContainer');
-        container.innerHTML = `
-        <div class="loading-spinner">
-            <i class="fas fa-spinner fa-spin"></i>
-            <span>מרענן נתונים...</span>
-        </div>`;
+        container.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i><span>מרענן נתונים...</span></div>';
 
         try {
-            const clearCacheResponse = await fetch(
-                `/DataCenter/ClearCache?dataCenterType=${this.currentDataCenter}`, {
+            // מחיקת קבצי הקאש בשרת עבור החדר הנוכחי בלבד
+            const clearCacheResponse = await fetch(`/DataCenter/ClearCache?dataCenterType=${this.currentDataCenter}`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                headers: {
+                    'Content-Type': 'application/json'
+                }
             });
 
             if (!clearCacheResponse.ok) {
                 throw new Error('שגיאה במחיקת קבצי הקאש');
             }
 
+            // איפוס נתוני הארונות של החדר הנוכחי
             this.racksData[this.currentDataCenter] = {};
             this.dataLoadingStatus[this.currentDataCenter] = false;
 
+            // טעינת נתונים מחדש עם אילוץ רענון
             await this.loadRacksData(this.currentDataCenter, true);
 
+            // עדכון התצוגה
             container.innerHTML = this.generateDataCenterHTML(this.currentDataCenter);
             this.setupRackEventListeners();
 
-            // *** הפעל סקייל אחרי רענון ***
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    this.applyResponsiveScale();
-                });
-            });
-
-            this._notify(
-                `נתוני חדר ${this.currentDataCenter} רועננו בהצלחה מהמקור`,
-                'success'
-            );
+            // הודעת הצלחה
+            this._notify(`נתוני חדר ${this.currentDataCenter} רועננו בהצלחה מהמקור`, 'success');
 
         } catch (error) {
             console.error('Error refreshing data center:', error);
-            container.innerHTML = `
-            <div class="error-message">
-                <i class="fas fa-exclamation-triangle"></i> 
-                שגיאה ברענון נתונים: ${error.message}
-            </div>`;
-            this._notify(
-                `שגיאה ברענון נתוני חדר ${this.currentDataCenter}: ${error.message}`,
-                'error'
-            );
+
+            // הצגת הודעת שגיאה
+            container.innerHTML = `<div class="error-message"><i class="fas fa-exclamation-triangle"></i> שגיאה ברענון נתונים: ${error.message}</div>`;
+            this._notify(`שגיאה ברענון נתוני חדר ${this.currentDataCenter}: ${error.message}`, 'error');
         }
     }
 
@@ -1995,14 +1898,8 @@ class DataCenterManager {
      */
     closeDataCenterModal() {
         document.getElementById('dataCenterModal').style.display = 'none';
-        this.clearSearch();
-        this.clearFreeSpaceSearch();
-
-        // *** נקה ResizeObserver ***
-        if (this._resizeObserver) {
-            this._resizeObserver.disconnect();
-            this._resizeObserver = null;
-        }
+        this.clearSearch();       // ניקוי חיפוש ציוד
+        this.clearFreeSpaceSearch(); // ניקוי חיפוש מקום פנוי
     }
 
     /**
@@ -2147,7 +2044,7 @@ class DataCenterManager {
     generatePTDataCenterHTML() {
         return `
     <div class="floor-plan">
-        <div class="building-wrapper" style="padding: 32px;">
+        <div class="building-wrapper">
             <div class="building-main">
                 <div class="datacenter-container">
                     <!-- Row backgrounds -->
@@ -2367,10 +2264,10 @@ class DataCenterManager {
     /**
     * חיפוש ציוד בארונות
     */
-    async searchEquipment() {
+    searchEquipment() {
         const searchInput = document.getElementById('dataCenterSearchInput');
         const searchTerm = searchInput.value.trim().toLowerCase();
-        this.lastSearchTerm = searchTerm;
+        this.lastSearchTerm = searchTerm; // ← שמור
 
         if (!searchTerm) {
             this.clearEquipmentSearch();
@@ -2381,8 +2278,7 @@ class DataCenterManager {
         const foundRacks = [];
         // נמצא את כל הארונות המוצגים כרגע בממשק
         const visibleRacks = document.querySelectorAll('.room.clickable, .rack.clickable');
-        const visibleRackIds = Array.from(visibleRacks)
-            .map(rack => rack.getAttribute('data-rack-id'));
+        const visibleRackIds = Array.from(visibleRacks).map(rack => rack.getAttribute('data-rack-id'));
 
         // תיקון: חפש בכל החדרים הזמינים, לא רק בנוכחי
         const dataToSearch = {};
@@ -2414,96 +2310,11 @@ class DataCenterManager {
             }
         }
 
+        // סימון הארונות שנמצאו בהם תוצאות
         this.highlightRacks(foundRacks);
-
-        // *** הגדרת משתנים ***
-        const searchResultsCount = document.getElementById('searchResultsCount');
-        const searchResultsInfo = document.getElementById('searchResultsInfo');
-        if (searchResultsCount) searchResultsCount.textContent = foundRacks.length;
-        if (searchResultsInfo) {
-            searchResultsInfo.style.display = foundRacks.length > 0 ? 'flex' : 'none';
-        }
-
-        // *** חיפוש בגריטה ***
-        // הסר תוצאות גריטה קודמות תמיד לפני חיפוש חדש
-        const existingScrapResults = document.getElementById('scrapSearchResults');
-        if (existingScrapResults) existingScrapResults.remove();
-
-        try {
-            const scrapResponse = await fetch(
-                `/DataCenter/GetScrapItems?dataCenterType=${this.currentDataCenter}`
-            );
-            const scrapData = await scrapResponse.json();
-
-            if (scrapData.success && scrapData.items?.length > 0) {
-                const scrapMatches = scrapData.items.filter(item =>
-                    item.equipment?.toLowerCase().includes(searchTerm)
-                );
-
-                // הצג רק אם יש תוצאות תואמות לחיפוש הנוכחי
-                if (scrapMatches.length > 0) {
-                    this._showScrapSearchResults(scrapMatches, searchTerm);
-                }
-                // אם אין תוצאות - החלון כבר הוסר למעלה, לא צריך לעשות כלום
-            }
-        } catch (error) {
-            console.warn('Could not search scrap list:', error);
-        }
-    }
-
-    // פונקציה חדשה להצגת תוצאות גריטה
-    _showScrapSearchResults(items, searchTerm) {
-        // הסר תוצאות קודמות
-        const existing = document.getElementById('scrapSearchResults');
-        if (existing) existing.remove();
-
-        const container = document.createElement('div');
-        container.id = 'scrapSearchResults';
-        container.style.cssText = `
-        position: fixed;
-        background: #fff3cd;
-        border: 1px solid #ffc107;
-        border-radius: 6px;
-        padding: 10px;
-        margin-top: 5px;
-        margin-right: 70%;
-        z-index: 1000;
-        max-width: 500px;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    `;
-
-        container.innerHTML = `
-        <div style="font-weight:bold; margin-bottom:8px; color:#856404;">
-            נמצא גם ברשימת הגריטה (${items.length}):
-        </div>
-        ${items.map(item => `
-            <div style="padding:4px 0; border-bottom:1px solid #ffeeba; 
-                        font-size:0.85rem;">
-                <strong>${this._escapeHtml(item.equipment)}</strong>
-                ${item.rackId
-                ? `| ארון: ${item.rackId}` : ''}
-                ${item.startPosition
-                ? `| U${item.startPosition}` : ''}
-                <span style="color:#dc3545; font-size:0.8rem;">
-                    (גריטה)
-                </span>
-            </div>
-        `).join('')}
-        <button onclick="document.getElementById('scrapSearchResults').remove()"
-                style="margin-top:8px; margin-right:150px; font-size:0.8rem; 
-                       background:none; border:1px solid #856404; 
-                       border-radius:4px; padding:4px 10px; 
-                       cursor:pointer;">
-           סגור
-        </button>
-    `;
-
-        // הוסף מתחת לשדה החיפוש
-        const searchBox = document.querySelector('.search-box-equipment');
-        if (searchBox) {
-            searchBox.style.position = 'relative';
-            searchBox.appendChild(container);
-        }
+        // עדכון מידע על תוצאות החיפוש
+        searchResultsCount.textContent = foundRacks.length;
+        searchResultsInfo.style.display = foundRacks.length > 0 ? 'flex' : 'none';
     }
 
     /**
@@ -2559,15 +2370,12 @@ class DataCenterManager {
         if (searchResultsInfo) searchResultsInfo.style.display = 'none';
         this.lastSearchTerm = '';
 
-        // *** הוסף: ניקוי תוצאות גריטה ***
-        const scrapResults = document.getElementById('scrapSearchResults');
-        if (scrapResults) scrapResults.remove();
-
+        // הסר רק סימוני חיפוש ציוד, שמור סימוני מקום פנוי
         const allRacks = document.querySelectorAll('.room.clickable, .rack.clickable');
         allRacks.forEach(rack => {
             rack.classList.remove('search-result', 'search-highlight');
-            if (this.lastFreeSpaceResults.includes(
-                rack.getAttribute('data-rack-id'))) {
+            // אם יש גם תוצאות מקום פנוי - שמור אותן
+            if (this.lastFreeSpaceResults.includes(rack.getAttribute('data-rack-id'))) {
                 rack.classList.add('free-space-rack');
             }
         });
@@ -2584,11 +2392,7 @@ class DataCenterManager {
         if (searchInput) searchInput.value = '';
         if (searchResultsInfo) searchResultsInfo.style.display = 'none';
 
-        this.lastSearchTerm = '';
-
-        // בדיקה לפני הסרה
-        const scrapResults = document.getElementById('scrapSearchResults');
-        if (scrapResults) scrapResults.remove();
+        this.lastSearchTerm = ''; // איפוס מונח החיפוש
 
         const allRacks = document.querySelectorAll('.room.clickable, .rack.clickable');
         allRacks.forEach(rack => {
@@ -2596,6 +2400,7 @@ class DataCenterManager {
             rack.classList.remove('search-highlight');
         });
     }
+
 
     /**
     * הוספת כפתור לצריכת חשמל וטמפרטורה
@@ -2963,14 +2768,9 @@ class DataCenterManager {
             return `
         <div class="rack-container">
             <div class="rack-header">${rackId}</div>
-            <div class="rack-units">
-                <div class="unit-numbers"></div>
-                <div class="equipment-container">
-                    <div class="empty-rack-message" 
-                         style="color:white;text-align:center;padding:20px;font-size:0.8rem;">
-                        <i class="fas fa-info-circle"></i><br>אין נתונים
-                    </div>
-                </div>
+            <div class="empty-rack-message">
+                <i class="fas fa-info-circle"></i>
+                אין נתונים זמינים עבור ארון זה
             </div>
         </div>`;
         }
@@ -2990,10 +2790,10 @@ class DataCenterManager {
 
             // topPosition = U עליון (לצורך CSS class)
             const topPosition = startPosition + sizeUnits - 1;
+
             const equipmentType = item.type || item.Type || 'other';
             const equipmentName = item.equipment || item.Equipment || 'ציוד לא ידוע';
 
-            // גודל פונט דינמי לפי גודל ציוד
             const fontSize = sizeUnits <= 1 ? '9px' :
                 sizeUnits <= 3 ? '10px' : '14px';
 
@@ -3001,10 +2801,11 @@ class DataCenterManager {
                 equipmentName.toLowerCase().includes(searchTerm.toLowerCase());
 
             const highlightClass = isMatch ? 'search-highlight-equipment' : '';
+            const clickableClass = 'clickable-equipment';
 
             html += `
         <div class="equipment-item pos-${topPosition} size-${sizeUnits} 
-                    type-${equipmentType} ${highlightClass} clickable-equipment"
+                    type-${equipmentType} ${highlightClass} ${clickableClass}"
              data-position="${startPosition}"
              title="${equipmentName}">
             <div class="equipment-info">
@@ -3271,39 +3072,23 @@ class DataCenterManager {
 
                 // עבור על כל פריטי הציוד בארון
                 rackData.forEach(item => {
-                    const startPosition = item.startPosition || item.StartPosition || 0; // U תחתון
+                    const startPosition = item.startPosition || item.StartPosition || 0;
                     const equipment = item.equipment || item.Equipment || '';
                     const sizeUnits = item.size_units || item.SizeUnits || 1;
-                    const topPosition = startPosition + sizeUnits - 1; // U עליון
 
-                    // מילוי כל היחידות שהציוד תופס (מתחתון לעליון)
+                    // מילוי כל היחידות שהציוד תופס
                     for (let i = 0; i < sizeUnits; i++) {
-                        const position = startPosition + i;  // מתחתון לעליון
+                        const position = startPosition - i;
                         if (position > 0 && position <= 42) {
+                            // שמירת מידע על הציוד והגודל שלו לצורך מיזוג תאים מאוחר יותר
                             rackMatrix[rackId][position] = {
                                 equipment: equipment,
-                                isStart: position === topPosition,  // isStart = U העליון (מוצג ראשון בטבלה)
-                                size: sizeUnits
+                                isStart: i === 0,  // האם זו היחידה הראשונה של הציוד
+                                size: sizeUnits     // גודל הציוד הכולל
                             };
                         }
                     }
                 });
-            });
-
-            // ─── מיפוי עמודה → rackId (בנה פעם אחת לפני לולאת העיצוב) ───
-            const colToRackId = {}; // colIndex → rackId
-            let colMapIdx = 1;
-
-            groupPrefixes.forEach((prefix, groupIndex) => {
-                const racksInGroup = rackGroups[prefix].sort();
-                racksInGroup.forEach(rackId => {
-                    colMapIdx++; // עמודת U - דלג
-                    colToRackId[colMapIdx] = rackId; // עמודת ארון
-                    colMapIdx++;
-                });
-                if (groupIndex < groupPrefixes.length - 1) {
-                    colMapIdx++; // עמודת רווח
-                }
             });
 
             // יצירת שורות לכל מיקום (U)
@@ -3533,28 +3318,13 @@ class DataCenterManager {
 
                         if (!isEmpty) {
                             cell.style = JSON.parse(JSON.stringify(lightGrayStyle)); // clone
-
-                            // *** תיקון: בדיקת גודל ציוד (1U = פונט 5) ***
-                            const uPosition = 43 - row; // המרת שורה למיקום U
-                            const currentRackId = colToRackId[col];
-                            const cellData = currentRackId
-                                ? rackMatrix[currentRackId]?.[uPosition]
-                                : null;
-                            const isOneU = cellData && cellData.size === 1;
-
-                            if (isOneU) {
-                                // ציוד 1U - פונט קטן מאוד
-                                cell.font = { size: 5, bold: false };
+                            const textLength = cell.value.toString().length;
+                            if (textLength > 30) {
+                                cell.font = { size: 7, ...lightGrayStyle.font };
+                            } else if (textLength > 20) {
+                                cell.font = { size: 8, ...lightGrayStyle.font };
                             } else {
-                                // ציוד גדול מ-1U - פונט לפי אורך טקסט
-                                const textLength = cell.value.toString().length;
-                                if (textLength > 30) {
-                                    cell.font = { size: 7, ...lightGrayStyle.font };
-                                } else if (textLength > 20) {
-                                    cell.font = { size: 8, ...lightGrayStyle.font };
-                                } else {
-                                    cell.font = { size: 9, ...lightGrayStyle.font };
-                                }
+                                cell.font = { size: 9, ...lightGrayStyle.font };
                             }
                         } else {
                             cell.style = JSON.parse(JSON.stringify(darkGrayStyle)); // clone
@@ -3667,14 +3437,14 @@ class DataCenterManager {
 
             const rackData = this.racksData[this.currentDataCenter][rackId] || [];
             rackData.forEach(item => {
-                const startPosition = item.startPosition || item.StartPosition || 0; // U תחתון
+                const position = item.startPosition || item.StartPosition || 0;
                 const equipment = item.equipment || item.Equipment || '';
                 const size = item.size_units || item.SizeUnits || 1;
 
-                // שמירת הציוד במיקום המתאים (מתחתון לעליון)
+                // שמירת הציוד במיקום המתאים
                 for (let i = 0; i < size; i++) {
-                    const currentPosition = startPosition + i;  // מתחתון לעליון
-                    if (currentPosition > 0 && currentPosition <= 42) {
+                    const currentPosition = position - i;
+                    if (currentPosition > 0) {
                         rackEquipmentMap[rackId][currentPosition] = equipment;
                     }
                 }
@@ -5298,7 +5068,9 @@ class DataCenterManager {
      * @param {string} equipment - שם הציוד
      */
     confirmRemoveEquipment(position, equipment) {
-        this._showScrapConfirmDialog(position, equipment);
+        if (confirm(`האם אתה בטוח שברצונך להסיר את הציוד "${equipment}" ממיקום U${position}?`)) {
+            this.removeEquipment(this.currentRack.id, this.currentDataCenter, position, equipment);
+        }
     }
 
     /**
@@ -6257,6 +6029,7 @@ class DataCenterManager {
      */
     async showDataCenter(dataCenterType) {
         this.currentDataCenter = dataCenterType;
+
         this.createDataCenterModal();
 
         // עדכון כותרת
@@ -6265,11 +6038,9 @@ class DataCenterManager {
             console.error('dataCenterTitle element not found');
             return;
         }
-        title.textContent = dataCenterType === 'PT'
-            ? 'מפת אתר פתח תקווה'
-            : 'מפת אתר רמת גן';
+        title.textContent = dataCenterType === 'PT' ? 'מפת אתר פתח תקווה' : 'מפת אתר רמת גן';
 
-        // איפוס UI חיפושים
+        // *** תיקון: איפוס מצב UI של חיפושים בעת פתיחה מחדש ***
         const freeSpaceResultsInfo = document.getElementById('freeSpaceResultsInfo');
         if (freeSpaceResultsInfo) freeSpaceResultsInfo.style.display = 'none';
 
@@ -6297,17 +6068,6 @@ class DataCenterManager {
             const container = document.getElementById('dataCenterContainer');
             container.innerHTML = this.generateDataCenterHTML(dataCenterType);
             this.setupRackEventListeners();
-            this.addScrapListButton();
-
-
-            // *** הפעל סקייל רספונסיבי ***
-            // המתן לרינדור
-            requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                    this.applyResponsiveScale();
-                    this.setupResizeObserver();
-                });
-            });
 
             // בדיקה אם יש עדכונים זמינים לחדר זה - רק אם הטעינה הצליחה
             if (this.dataLoadingStatus[dataCenterType]) {
@@ -6316,11 +6076,10 @@ class DataCenterManager {
         } catch (error) {
             console.error(`Error loading ${dataCenterType} data:`, error);
             const container = document.getElementById('dataCenterContainer');
-            container.innerHTML = `
-            <div class="error-message">
-                <i class="fas fa-exclamation-triangle"></i> 
-                שגיאה בטעינת נתונים: ${error.message}
-            </div>`;
+            container.innerHTML = `<div class="error-message">
+            <i class="fas fa-exclamation-triangle"></i> 
+            שגיאה בטעינת נתונים: ${error.message}
+        </div>`;
         }
     }
 
@@ -6398,1166 +6157,6 @@ class DataCenterManager {
 
             // הצגת הודעת שגיאה
             container.innerHTML = `<div class="error-message"><i class="fas fa-exclamation-triangle"></i> שגיאה ברענון נתונים: ${error.message}</div>`;
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    //  S C R A P   M A N A G E M E N T   -   מערכת גריטה
-    // ─────────────────────────────────────────────────────────────
-
-    /**
-     * הצגת דיאלוג אישור מחיקה עם אפשרות גריטה
-     * @private
-     */
-    _showScrapConfirmDialog(position, equipment) {
-        // הסרת דיאלוג קודם
-        const existing = document.getElementById('scrapConfirmDialog');
-        if (existing) existing.remove();
-
-        const siteName = this.currentDataCenter === 'PT'
-            ? 'פתח תקווה' : 'רמת גן';
-
-        const div = document.createElement('div');
-        div.id = 'scrapConfirmDialog';
-        div.style.cssText = `
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        width: 100% !important;
-        height: 100% !important;
-        background: rgba(0,0,0,0.7) !important;
-        z-index: 999999 !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-    `;
-
-        div.innerHTML = `
-        <div class="scrap-confirm-box">
-            <!-- כותרת -->
-            <div class="scrap-confirm-header">
-                <i class="fas fa-trash-alt"></i>
-                <strong>הסרת ציוד מהארון</strong>
-            </div>
-
-            <!-- גוף -->
-            <div class="scrap-confirm-body">
-                <p class="scrap-confirm-text">
-                    האם להסיר את הציוד
-                    <strong>"${this._escapeHtml(equipment)}"</strong>
-                    ממיקום U${position}?
-                </p>
-
-                <!-- שאלת גריטה -->
-                <div class="scrap-confirm-scrap-section">
-                    <label class="scrap-confirm-label">
-                        <input type="checkbox" 
-                               id="scrapCheckbox"
-                               checked
-                               style="width:18px; height:18px; cursor:pointer; accent-color:#dc3545;">
-                        <span>
-                            <i class="fas fa-recycle" style="color:#856404;"></i>
-                            הציוד מיועד לגריטה
-                        </span>
-                    </label>
-                    <p class="scrap-confirm-hint">
-                        הציוד יועבר לרשימת הגריטה של אתר ${siteName}
-                    </p>
-                </div>
-
-                <!-- שדה הערות -->
-                <div id="scrapNotesContainer" class="scrap-notes-container">
-                    <label class="scrap-notes-label">
-                        הערות (אופציונלי):
-                    </label>
-                    <input type="text"
-                           id="scrapNotesInput"
-                           placeholder="סיבת הגריטה, מספר סידורי וכו'..."
-                           class="scrap-notes-input">
-                </div>
-            </div>
-
-            <!-- כפתורים -->
-            <div class="scrap-confirm-footer">
-                <button id="scrapCancelBtn" class="scrap-btn-cancel">
-                    <i class="fas fa-times"></i> ביטול
-                </button>
-                <button id="scrapExecuteBtn" class="scrap-btn-execute">
-                    <i class="fas fa-trash"></i> הסר
-                </button>
-            </div>
-        </div>
-    `;
-
-        document.body.appendChild(div);
-
-        // אירועים - אחרי שהאלמנט נוסף ל-DOM
-        document.getElementById('scrapNotesContainer').style.display = 'block';
-
-        document.getElementById('scrapCheckbox')
-            .addEventListener('change', function () {
-                document.getElementById('scrapNotesContainer').style.display =
-                    this.checked ? 'block' : 'none';
-            });
-
-        document.getElementById('scrapCancelBtn')
-            .addEventListener('click', () => {
-                document.getElementById('scrapConfirmDialog').remove();
-            });
-
-        document.getElementById('scrapExecuteBtn')
-            .addEventListener('click', () => {
-                this._executeRemoveWithScrap(position, equipment);
-            });
-    }
-
-    /**
-     * ביצוע המחיקה עם/בלי גריטה
-     * @param {number} position  - מיקום U
-     * @param {string} equipment - שם הציוד
-     */
-    async _executeRemoveWithScrap(position, equipment) {
-        const checkbox = document.getElementById('scrapCheckbox');
-        const notesInput = document.getElementById('scrapNotesInput');
-        const sendToScrap = checkbox?.checked ?? false;
-        const notes = notesInput?.value?.trim() ?? '';
-
-        // סגירת הדיאלוג
-        document.getElementById('scrapConfirmDialog')?.remove();
-
-        if (!this.currentRack) return;
-
-        try {
-            if (sendToScrap) {
-                // מחיקה + גריטה בפעולה אחת
-                const response = await fetch('/DataCenter/RemoveEquipmentToScrap', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        equipment: equipment,
-                        rackId: this.currentRack.id,
-                        startPosition: position,
-                        sizeUnits: this._getSizeUnitsFromRack(position, equipment),
-                        type: this._getTypeFromRack(position, equipment),
-                        dataCenterType: this.currentDataCenter,
-                        removedBy: this.currentUser?.username ?? 'Unknown',
-                        notes: notes
-                    })
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    this._notify('הציוד הוסר מהארון והועבר לרשימת הגריטה', 'success');
-                    this._removeFromLocalCache(position, equipment);
-                    await this.showRackDetails(this.currentRack.id);
-                } else {
-                    this._notify(`שגיאה: ${data.error}`, 'error');
-                }
-
-            } else {
-                // מחיקה רגילה ללא גריטה
-                await this.removeEquipment(
-                    this.currentRack.id,
-                    this.currentDataCenter,
-                    position,
-                    equipment
-                );
-            }
-        } catch (error) {
-            console.error('Error removing equipment:', error);
-            this._notify(`שגיאה בהסרת ציוד: ${error.message}`, 'error');
-        }
-    }
-
-    /**
-     * עזר: קבלת גודל ציוד מהנתונים המקומיים
-     * @private
-     */
-    _getSizeUnitsFromRack(position, equipment) {
-        if (!this.currentRack?.data) return 1;
-        const item = this.currentRack.data.find(i => {
-            const pos = i.startPosition || i.StartPosition || 0;
-            const nm = i.equipment || i.Equipment || '';
-            return pos === position &&
-                nm.toLowerCase() === equipment.toLowerCase();
-        });
-        return item?.size_units || item?.SizeUnits || 1;
-    }
-
-    /**
-     * עזר: קבלת סוג ציוד מהנתונים המקומיים
-     * @private
-     */
-    _getTypeFromRack(position, equipment) {
-        if (!this.currentRack?.data) return 'other';
-        const item = this.currentRack.data.find(i => {
-            const pos = i.startPosition || i.StartPosition || 0;
-            const nm = i.equipment || i.Equipment || '';
-            return pos === position &&
-                nm.toLowerCase() === equipment.toLowerCase();
-        });
-        return item?.type || item?.Type || 'other';
-    }
-
-    /**
-     * עזר: הסרת ציוד מהקאש המקומי
-     * @private
-     */
-    _removeFromLocalCache(position, equipment) {
-        const dc = this.currentDataCenter;
-        const id = this.currentRack?.id;
-        if (!dc || !id || !this.racksData[dc]?.[id]) return;
-
-        const arr = this.racksData[dc][id];
-        const idx = arr.findIndex(i => {
-            const pos = i.startPosition || i.StartPosition || 0;
-            const nm = i.equipment || i.Equipment || '';
-            return pos === position &&
-                nm.toLowerCase() === equipment.toLowerCase();
-        });
-        if (idx !== -1) arr.splice(idx, 1);
-        if (this.currentRack) this.currentRack.data = arr;
-    }
-
-    /**
-     * עזר: escape HTML למניעת XSS
-     * @param {string}  str
-     * @param {boolean} forAttr - שימוש בתוך attribute
-     * @private
-     */
-    _escapeHtml(str, forAttr = false) {
-        if (!str) return '';
-        const map = {
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": forAttr ? '&#39;' : '&#039;'
-        };
-        return str.replace(/[&<>"']/g, m => map[m]);
-    }
-
-    // ─────────────────────────────────────────────────────────────
-    //  S C R A P   L I S T   M O D A L
-    // ─────────────────────────────────────────────────────────────
-
-    /**
-     * יצירת מודל רשימת גריטה (נקרא פעם אחת)
-     */
-    createScrapListModal() {
-        if (document.getElementById('scrapListModal')) return;
-
-        const modalHTML = `
-    <div id="scrapListModal" class="modal-overlay">
-        <div class="modal-content" style="max-width:960px; width:95%;">
-
-            <div class="modal-header">
-                <h3>
-                    <i class="fas fa-recycle" style="color:#dc3545;"></i>
-                    רשימת ציודים לגריטה -
-                    <span id="scrapListTitle"></span>
-                </h3>
-                <button class="modal-close"
-                        onclick="dataCenterManager.closeScrapListModal()">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-
-            <div class="modal-body" style="padding:0;">
-                <div id="scrapListContent" style="padding:16px;">
-                </div>
-            </div>
-
-            <div class="modal-footer">
-                <button class="btn-primary"
-                        onclick="dataCenterManager.exportScrapToExcel()">
-                    <i class="fas fa-file-excel"></i> ייצוא לאקסל
-                </button>
-                <button class="btn-cancel"
-                        onclick="dataCenterManager.closeScrapListModal()">
-                    <i class="fas fa-times"></i> סגור
-                </button>
-            </div>
-        </div>
-    </div>`;
-
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-    }
-
-    /**
-     * הצגת רשימת גריטה לאתר הנוכחי
-     */
-    async showScrapList() {
-        this.createScrapListModal();
-
-        const titleEl = document.getElementById('scrapListTitle');
-        const contentEl = document.getElementById('scrapListContent');
-
-        if (titleEl) {
-            titleEl.textContent = this.currentDataCenter === 'PT'
-                ? 'פתח תקווה' : 'רמת גן';
-        }
-
-        contentEl.innerHTML = `
-        <div class="loading-spinner">
-            <i class="fas fa-spinner fa-spin"></i>
-            <span>טוען רשימת גריטה...</span>
-        </div>`;
-
-        document.getElementById('scrapListModal').style.display = 'flex';
-
-        try {
-            const response = await fetch(
-                `/DataCenter/GetScrapItems?dataCenterType=${this.currentDataCenter}`
-            );
-
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-            const data = await response.json();
-            if (!data.success) throw new Error(data.error || 'שגיאה בטעינה');
-
-            this._renderScrapList(data.items || [], contentEl);
-
-        } catch (error) {
-            console.error('Error loading scrap list:', error);
-            contentEl.innerHTML = `
-            <div class="error-message">
-                <i class="fas fa-exclamation-triangle"></i>
-                שגיאה בטעינת רשימת הגריטה: ${error.message}
-            </div>`;
-        }
-    }
-
-    /**
-     * סגירת מודל רשימת גריטה
-     */
-    closeScrapListModal() {
-        const modal = document.getElementById('scrapListModal');
-        if (modal) modal.style.display = 'none';
-    }
-
-    /**
-     * רינדור טבלת הגריטה
-     * @param {Array}       items     - פריטי הגריטה
-     * @param {HTMLElement} container - אלמנט היעד
-     * @private
-     */
-    _renderScrapList(items, container) {
-        const addButton = `
-        <button id="addManualScrapBtn"
-                onclick="dataCenterManager._showAddManualScrapDialog()"
-                style="
-                    background:#dc3545; color:white; border:none;
-                    border-radius:4px; padding:8px 14px;
-                    cursor:pointer; font-size:0.9rem;
-                    display:flex; align-items:center; gap:6px;
-                ">
-            <i class="fas fa-plus"></i> הוסף ציוד ידנית
-        </button>`;
-
-        if (items.length === 0) {
-            container.innerHTML = `
-            <div style="display:flex; justify-content:flex-end; 
-                        margin-bottom:16px;">
-                ${addButton}
-            </div>
-            <div style="text-align:center; padding:40px; color:#6c757d;">
-                <i class="fas fa-check-circle"
-                   style="font-size:3rem; color:#28a745;
-                          display:block; margin-bottom:12px;"></i>
-                <p style="font-size:1.1rem; margin:0;">
-                    אין ציודים ממתינים לגריטה באתר זה
-                </p>
-            </div>`;
-            return;
-        }
-
-        // מיון: חדש ראשון
-        const sorted = [...items].sort(
-            (a, b) => new Date(b.removedAt) - new Date(a.removedAt)
-        );
-
-
-        const thStyle = `
-        padding:10px 12px;
-        text-align:right;
-        font-weight:600;
-        color:#495057;
-        white-space:nowrap;`;
-
-        const tdStyle = `
-        padding:9px 12px;
-        border-bottom:1px solid #dee2e6;
-        vertical-align:middle;
-        text-align: center;`;
-
-        const typeLabels = {
-            server: 'שרת', switch: 'מתג',
-            storage: 'אחסון', other: 'אחר'
-        };
-        const typeColors = {
-            server: '#d4edda', switch: '#cce5ff',
-            storage: '#fff3cd', other: '#f8f9fa'
-        };
-
-        let rows = '';
-        sorted.forEach(item => {
-            const dateStr = item.removedAt
-                ? new Date(item.removedAt).toLocaleString('he-IL', {
-                    day: '2-digit', month: '2-digit', year: 'numeric',
-                    hour: '2-digit', minute: '2-digit',
-                    timeZone: 'UTC'   // ← הוספה זו מונעת המרת אזור זמן
-                })
-                : '-';
-
-            const typeLabel = typeLabels[item.type] || 'אחר';
-            const typeBg = typeColors[item.type] || '#f8f9fa';
-
-            // encode בטוח לשימוש ב-data-attribute
-            const safeEquipment = this._escapeHtml(item.equipment);
-            const safeRackId = this._escapeHtml(item.rackId);
-            const safeRemovedAt = this._escapeHtml(item.removedAt);
-
-            rows += `
-        <tr class="scrap-row"
-            data-equipment="${safeEquipment}"
-            data-rack-id="${safeRackId}"
-            data-start-position="${item.startPosition}"
-            data-removed-at="${safeRemovedAt}">
-
-            <td style="${tdStyle}">
-                <strong>${safeEquipment}</strong>
-            </td>
-            <td style="${tdStyle}">${safeRackId}</td>
-            <td style="${tdStyle}; text-align:center;">
-                U${item.startPosition}
-                ${item.sizeUnits > 1
-                    ? `– U${item.startPosition + item.sizeUnits - 1}` : ''}
-            </td>
-            <td style="${tdStyle}; text-align:center;">
-                ${item.sizeUnits}U
-            </td>
-            <td style="${tdStyle}; text-align:center;">
-                <span style="
-                    background:${typeBg};
-                    padding:2px 8px;
-                    border-radius:12px;
-                    font-size:0.82rem;">
-                    ${typeLabel}
-                </span>
-            </td>
-            <td style="${tdStyle}; font-size:0.85rem; color:#6c757d;">
-                ${dateStr}
-            </td>
-            <td style="${tdStyle}; font-size:0.85rem;">
-                ${this._escapeHtml(item.removedBy) || '-'}
-            </td>
-            <td style="${tdStyle}; font-size:0.85rem; color:#6c757d; max-width:180px;">
-                ${this._escapeHtml(item.notes) || '-'}
-            </td>
-            <td style="${tdStyle}; text-align:center; white-space:nowrap;">
-                <button class="btn-cancel"
-                        style="font-size:0.8rem; padding:4px 10px;"
-                        title="הסר מרשימת הגריטה (לאחר שנשלח)"
-                        onclick="dataCenterManager._confirmRemoveFromScrap(this)">
-                    <i class="fas fa-check"></i> טופל
-                </button>
-            </td>
-        </tr>`;
-        });
-
-        container.innerHTML = `
-    <div style="display:flex; justify-content:space-between;
-                align-items:center; margin-bottom:12px; flex-shrink:0;">
-        <div style="color:#6c757d; font-size:0.9rem;">
-            סה"כ <strong>${items.length}</strong> פריטים ממתינים לגריטה
-        </div>
-        ${addButton}
-    </div>
-    <div style="overflow-x:auto; overflow-y:auto; max-height:55vh;">
-        <table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
-            <thead>
-                <tr style="background:#f8f9fa; border-bottom:2px solid #dee2e6;">
-                    <th style="${thStyle}">שם ציוד</th>
-                    <th style="${thStyle}">ארון</th>
-                    <th style="${thStyle}">מיקום U</th>
-                    <th style="${thStyle}">גודל</th>
-                    <th style="${thStyle}">סוג</th>
-                    <th style="${thStyle}">תאריך הסרה</th>
-                    <th style="${thStyle}">הוסר ע"י</th>
-                    <th style="${thStyle}">הערות</th>
-                    <th style="${thStyle}">פעולות</th>
-                </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-        </table>
-    </div>`;
-    }
-
-    /**
-     * אישור הסרת פריט מרשימת הגריטה (לאחר שטופל)
-     * @param {HTMLElement} btn - כפתור "טופל" שנלחץ
-     */
-    _confirmRemoveFromScrap(btn) {
-        const row = btn.closest('tr.scrap-row');
-        const equipment = row.getAttribute('data-equipment');
-        const rackId = row.getAttribute('data-rack-id');
-        const startPos = parseInt(row.getAttribute('data-start-position'));
-        const removedAt = row.getAttribute('data-removed-at');
-
-        if (!confirm(
-            `האם לסמן את "${equipment}" כטופל ולהסיר מרשימת הגריטה?`
-        )) return;
-
-        this._removeFromScrapList(equipment, rackId, startPos, removedAt, row);
-    }
-
-    _showAddManualScrapDialog() {
-        // הסרת דיאלוג קודם
-        const existing = document.getElementById('addManualScrapDialog');
-        if (existing) existing.remove();
-
-        const siteName = this.currentDataCenter === 'PT'
-            ? 'פתח תקווה' : 'רמת גן';
-
-        // בניית רשימת ארונות זמינים
-        const racksData = this.racksData[this.currentDataCenter] || {};
-        const rackIds = Object.keys(racksData).sort();
-        const rackOptions = rackIds.map(id =>
-            `<option value="${id}">${id}</option>`
-        ).join('');
-
-        const div = document.createElement('div');
-        div.id = 'addManualScrapDialog';
-        div.style.cssText = `
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        width: 100% !important;
-        height: 100% !important;
-        background: rgba(0,0,0,0.7) !important;
-        z-index: 999999 !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-    `;
-
-        div.innerHTML = `
-        <div style="
-            background: white;
-            border-radius: 8px;
-            width: 520px;
-            max-width: 95vw;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.4);
-            overflow: hidden;
-            font-family: Arial, sans-serif;
-            direction: rtl;
-        ">
-            <!-- כותרת -->
-            <div style="
-                background: #dc3545;
-                color: white;
-                padding: 16px 20px;
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-            ">
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <i class="fas fa-plus-circle"></i>
-                    <strong>הוספת ציוד ידנית לגריטה - ${siteName}</strong>
-                </div>
-                <button onclick="document.getElementById('addManualScrapDialog').remove()"
-                    style="background:none; border:none; color:white; 
-                           cursor:pointer; font-size:18px; padding:0;">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-
-            <!-- גוף -->
-            <div style="padding: 20px; display:flex; flex-direction:column; gap:14px;">
-                
-                <!-- שם ציוד -->
-                <div>
-                    <label style="display:block; font-size:0.85rem; 
-                                  color:#555; margin-bottom:4px; font-weight:600;">
-                        <i class="fas fa-server" style="color:#dc3545;"></i>
-                        שם הציוד <span style="color:red;">*</span>
-                    </label>
-                    <div style="position:relative;">
-                        <input type="text" 
-                               id="manualScrapEquipment"
-                               placeholder="הקלד שם ציוד לחיפוש..."
-                               style="
-                                   width:100%; box-sizing:border-box;
-                                   padding:8px 10px;
-                                   border:1px solid #ced4da;
-                                   border-radius:4px;
-                                   font-size:0.9rem;
-                               ">
-                        <div id="manualScrapEquipmentDropdown" 
-                             style="display:none; position:absolute; 
-                                    top:100%; right:0; left:0;
-                                    background:white; border:1px solid #ced4da;
-                                    border-top:none; border-radius:0 0 4px 4px;
-                                    max-height:180px; overflow-y:auto;
-                                    z-index:10; box-shadow:0 4px 8px rgba(0,0,0,0.1);">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- שורה: ארון + מיקום U + גודל -->
-                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
-                    <div>
-                        <label style="display:block; font-size:0.85rem; 
-                                      color:#555; margin-bottom:4px; font-weight:600;">
-                            ארון <span style="color:red;"></span>
-                        </label>
-                        <select id="manualScrapRackId"
-                                style="
-                                    width:100%; padding:8px;
-                                    border:1px solid #ced4da;
-                                    border-radius:4px; font-size:0.9rem;
-                                ">
-                            <option value="">-- בחר ארון --</option>
-                            ${rackOptions}
-                        </select>
-                    </div>
-                    <div>
-                        <label style="display:block; font-size:0.85rem; 
-                                      color:#555; margin-bottom:4px; font-weight:600;">
-                            מיקום U <span style="color:red;"></span>
-                        </label>
-                        <input type="number" 
-                               id="manualScrapPosition"
-                               min="1" max="42" placeholder="1-42"
-                               style="
-                                   width:100%; box-sizing:border-box;
-                                   padding:8px; border:1px solid #ced4da;
-                                   border-radius:4px; font-size:0.9rem;
-                               ">
-                    </div>
-                    <div>
-                        <label style="display:block; font-size:0.85rem; 
-                                      color:#555; margin-bottom:4px; font-weight:600;">
-                            גודל (U)
-                        </label>
-                        <input type="number" 
-                               id="manualScrapSize"
-                               min="1" max="42" value="1"
-                               style="
-                                   width:100%; box-sizing:border-box;
-                                   padding:8px; border:1px solid #ced4da;
-                                   border-radius:4px; font-size:0.9rem;
-                               ">
-                    </div>
-                </div>
-
-                <!-- סוג ציוד -->
-                <div>
-                    <label style="display:block; font-size:0.85rem; 
-                                  color:#555; margin-bottom:4px; font-weight:600;">
-                        סוג ציוד
-                    </label>
-                    <select id="manualScrapType"
-                            style="
-                                width:100%; padding:8px;
-                                border:1px solid #ced4da;
-                                border-radius:4px; font-size:0.9rem;
-                            ">
-                        <option value="other">אחר</option>
-                        <option value="server">שרת</option>
-                        <option value="switch">מתג</option>
-                        <option value="storage">אחסון</option>
-                    </select>
-                </div>
-
-                <!-- הערות -->
-                <div>
-                    <label style="display:block; font-size:0.85rem; 
-                                  color:#555; margin-bottom:4px; font-weight:600;">
-                        הערות (אופציונלי)
-                    </label>
-                    <input type="text" 
-                           id="manualScrapNotes"
-                           placeholder="סיבת הגריטה, מספר סידורי וכו'..."
-                           style="
-                               width:100%; box-sizing:border-box;
-                               padding:8px; border:1px solid #ced4da;
-                               border-radius:4px; font-size:0.9rem;
-                           ">
-                </div>
-
-                <!-- הודעת שגיאה -->
-                <div id="manualScrapError" 
-                     style="display:none; color:#dc3545; 
-                            font-size:0.85rem; padding:8px;
-                            background:#fff5f5; border-radius:4px;
-                            border:1px solid #f5c6cb;">
-                </div>
-            </div>
-
-            <!-- כפתורים -->
-            <div style="
-                padding: 12px 20px;
-                background: #f8f9fa;
-                display: flex;
-                justify-content: flex-end;
-                gap: 10px;
-                border-top: 1px solid #dee2e6;
-            ">
-                <button onclick="document.getElementById('addManualScrapDialog').remove()"
-                        style="
-                            padding:8px 18px;
-                            border:1px solid #6c757d;
-                            background:white;
-                            border-radius:4px;
-                            cursor:pointer;
-                            font-size:0.9rem;
-                        ">
-                    <i class="fas fa-times"></i> ביטול
-                </button>
-                <button id="manualScrapSubmitBtn"
-                        onclick="dataCenterManager._submitManualScrap()"
-                        style="
-                            padding:8px 18px;
-                            background:#dc3545;
-                            color:white;
-                            border:none;
-                            border-radius:4px;
-                            cursor:pointer;
-                            font-size:0.9rem;
-                        ">
-                    <i class="fas fa-recycle"></i> הוסף לגריטה
-                </button>
-            </div>
-        </div>
-    `;
-
-        document.body.appendChild(div);
-
-        // הגדרת autocomplete לשדה שם הציוד
-        this._setupManualScrapAutocomplete();
-
-        // מאזין לשינוי ארון - עדכון סוג ציוד אוטומטי
-        document.getElementById('manualScrapRackId')
-            .addEventListener('change', () => {
-                this._updateManualScrapTypeFromRack();
-            });
-    }
-
-    _setupManualScrapAutocomplete() {
-        const input = document.getElementById('manualScrapEquipment');
-        const dropdown = document.getElementById('manualScrapEquipmentDropdown');
-        const rackSelect = document.getElementById('manualScrapRackId');
-        const positionInput = document.getElementById('manualScrapPosition');
-        const sizeInput = document.getElementById('manualScrapSize');
-        const typeSelect = document.getElementById('manualScrapType');
-
-        if (!input || !dropdown) return;
-
-        const equipmentList = this.getAllEquipmentList();
-
-        input.addEventListener('input', () => {
-            const searchTerm = input.value.toLowerCase().trim();
-
-            if (searchTerm.length < 2) {
-                dropdown.style.display = 'none';
-                return;
-            }
-
-            // סינון לפי חדר נוכחי בלבד
-            const filtered = equipmentList.filter(equip =>
-                equip.dataCenterType === this.currentDataCenter &&
-                equip.name.toLowerCase().includes(searchTerm)
-            ).slice(0, 12);
-
-            if (filtered.length === 0) {
-                dropdown.style.display = 'none';
-                return;
-            }
-
-            dropdown.innerHTML = filtered.map(equip => `
-            <div class="autocomplete-item"
-                 data-name="${this._escapeHtml(equip.name, true)}"
-                 data-rack="${this._escapeHtml(equip.rackId, true)}"
-                 data-position="${equip.position}"
-                 style="
-                     padding:8px 12px;
-                     cursor:pointer;
-                     border-bottom:1px solid #f0f0f0;
-                     font-size:0.88rem;
-                 "
-                 onmouseover="this.style.background='#f0f4ff'"
-                 onmouseout="this.style.background='white'">
-                <strong>${this._escapeHtml(equip.name)}</strong>
-                <span style="color:#888; margin-right:8px;">
-                    | ${equip.rackId} | U${equip.position}
-                </span>
-            </div>
-        `).join('');
-
-            // אירועי לחיצה על פריטים
-            dropdown.querySelectorAll('.autocomplete-item').forEach(item => {
-                item.addEventListener('click', () => {
-                    const name = item.getAttribute('data-name');
-                    const rack = item.getAttribute('data-rack');
-                    const position = item.getAttribute('data-position');
-
-                    input.value = name;
-
-                    // עדכון שדות אוטומטי
-                    if (rackSelect) rackSelect.value = rack;
-                    if (positionInput) positionInput.value = position;
-
-                    // עדכון גודל מהנתונים
-                    const equipData = this.racksData[this.currentDataCenter]?.[rack]
-                        ?.find(e => {
-                            const nm = e.Equipment || e.equipment || '';
-                            const pos = e.StartPosition || e.startPosition || 0;
-                            return nm === name && pos === parseInt(position);
-                        });
-
-                    if (equipData) {
-                        const size = equipData.SizeUnits || equipData.size_units || 1;
-                        if (sizeInput) sizeInput.value = size;
-
-                        // עדכון סוג
-                        const type = equipData.Type || equipData.type || 'other';
-                        if (typeSelect) typeSelect.value = type;
-                    }
-
-                    dropdown.style.display = 'none';
-                });
-            });
-
-            dropdown.style.display = 'block';
-        });
-
-        // סגירת dropdown בלחיצה מחוץ
-        document.addEventListener('click', (e) => {
-            const container = document.getElementById('addManualScrapDialog');
-            if (container && !container.querySelector(
-                '#manualScrapEquipment')?.contains(e.target)) {
-                dropdown.style.display = 'none';
-            }
-        }, { once: false });
-    }
-
-    _updateManualScrapTypeFromRack() {
-        const rackSelect = document.getElementById('manualScrapRackId');
-        const posInput = document.getElementById('manualScrapPosition');
-        const equipInput = document.getElementById('manualScrapEquipment');
-        const typeSelect = document.getElementById('manualScrapType');
-
-        if (!rackSelect?.value || !this.currentDataCenter) return;
-
-        const rackId = rackSelect.value;
-        const rackData = this.racksData[this.currentDataCenter]?.[rackId] || [];
-
-        // אם יש שם ציוד - נסה לזהות סוג
-        const equipName = equipInput?.value?.trim();
-        if (equipName && typeSelect) {
-            const found = rackData.find(e => {
-                const nm = e.Equipment || e.equipment || '';
-                return nm.toLowerCase() === equipName.toLowerCase();
-            });
-            if (found) {
-                typeSelect.value = found.Type || found.type || 'other';
-            }
-        }
-    }
-
-    async _submitManualScrap() {
-        const equipment = document.getElementById('manualScrapEquipment')?.value?.trim();
-        const rackId = document.getElementById('manualScrapRackId')?.value;
-        const position = parseInt(document.getElementById('manualScrapPosition')?.value);
-        const size = parseInt(document.getElementById('manualScrapSize')?.value) || 1;
-        const type = document.getElementById('manualScrapType')?.value || 'other';
-        const notes = document.getElementById('manualScrapNotes')?.value?.trim() || '';
-        const errorEl = document.getElementById('manualScrapError');
-        const submitBtn = document.getElementById('manualScrapSubmitBtn');
-
-        // ולידציה
-        // ולידציה - רק שם ציוד חובה
-        const errors = [];
-        if (!equipment) errors.push('יש להזין שם ציוד');
-
-        // ולידציה של מיקום U רק אם הוזן ערך
-        if (position && (position < 1 || position > 42))
-            errors.push('מיקום U חייב להיות בין 1 ל-42');
-
-        if (errors.length > 0) {
-            if (errorEl) {
-                errorEl.textContent = errors.join(' | ');
-                errorEl.style.display = 'block';
-            }
-            return;
-        }
-
-        // הסתרת שגיאה קודמת
-        if (errorEl) errorEl.style.display = 'none';
-
-        // נעילת כפתור
-        if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.innerHTML =
-                '<i class="fas fa-spinner fa-spin"></i> מוסיף...';
-        }
-
-        try {
-            const response = await fetch('/DataCenter/AddToScrap', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    equipment: equipment,
-                    rackId: rackId || '',           // ריק אם לא נבחר
-                    startPosition: position || 0,   // 0 אם לא הוזן
-                    sizeUnits: size || 1,
-                    type: type,
-                    dataCenterType: this.currentDataCenter,
-                    removedBy: this.currentUser?.username ?? 'Unknown',
-                    notes: notes
-                })
-            });
-
-            const data = await response.json();
-
-            if (data.success) {
-                // סגירת הדיאלוג
-                document.getElementById('addManualScrapDialog')?.remove();
-
-                this._notify('הציוד נוסף לרשימת הגריטה בהצלחה', 'success');
-
-                // רענון רשימת הגריטה
-                await this.showScrapList();
-            } else {
-                if (errorEl) {
-                    errorEl.textContent = data.error || 'שגיאה בהוספה לגריטה';
-                    errorEl.style.display = 'block';
-                }
-            }
-        } catch (error) {
-            console.error('Error adding to scrap:', error);
-            if (errorEl) {
-                errorEl.textContent = `שגיאה: ${error.message}`;
-                errorEl.style.display = 'block';
-            }
-        } finally {
-            if (submitBtn) {
-                submitBtn.disabled = false;
-                submitBtn.innerHTML =
-                    '<i class="fas fa-recycle"></i> הוסף לגריטה';
-            }
-        }
-    }
-
-    /**
-     * הסרת פריט מרשימת הגריטה בשרת
-     * @private
-     */
-    async _removeFromScrapList(equipment, rackId, startPosition, removedAt, rowEl) {
-        try {
-            const response = await fetch('/DataCenter/RemoveFromScrap', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    dataCenterType: this.currentDataCenter,
-                    equipment,
-                    rackId,
-                    startPosition,
-                    removedAt
-                })
-            });
-
-            const data = await response.json();
-
-            if (data.success) {
-                // אנימציית הסרה
-                rowEl.style.transition = 'opacity 0.3s ease';
-                rowEl.style.opacity = '0';
-                setTimeout(() => {
-                    rowEl.remove();
-                    // בדיקה אם הטבלה ריקה
-                    const tbody = document.querySelector(
-                        '#scrapListContent tbody');
-                    if (tbody && tbody.children.length === 0) {
-                        this._renderScrapList(
-                            [],
-                            document.getElementById('scrapListContent')
-                        );
-                    }
-                    // עדכון מונה
-                    const countEl = document.querySelector(
-                        '#scrapListContent strong');
-                    if (countEl) {
-                        const current = parseInt(countEl.textContent) - 1;
-                        countEl.textContent = current;
-                    }
-                }, 300);
-
-                this._notify('הפריט הוסר מרשימת הגריטה', 'success');
-            } else {
-                this._notify(`שגיאה: ${data.error}`, 'error');
-            }
-        } catch (error) {
-            console.error('Error removing from scrap:', error);
-            this._notify(`שגיאה: ${error.message}`, 'error');
-        }
-    }
-
-    /**
-     * ייצוא רשימת גריטה לאקסל
-     */
-    async exportScrapToExcel() {
-        try {
-            const response = await fetch(
-                `/DataCenter/GetScrapItems?dataCenterType=${this.currentDataCenter}`
-            );
-            const data = await response.json();
-
-            if (!data.success || !data.items?.length) {
-                this._notify('אין נתונים לייצוא', 'info');
-                return;
-            }
-
-            this.showGlobalLoader('מכין קובץ אקסל...');
-
-            // טעינת ספריות אם צריך
-            await this._loadScriptIfNeeded(
-                '/lib/xlsx/exceljs.min.js',
-                () => typeof ExcelJS !== 'undefined'
-            );
-            await this._loadScriptIfNeeded(
-                '/lib/xlsx/FileSaver.min.js',
-                () => typeof saveAs !== 'undefined'
-            );
-
-            const workbook = new ExcelJS.Workbook();
-            const siteName = this.currentDataCenter === 'PT'
-                ? 'פתח תקווה' : 'רמת גן';
-            const worksheet = workbook.addWorksheet(`רשימת ציוד לגריטה - ${siteName}`);
-
-            // כותרות
-            worksheet.columns = [
-                { header: 'שם ציוד', key: 'equipment', width: 35 },
-                { header: 'ארון', key: 'rackId', width: 12 },
-                { header: 'מיקום U', key: 'startPosition', width: 10 },
-                { header: 'גודל (U)', key: 'sizeUnits', width: 10 },
-                { header: 'סוג', key: 'type', width: 12 },
-                { header: 'תאריך הסרה', key: 'removedAt', width: 20 },
-                { header: 'הוסר ע"י', key: 'removedBy', width: 16 },
-                { header: 'הערות', key: 'notes', width: 30 }
-            ];
-
-            // עיצוב כותרת
-            const headerRow = worksheet.getRow(1);
-            headerRow.font = { bold: true, size: 11 };
-            headerRow.fill = {
-                type: 'pattern', pattern: 'solid',
-                fgColor: { argb: 'FFFFE0B2' }
-            };
-            headerRow.alignment = { horizontal: 'center' };
-
-            const typeLabels = {
-                server: 'שרת', switch: 'מתג',
-                storage: 'אחסון', other: 'אחר'
-            };
-
-            // נתונים
-            data.items.forEach(item => {
-                const dateStr = item.removedAt
-                    ? new Date(item.removedAt).toLocaleString('he-IL')
-                    : '';
-                worksheet.addRow({
-                    equipment: item.equipment || '',
-                    rackId: item.rackId || '',
-                    startPosition: item.startPosition || 0,
-                    sizeUnits: item.sizeUnits || 1,
-                    type: typeLabels[item.type] || 'אחר',
-                    removedAt: dateStr,
-                    removedBy: item.removedBy || '',
-                    notes: item.notes || ''
-                });
-            });
-
-            // מסגרות לכל התאים
-            worksheet.eachRow(row => {
-                row.eachCell(cell => {
-                    cell.border = {
-                        top: { style: 'thin' },
-                        left: { style: 'thin' },
-                        bottom: { style: 'thin' },
-                        right: { style: 'thin' }
-                    };
-                    cell.alignment = {
-                        horizontal: 'right',
-                        vertical: 'middle'
-                    };
-                });
-            });
-
-            const buffer = await workbook.xlsx.writeBuffer();
-            const fileName =
-                `רשימת ציוד לגריטה - ${siteName} - ` +
-                `${new Date().toLocaleDateString('he-IL')}.xlsx`;
-
-            saveAs(new Blob([buffer]), fileName);
-            this.hideGlobalLoader();
-            this._notify('קובץ אקסל נוצר בהצלחה', 'success');
-
-        } catch (error) {
-            this.hideGlobalLoader();
-            console.error('Error exporting scrap to Excel:', error);
-            this._notify(`שגיאה בייצוא: ${error.message}`, 'error');
-        }
-    }
-
-    /**
-     * עזר: טעינת סקריפט חיצוני אם לא קיים
-     * @param {string}   src       - נתיב הסקריפט
-     * @param {Function} checkFn   - פונקציה שמחזירה true אם הספרייה כבר טעונה
-     * @private
-     */
-    _loadScriptIfNeeded(src, checkFn) {
-        if (checkFn()) return Promise.resolve();
-        return new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = src;
-            script.onload = resolve;
-            script.onerror = () => reject(new Error(
-                `Failed to load script: ${src}`));
-            document.head.appendChild(script);
-        });
-    }
-
-    /**
-     * הוספת כפתור "רשימת גריטה" למודל חדר השרתים
-     * קרא לפונקציה זו בתוך createDataCenterModal() אחרי יצירת ה-HTML
-     */
-    addScrapListButton() {
-        // בדיקה שהכפתור לא קיים כבר
-        if (document.getElementById('showScrapListBtn')) return;
-
-        const footer = document.querySelector('#dataCenterModal .modal-footer');
-        if (!footer) return;
-
-        const btn = document.createElement('button');
-        btn.id = 'showScrapListBtn';
-        btn.className = 'btn-primary';
-        btn.style.cssText = `
-        background: #dc3545;
-        border-color: #dc3545;`;
-        btn.innerHTML = `
-        <i class="fas fa-recycle"></i> רשימת גריטה`;
-        btn.addEventListener('click', () => this.showScrapList());
-
-        // הכנס לפני כפתור "סגור"
-        const closeBtn = footer.querySelector('.btn-cancel');
-        if (closeBtn) {
-            footer.insertBefore(btn, closeBtn);
-        } else {
-            footer.appendChild(btn);
         }
     }
 

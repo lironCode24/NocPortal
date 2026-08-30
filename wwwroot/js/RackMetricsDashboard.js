@@ -17,7 +17,7 @@ class RackMetricsDashboard {
         this.nextRefreshTime = null;
         this.STORAGE_KEY = 'rackMetricsDashboard_cache';
         this.STORAGE_TIMESTAMP_KEY = 'rackMetricsDashboard_cacheTime';
-        this.CACHE_MAX_AGE_MS = 30 * 60 * 1000; // 30 דקות
+        this.CACHE_MAX_AGE_MS = 8 * 60 * 1000; // 8 דקות
     }
 
     /**
@@ -345,10 +345,7 @@ class RackMetricsDashboard {
 
     // הלוגיקה האמיתית של הטעינה - פונקציה נפרדת
     async _doLoadAllMetrics(isBackgroundRefresh = false) {
-        // *** שלב 1: בקש מהשרת לעדכן את קאש הקבצים ברקע ***
-        // לא מחכים לסיום - ממשיכים לטעון מהקאש הקיים
-        const cacheUpdatePromise = this.refreshMetricsCacheIfNeeded();
-
+        await this.refreshMetricsCacheIfNeeded();
         await this.ensureDataCenterManagerLoaded();
 
         const allRacks = this.getAllRacksFromManager();
@@ -358,61 +355,37 @@ class RackMetricsDashboard {
                 const grid = document.getElementById('rmdGrid');
                 if (grid) {
                     grid.innerHTML = `
-                <div class="rmd-empty">
-                    <i class="fas fa-server"></i>
-                    <p>לא נמצאו ארונות. ודא שה-DataCenterManager נטען.</p>
-                </div>`;
+                    <div class="rmd-empty">
+                        <i class="fas fa-server"></i>
+                        <p>לא נמצאו ארונות. ודא שה-DataCenterManager נטען.</p>
+                    </div>`;
                 }
             }
             return;
         }
 
         const BATCH_SIZE = 10;
-        const newMetrics = {};
+        const newMetrics = {}; // *** חדש: אוסף נתונים חדשים בנפרד ***
 
-        // *** שלב 2: טען מקאש קבצים (מהיר - לא מחכה ל-API) ***
         for (let i = 0; i < allRacks.length; i += BATCH_SIZE) {
             const batch = allRacks.slice(i, i + BATCH_SIZE);
             await Promise.allSettled(
-                batch.map(rack =>
-                    this.loadRackMetricsInto(
-                        rack.rackId, rack.dataCenterType, newMetrics))
+                batch.map(rack => this.loadRackMetricsInto(rack.rackId, rack.dataCenterType, newMetrics))
             );
 
+            // *** חדש: עדכון מדורג - אחרי כל batch מזג ורנדר ***
             if (Object.keys(newMetrics).length > 0) {
                 Object.assign(this.racksMetrics, newMetrics);
                 this.renderRacks();
             }
         }
 
-        // *** שלב 3: חכה לסיום עדכון הקאש מה-API ***
-        try {
-            await cacheUpdatePromise;
-            console.log('[RackMetrics] File cache updated from API');
-
-            // *** שלב 4: טען שוב עם הנתונים המעודכנים מה-API ***
-            const freshMetrics = {};
-            for (let i = 0; i < allRacks.length; i += BATCH_SIZE) {
-                const batch = allRacks.slice(i, i + BATCH_SIZE);
-                await Promise.allSettled(
-                    batch.map(rack =>
-                        this.loadRackMetricsInto(
-                            rack.rackId, rack.dataCenterType, freshMetrics))
-                );
-            }
-
-            if (Object.keys(freshMetrics).length > 0) {
-                Object.assign(this.racksMetrics, freshMetrics);
-            }
-
-        } catch (err) {
-            console.warn('[RackMetrics] Cache update failed, using cached data:', err);
-        }
-
         this.lastUpdated = new Date();
         this.updateLastUpdatedDisplay();
         this.renderRacks();
         this.resetCountdown();
+
+        // *** חדש: שמור ב-localStorage ***
         this.saveToLocalStorage();
     }
 
@@ -540,14 +513,9 @@ class RackMetricsDashboard {
             const cacheUrlL = `/Dashboards/GetCurrentRackMetricsCached?rackId=${encodeURIComponent(rackId)}&dataCenterType=${dataCenterType}&side=L`;
             const cacheUrlR = `/Dashboards/GetCurrentRackMetricsCached?rackId=${encodeURIComponent(rackId)}&dataCenterType=${dataCenterType}&side=R`;
 
-            // *** שלב 1: נסה לטעון מקאש קובץ (מהיר) ***
             const [cacheL, cacheR] = await Promise.all([
-                fetch(cacheUrlL, { cache: 'no-store' })
-                    .then(r => r.ok ? r.json() : null)
-                    .catch(() => null),
-                fetch(cacheUrlR, { cache: 'no-store' })
-                    .then(r => r.ok ? r.json() : null)
-                    .catch(() => null)
+                fetch(cacheUrlL, { cache: 'no-store' }).then(r => r.ok ? r.json() : null),
+                fetch(cacheUrlR, { cache: 'no-store' }).then(r => r.ok ? r.json() : null)
             ]);
 
             let lData = (cacheL && cacheL.success) ? cacheL : { success: false };
@@ -564,13 +532,9 @@ class RackMetricsDashboard {
                     room: this.getRoomByRackId(rackId, dataCenterType),
                     L: lData,
                     R: rData,
-                    maxTemperature: Math.max(
-                        lData.currentTemperature || 0,
-                        rData.currentTemperature || 0),
+                    maxTemperature: Math.max(lData.currentTemperature || 0, rData.currentTemperature || 0),
                     totalPower: (lData.currentPower || 0) + (rData.currentPower || 0),
-                    status: this.calculateRackStatus(lData, rData),
-                    // *** חדש: סימון מקור הנתונים ***
-                    fromFileCache: lData.fromCache || rData.fromCache || false
+                    status: this.calculateRackStatus(lData, rData)
                 };
             }
         } catch (error) {
@@ -1785,133 +1749,6 @@ class RackMetricsDashboard {
         }
         .rmd-datacenter-btn:hover .rmd-btn-image {
             opacity: 1;
-        }
-        /* ===== LIGHT MODE — RackMetricsDashboard ===== */
-        [data-theme="light"] .rmd-wrapper {
-            background: #f0f2f5;
-            color: #1a1a2e;
-        }
-
-        [data-theme="light"] .rmd-toolbar {
-            background: #fff;
-            border: 1px solid #ddd;
-        }
-
-        [data-theme="light"] .rmd-filter-btn {
-            background: #fff;
-            color: #555;
-            border: 1px solid #ccc;
-        }
-
-        [data-theme="light"] .rmd-filter-btn:hover {
-            background: #f0f0f8;
-            color: #333;
-        }
-
-        [data-theme="light"] .rmd-filter-btn.active {
-            background: #4a1a8c;
-            color: #fff;
-            border-color: #6a2aac;
-        }
-
-        [data-theme="light"] .rmd-sort-select {
-            background: #fff;
-            color: #1a1a2e;
-            border: 1px solid #ccc;
-        }
-
-        [data-theme="light"] .rmd-last-updated { color: #666; }
-
-        [data-theme="light"] .rmd-stat-item {
-            background: #fff;
-            border: 1px solid #ddd;
-        }
-
-        [data-theme="light"] .rmd-stat-value { color: #1a1a2e; }
-        [data-theme="light"] .rmd-stat-label { color: #666; }
-
-        [data-theme="light"] .rmd-dc-title {
-            color: #333;
-            border-bottom: 1px solid #ddd;
-        }
-
-        [data-theme="light"] .rmd-row-header {
-            background: #e8e8f0;
-            color: #333;
-            border-right: 3px solid #4a1a8c;
-        }
-
-        [data-theme="light"] .rmd-rack-card {
-            background: #fff;
-            border: 2px solid #ddd;
-        }
-
-        [data-theme="light"] .rmd-rack-card:hover {
-            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
-            border-color: #aaa;
-        }
-
-        [data-theme="light"] .rmd-rack-card.normal {
-            border-color: #93c5fd;
-        }
-
-        [data-theme="light"] .rmd-card-title { color: #1a1a2e; }
-
-        [data-theme="light"] .rmd-rack-front {
-            background: linear-gradient(180deg, #e8e8e8 0%, #d8d8d8 100%);
-            border: 2px solid var(--rack-border, #aaa);
-        }
-
-        [data-theme="light"] .rmd-rack-top {
-            background: linear-gradient(90deg, #d8d8d8, #c8c8c8);
-            border: 2px solid var(--rack-border, #aaa);
-        }
-
-        [data-theme="light"] .rmd-rack-side {
-            background: linear-gradient(180deg, #d0d0d0, #c0c0c0);
-            border: 2px solid var(--rack-border, #aaa);
-        }
-
-        [data-theme="light"] .rmd-rack-unit {
-            background: #ccc;
-            border: 1px solid #bbb;
-        }
-
-        [data-theme="light"] .rmd-card-power-summary {
-            background: #f5f5f5;
-            border: 1px solid #ddd;
-        }
-
-        [data-theme="light"] .rmd-power-total { color: #555; }
-        [data-theme="light"] .rmd-power-total strong { color: #1a1a2e; }
-
-        [data-theme="light"] .rmd-side-badge {
-            background: #e8e8e8;
-            color: #555;
-        }
-
-        [data-theme="light"] .rmd-side-nodata { color: #aaa; }
-
-        [data-theme="light"] .rmd-datacenter-btn {
-            background: #fff;
-            border: 1px solid #ccc;
-            color: #333;
-        }
-
-        [data-theme="light"] .rmd-datacenter-btn:hover {
-            background: #4a1a8c;
-            border-color: #6a2aac;
-            color: #fff;
-        }
-
-        [data-theme="light"] .rmd-loading,
-        [data-theme="light"] .rmd-empty {
-            color: #888;
-        }
-
-        [data-theme="light"] .rmd-loading i,
-        [data-theme="light"] .rmd-empty i {
-            color: #bbb;
         }
         `;
         document.head.appendChild(style);

@@ -22,37 +22,6 @@ class DailyTasksManager {
         this.alarmCheckInterval = null;
         this.shownAlarms = new Set(); // למעקב אחרי התראות שכבר הוצגו
         this.setupPopupClickHandling();
-
-        this.currentUser = null;
-        this.loadCurrentUser();
-    }
-
-    async loadCurrentUser() {
-        try {
-            const cached = sessionStorage.getItem('currentUser');
-            if (cached) {
-                this.currentUser = JSON.parse(cached);
-                return;
-            }
-            const response = await fetch('/Auth/Me', { credentials: 'include' });
-            if (response.ok) {
-                this.currentUser = await response.json();
-                sessionStorage.setItem(
-                    'currentUser',
-                    JSON.stringify(this.currentUser)
-                );
-            }
-        } catch (err) {
-            console.warn('Could not load current user:', err);
-            this.currentUser = null;
-        }
-    }
-
-    // ← הוסף פונקציה עזר:
-    getCurrentUserName() {
-        if (this.currentUser?.displayName) return this.currentUser.displayName;
-        if (this.currentUser?.username) return this.currentUser.username;
-        return this.getLastSelectedEmployee() || '';
     }
 
     // Load employees from server
@@ -101,12 +70,14 @@ class DailyTasksManager {
     }
 
     // Populate employee select dropdown
-    populateEmployeeSelect(selectId, defaultValue = null) {
+    populateEmployeeSelect(selectId) {
         const select = document.getElementById(selectId);
         if (!select) return;
 
+        // Clear existing options except the first one
         select.innerHTML = '<option value="">בחר עובד...</option>';
 
+        // Add employee options
         this.employees.forEach(employee => {
             const option = document.createElement('option');
             option.value = employee.name;
@@ -114,26 +85,8 @@ class DailyTasksManager {
             select.appendChild(option);
         });
 
-        // ← קבע את הערך לפי סדר עדיפויות:
-        // 1. defaultValue שהועבר (יוזר מחובר)
-        // 2. lastSelectedEmployee מ-localStorage
-        const valueToSet = defaultValue || this.getLastSelectedEmployee();
-
-        if (valueToSet) {
-            const optionExists = Array.from(select.options)
-                .some(opt => opt.value === valueToSet);
-
-            if (optionExists) {
-                select.value = valueToSet;
-            } else if (defaultValue) {
-                // ← הוסף את היוזר המחובר אם לא קיים ברשימה
-                const option = document.createElement('option');
-                option.value = defaultValue;
-                option.textContent = defaultValue;
-                select.appendChild(option);
-                select.value = defaultValue;
-            }
-        }
+        // Set last selected employee as default
+        this.setDefaultEmployee(selectId);
     }
 
     // Initialize time input listeners
@@ -378,20 +331,9 @@ class DailyTasksManager {
     // פונקציה לסימון משימה כבוצעה מההתראה
     async markTaskAsCompletedFromAlarm(taskId) {
         try {
-            const currentUser = this.getCurrentUserName();
-
-            if (currentUser) {
-                // ← שנה: סמן ישירות עם היוזר המחובר
-                await this.markTaskAsCompleted(taskId, currentUser);
-                NotificationManager.show('המשימה סומנה כבוצעה', 'success');
-            } else {
-                // fallback - פתח דיאלוג
-                await this.openEmployeeSelectionModal(taskId);
-                NotificationManager.show(
-                    'בחר עובד לסימון המשימה כבוצעה',
-                    'info'
-                );
-            }
+            // פתח את מודל בחירת העובד
+            await this.openEmployeeSelectionModal(taskId);
+            NotificationManager.show('בחר עובד לסימון המשימה כבוצעה', 'info');
         } catch (error) {
             console.error('Error marking task as completed from alarm:', error);
             NotificationManager.show('שגיאה בסימון המשימה', 'error');
@@ -445,12 +387,6 @@ class DailyTasksManager {
 
     // Open employee selection modal
     async openEmployeeSelectionModal(taskId) {
-        const currentUser = this.getCurrentUserName();
-        if (currentUser) {
-            await this.markTaskAsCompleted(taskId, currentUser);
-            return;
-        }
-
         this.isModalOpen = true;
         const task = this.dailyTasks.find(t => t.id === taskId);
         if (!task) return;
@@ -458,12 +394,8 @@ class DailyTasksManager {
         document.getElementById('completionTaskId').value = taskId;
         document.getElementById('completionTaskTitle').textContent = task.title;
 
-        // ← עדכן display ו-hidden input
-        const userName = this.getLastSelectedEmployee() || '';
-        const displayEl = document.getElementById('completionCurrentUserDisplay');
-        const hiddenInput = document.getElementById('completionEmployeeName');
-        if (displayEl) displayEl.textContent = userName || 'לא מזוהה';
-        if (hiddenInput) hiddenInput.value = userName;
+        // Populate employee dropdown
+        await this.populateEmployeeSelect('completionEmployeeName');
 
         document.getElementById('employeeCompletionModal').style.display = 'block';
         document.body.style.overflow = 'hidden';
@@ -472,10 +404,7 @@ class DailyTasksManager {
     // Open skip reason modal
     async openSkipReasonModal(taskId) {
         if (this.isDateInPast(this.currentTaskDate)) {
-            NotificationManager.show(
-                'לא ניתן לסמן משימה כלא בוצעה בתאריך שעבר',
-                'warning'
-            );
+            NotificationManager.show('לא ניתן לסמן משימה כלא בוצעה בתאריך שעבר', 'warning');
             return;
         }
         this.isModalOpen = true;
@@ -488,22 +417,8 @@ class DailyTasksManager {
         document.getElementById('skipReasonSelect').value = '';
         document.getElementById('skipReasonCustom').value = '';
 
-        const currentUser = this.getCurrentUserName();
-        const skipSelect = document.getElementById('skipUserName');
-        await this.populateEmployeeSelect('skipUserName', currentUser);
-        if (skipSelect && currentUser) {
-            // ← שינוי: הצג שם קבוע
-            skipSelect.style.display = 'none';
-            let readonlyDiv = skipSelect.parentNode.querySelector('.readonly-user-display');
-            if (!readonlyDiv) {
-                readonlyDiv = document.createElement('div');
-                readonlyDiv.className = 'readonly-user-display';
-                skipSelect.parentNode.insertBefore(readonlyDiv, skipSelect);
-            }
-            readonlyDiv.textContent = currentUser;
-            readonlyDiv.dataset.value = currentUser;
-            skipSelect.value = currentUser;
-        }
+        // Populate employee dropdown for skip reason
+        await this.populateEmployeeSelect('skipUserName');
 
         document.getElementById('customReasonGroup').style.display = 'none';
         document.getElementById('skipReasonModal').style.display = 'block';
@@ -718,22 +633,9 @@ class DailyTasksManager {
         document.getElementById('noteSubmitBtn').textContent = 'עדכן הערה';
 
         // Fill in the employee's name (if there is a dropdown)
-        const currentUser = this.getCurrentUserName();
         const userNameSelect = document.getElementById('noteUserName');
-        if (userNameSelect) {
-            const displayUser = currentUser || noteToEdit.userName;
-            this.populateEmployeeSelect('noteUserName', currentUser);
-            // ← שינוי: הצג שם קבוע
-            userNameSelect.style.display = 'none';
-            let readonlyDiv = userNameSelect.parentNode.querySelector('.readonly-user-display');
-            if (!readonlyDiv) {
-                readonlyDiv = document.createElement('div');
-                readonlyDiv.className = 'readonly-user-display';
-                userNameSelect.parentNode.insertBefore(readonlyDiv, userNameSelect);
-            }
-            readonlyDiv.textContent = displayUser || '';
-            readonlyDiv.dataset.value = displayUser || '';
-            userNameSelect.value = displayUser || '';
+        if (userNameSelect && noteToEdit.userName) {
+            userNameSelect.value = noteToEdit.userName;
         }
 
         // Open the model
@@ -1088,12 +990,6 @@ class DailyTasksManager {
         } else {
             clearBtn.style.display = 'none';
         }
-
-        document.querySelectorAll('.readonly-user-display').forEach(div => {
-            const select = div.nextElementSibling || div.parentNode.querySelector('select');
-            if (select) select.style.display = '';
-            div.remove();
-        });
     }
 
     // Select/Deselect all days
@@ -1872,28 +1768,14 @@ class DailyTasksManager {
         document.getElementById('noteTaskTitle').textContent = task.title;
         document.getElementById('noteText').value = '';
 
+        // Reset edit mode
         document.getElementById('noteEditIndex').value = '';
         document.getElementById('noteModalTitle').textContent = 'הוסף הערה';
         document.getElementById('noteSubmitBtn').textContent = 'הוסף הערה';
 
-        // מלא את שם המשתמש המחובר אוטומטית
-        const currentUser = this.getCurrentUserName();
+        // Populate employee dropdown for notes
+        this.populateEmployeeSelect('noteUserName');
 
-        const noteSelect = document.getElementById('noteUserName');
-        if (noteSelect && currentUser) {
-            // ← שינוי: הצג שם קבוע
-            noteSelect.style.display = 'none';
-            this.populateEmployeeSelect('noteUserName', currentUser);
-            let readonlyDiv = noteSelect.parentNode.querySelector('.readonly-user-display');
-            if (!readonlyDiv) {
-                readonlyDiv = document.createElement('div');
-                readonlyDiv.className = 'readonly-user-display';
-                noteSelect.parentNode.insertBefore(readonlyDiv, noteSelect);
-            }
-            readonlyDiv.textContent = currentUser;
-            readonlyDiv.dataset.value = currentUser;
-            noteSelect.value = currentUser;
-        }
         document.getElementById('addNoteModal').style.display = 'block';
         document.body.style.overflow = 'hidden';
     }
@@ -2976,987 +2858,20 @@ class DailyTasksManager {
 
     // Get task days display
     getTaskDaysDisplay(task) {
+
         const dayNames = ['א\'', 'ב\'', 'ג\'', 'ד\'', 'ה\'', 'ו\'', 'ש\''];
-
-        if (!task.daysOfWeek || task.daysOfWeek.length === 0 || task.daysOfWeek.length === 7) {
-            return `<span class="task-days-badge" title="ימי ביצוע: כל ימות השבוע">
-            <i class="fas fa-calendar-week"></i> כל ימות השבוע
-        </span>`;
-        }
-
-        const selectedDays = task.daysOfWeek
-            .sort((a, b) => a - b)
+        var selectedDays = task.daysOfWeek
+            .sort((a, b) => a - b) // Sort by day number
             .map(day => dayNames[day])
             .join(', ');
+
+        if (!task.daysOfWeek || task.daysOfWeek.length === 0 || task.daysOfWeek.length === 7) {
+            selectedDays = 'כל ימות השבוע'
+        }
 
         return `<span class="task-days-badge" title="ימי ביצוע: ${selectedDays}">
         <i class="fas fa-calendar-week"></i> ${selectedDays}
     </span>`;
-    }
-
-    // ==========================================
-    // EXCEL EXPORT - ייצוא משימות לאקסל
-    // ==========================================
-
-    async loadExcelJS() {
-        if (typeof ExcelJS === 'undefined') {
-            await new Promise((res, rej) => {
-                const script = document.createElement('script');
-                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js';
-                script.onload = res;
-                script.onerror = () => rej(new Error('נכשלה טעינת ExcelJS'));
-                document.head.appendChild(script);
-            });
-        }
-        if (typeof saveAs === 'undefined') {
-            await new Promise((res, rej) => {
-                const script = document.createElement('script');
-                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js';
-                script.onload = res;
-                script.onerror = () => rej(new Error('נכשלה טעינת FileSaver'));
-                document.head.appendChild(script);
-            });
-        }
-    }
-
-    showExportDialog() {
-        // הסר דיאלוג קיים
-        document.getElementById('tasksExportDialog')?.remove();
-
-        // תאריך ברירת מחדל: חודש אחורה עד היום
-        const today = new Date();
-        const monthAgo = new Date();
-        monthAgo.setMonth(monthAgo.getMonth() - 1);
-
-        const formatForInput = (d) =>
-            `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-
-        const dialog = document.createElement('div');
-        dialog.id = 'tasksExportDialog';
-        dialog.style.cssText = `
-        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(0,0,0,0.55); z-index: 99999;
-        display: flex; align-items: center; justify-content: center;
-        direction: rtl; backdrop-filter: blur(4px);
-    `;
-
-        dialog.innerHTML = `
-        <div style="
-            background: white; border-radius: 16px; padding: 28px;
-            width: 90%; max-width: 520px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.25);
-            direction: rtl; animation: modalSlideIn 0.25s ease;
-        ">
-            <!-- כותרת -->
-            <div style="
-                display: flex; justify-content: space-between;
-                align-items: center; margin-bottom: 20px;
-                padding-bottom: 14px; border-bottom: 2px solid #f0f0f0;
-            ">
-                <h3 style="margin:0; font-size:1.3rem; font-weight:700;
-                           color:#320F5B; display:flex; align-items:center; gap:10px;">
-                    <i class="fas fa-file-excel" style="color:#1D6F42;"></i>
-                    ייצוא משימות לאקסל
-                </h3>
-                <button onclick="document.getElementById('tasksExportDialog').remove()"
-                    style="background:#f5f5f5; border:none; width:32px; height:32px;
-                           border-radius:50%; cursor:pointer; font-size:1rem;
-                           color:#666; display:flex; align-items:center;
-                           justify-content:center; transition:all 0.2s;">✕</button>
-            </div>
-
-            <!-- אפשרויות ייצוא -->
-            <p style="color:#64748b; font-size:0.95rem; margin:0 0 16px 0;
-                      text-align:center; font-weight:500;">
-                בחר סוג ייצוא:
-            </p>
-
-            <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px;">
-
-                <!-- ייצוא הכל -->
-                <button id="exportAllTasksBtn"
-                    onclick="dailyTasksManager._handleExportChoice('all')"
-                    style="
-                        display:flex; align-items:center; gap:14px;
-                        padding:14px 18px; background:white;
-                        border:2px solid #d1d5db; border-radius:12px;
-                        cursor:pointer; text-align:right; transition:all 0.2s;
-                        width:100%; direction:rtl; font-family:inherit;
-                    "
-                    onmouseover="this.style.borderColor='#1D6F42';this.style.background='#f0fff4';"
-                    onmouseout="this.style.borderColor='#d1d5db';this.style.background='white';">
-                    <div style="
-                        width:42px; height:42px;
-                        background:linear-gradient(135deg,#1D6F42,#27AE60);
-                        border-radius:10px; display:flex; align-items:center;
-                        justify-content:center; flex-shrink:0;
-                    ">
-                        <i class="fas fa-table" style="color:white; font-size:1.1rem;"></i>
-                    </div>
-                    <div style="flex:1; text-align:right;">
-                        <div style="font-weight:700; color:#111827;
-                                    font-size:0.95rem; margin-bottom:3px;">
-                            ייצוא הכל
-                        </div>
-                        <div style="font-size:0.78rem; color:#9ca3af;">
-                            כל המשימות מכל הזמנים
-                        </div>
-                    </div>
-                    <i class="fas fa-chevron-left" style="color:#9ca3af; font-size:0.8rem;"></i>
-                </button>
-
-                <!-- ייצוא לפי טווח -->
-                <button id="exportRangeTasksBtn"
-                    onclick="dailyTasksManager._handleExportChoice('range')"
-                    style="
-                        display:flex; align-items:center; gap:14px;
-                        padding:14px 18px; background:white;
-                        border:2px solid #d1d5db; border-radius:12px;
-                        cursor:pointer; text-align:right; transition:all 0.2s;
-                        width:100%; direction:rtl; font-family:inherit;
-                    "
-                    onmouseover="this.style.borderColor='#667eea';this.style.background='#f5f3ff';"
-                    onmouseout="this.style.borderColor='#d1d5db';this.style.background='white';">
-                    <div style="
-                        width:42px; height:42px;
-                        background:linear-gradient(135deg,#667eea,#764ba2);
-                        border-radius:10px; display:flex; align-items:center;
-                        justify-content:center; flex-shrink:0;
-                    ">
-                        <i class="fas fa-calendar-alt" style="color:white; font-size:1.1rem;"></i>
-                    </div>
-                    <div style="flex:1; text-align:right;">
-                        <div style="font-weight:700; color:#111827;
-                                    font-size:0.95rem; margin-bottom:3px;">
-                            ייצוא לפי טווח תאריכים
-                        </div>
-                        <div style="font-size:0.78rem; color:#9ca3af;">
-                            בחר תאריך התחלה וסיום
-                        </div>
-                    </div>
-                    <i class="fas fa-chevron-left" style="color:#9ca3af; font-size:0.8rem;"></i>
-                </button>
-
-            </div>
-
-            <!-- אזור בחירת טווח - מוסתר בהתחלה -->
-            <div id="tasksDateRangeSection" style="display:none;">
-                <div style="
-                    display:flex; gap:16px; justify-content:center;
-                    flex-wrap:wrap; padding:16px;
-                    background:#f8f9ff; border-radius:10px;
-                    border:1px solid #e0e7ff; margin-bottom:14px;
-                ">
-                    <div style="display:flex; flex-direction:column; gap:6px; min-width:160px;">
-                        <label style="font-size:13px; font-weight:600;
-                                      color:#4a5568; text-align:right;">
-                            מתאריך:
-                        </label>
-                        <div style="position:relative; display:flex; align-items:center;">
-                            <input type="text" id="tasksExportFromDate"
-                                placeholder="dd/mm/yyyy"
-                                maxlength="10"
-                                value="${formatForInput(monthAgo)}"
-                                style="
-                                    padding:8px 12px 8px 32px;
-                                    border:1px solid #c3d0e8; border-radius:6px;
-                                    font-size:14px; color:#2d3748;
-                                    background:white; width:160px;
-                                    text-align:center; direction:ltr;
-                                    font-family:inherit;
-                                " />
-                            <i class="fas fa-calendar-alt" style="
-                                position:absolute; left:10px; color:#667eea;
-                                pointer-events:none; font-size:14px;
-                            "></i>
-                        </div>
-                    </div>
-                    <div style="display:flex; flex-direction:column; gap:6px; min-width:160px;">
-                        <label style="font-size:13px; font-weight:600;
-                                      color:#4a5568; text-align:right;">
-                            עד תאריך:
-                        </label>
-                        <div style="position:relative; display:flex; align-items:center;">
-                            <input type="text" id="tasksExportToDate"
-                                placeholder="dd/mm/yyyy"
-                                maxlength="10"
-                                value="${formatForInput(today)}"
-                                style="
-                                    padding:8px 12px 8px 32px;
-                                    border:1px solid #c3d0e8; border-radius:6px;
-                                    font-size:14px; color:#2d3748;
-                                    background:white; width:160px;
-                                    text-align:center; direction:ltr;
-                                    font-family:inherit;
-                                " />
-                            <i class="fas fa-calendar-alt" style="
-                                position:absolute; left:10px; color:#667eea;
-                                pointer-events:none; font-size:14px;
-                            "></i>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="tasksExportRangeError"
-                    style="color:#dc2626; text-align:center;
-                           margin-bottom:10px; display:none; font-size:13px;">
-                </div>
-
-                <div style="text-align:center;">
-                    <button onclick="dailyTasksManager._confirmRangeExport()"
-                        style="
-                            display:inline-flex; align-items:center; gap:8px;
-                            padding:11px 24px;
-                            background:linear-gradient(135deg,#667eea,#764ba2);
-                            color:white; border:none; border-radius:9px;
-                            font-size:0.95rem; font-weight:700;
-                            cursor:pointer; font-family:inherit;
-                            box-shadow:0 3px 12px rgba(102,126,234,0.3);
-                            transition:all 0.2s;
-                        "
-                        onmouseover="this.style.transform='translateY(-2px)';
-                                     this.style.boxShadow='0 6px 20px rgba(102,126,234,0.4)';"
-                        onmouseout="this.style.transform='translateY(0)';
-                                    this.style.boxShadow='0 3px 12px rgba(102,126,234,0.3)';">
-                        <i class="fas fa-file-excel"></i>
-                        ייצא טווח נבחר
-                    </button>
-                </div>
-            </div>
-
-        </div>
-    `;
-
-        document.body.appendChild(dialog);
-
-        // סגירה בלחיצה על הרקע
-        dialog.addEventListener('click', (e) => {
-            if (e.target === dialog) dialog.remove();
-        });
-
-        // מסכה אוטומטית לשדות תאריך
-        this._applyDateMask('tasksExportFromDate');
-        this._applyDateMask('tasksExportToDate');
-    }
-
-    _applyDateMask(inputId) {
-        const input = document.getElementById(inputId);
-        if (!input) return;
-
-        // אם Flatpickr זמין - השתמש בו
-        if (typeof flatpickr !== 'undefined') {
-            flatpickr(input, {
-                dateFormat: 'd/m/Y',
-                allowInput: true,
-                disableMobile: false,
-            });
-            return;
-        }
-
-        // fallback - מסכה ידנית
-        input.addEventListener('input', (e) => {
-            let val = e.target.value.replace(/\D/g, '');
-            if (val.length >= 3) val = val.slice(0, 2) + '/' + val.slice(2);
-            if (val.length >= 6) val = val.slice(0, 5) + '/' + val.slice(5, 9);
-            e.target.value = val;
-        });
-    }
-
-    _handleExportChoice(type) {
-        if (type === 'all') {
-            document.getElementById('tasksExportDialog')?.remove();
-            this._buildAndDownloadTasksExcel({ type: 'all' });
-        } else if (type === 'range') {
-            // הצג אזור תאריכים
-            const rangeSection = document.getElementById('tasksDateRangeSection');
-            if (rangeSection) rangeSection.style.display = 'block';
-
-            // הדגש כפתור נבחר
-            document.getElementById('exportRangeTasksBtn').style.borderColor = '#667eea';
-            document.getElementById('exportRangeTasksBtn').style.background = '#f5f3ff';
-        }
-    }
-
-    _parseDdMmYyyy(str) {
-        if (!str || str.length < 8) return null;
-        const parts = str.split('/');
-        if (parts.length !== 3) return null;
-        const day = parseInt(parts[0], 10);
-        const month = parseInt(parts[1], 10) - 1;
-        const year = parseInt(parts[2], 10);
-        if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
-        if (day < 1 || day > 31 || month < 0 || month > 11) return null;
-        if (year < 2000 || year > 2100) return null;
-        const d = new Date(year, month, day);
-        if (d.getDate() !== day || d.getMonth() !== month) return null;
-        return d;
-    }
-
-    _toIsoDate(d) {
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    }
-
-    _confirmRangeExport() {
-        const fromVal = document.getElementById('tasksExportFromDate')?.value;
-        const toVal = document.getElementById('tasksExportToDate')?.value;
-        const errEl = document.getElementById('tasksExportRangeError');
-
-        if (!fromVal || !toVal) {
-            errEl.textContent = 'יש לבחור תאריך התחלה וסיום';
-            errEl.style.display = 'block';
-            return;
-        }
-
-        const fromDate = this._parseDdMmYyyy(fromVal);
-        const toDate = this._parseDdMmYyyy(toVal);
-
-        if (!fromDate) {
-            errEl.textContent = 'תאריך ההתחלה אינו תקין (dd/mm/yyyy)';
-            errEl.style.display = 'block';
-            return;
-        }
-        if (!toDate) {
-            errEl.textContent = 'תאריך הסיום אינו תקין (dd/mm/yyyy)';
-            errEl.style.display = 'block';
-            return;
-        }
-        if (fromDate > toDate) {
-            errEl.textContent = 'תאריך ההתחלה חייב להיות לפני תאריך הסיום';
-            errEl.style.display = 'block';
-            return;
-        }
-
-        errEl.style.display = 'none';
-        document.getElementById('tasksExportDialog')?.remove();
-
-        this._buildAndDownloadTasksExcel({
-            type: 'range',
-            from: this._toIsoDate(fromDate),
-            to: this._toIsoDate(toDate),
-            fromDisplay: fromVal,
-            toDisplay: toVal,
-        });
-    }
-
-    // -------------------------------------------------------
-    // פונקציה ראשית לבניית קובץ האקסל
-    // -------------------------------------------------------
-    async _buildAndDownloadTasksExcel(options = {}) {
-        try {
-            await this.loadExcelJS();
-
-            const response = await fetch('/DailyTasks/GetAllTasksForExport');
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const result = await response.json();
-
-            if (!result.success) {
-                throw new Error(result.error || 'שגיאה בטעינת משימות');
-            }
-
-            const allTasks = result.tasks || [];
-
-            let fromDate = null;
-            let toDate = null;
-            let sheetTitle = 'כל המשימות';
-            let fileName =
-                `Tasks_All_${new Date().toISOString().slice(0, 10)}.xlsx`;
-
-            if (options.type === 'range') {
-                fromDate = new Date(options.from);
-                toDate = new Date(options.to);
-                toDate.setHours(23, 59, 59, 999);
-                sheetTitle =
-                    `משימות ${options.fromDisplay} - ${options.toDisplay}`;
-                fileName =
-                    `Tasks_${options.from}_to_${options.to}.xlsx`;
-            }
-
-            const rows = this._buildExportRows(allTasks, fromDate, toDate);
-
-            if (rows.length === 0) {
-                NotificationManager.show(
-                    'לא נמצאו משימות לייצוא בטווח שנבחר',
-                    'warning'
-                );
-                return;
-            }
-
-            //חדש: בניית קובץ עם גליון לכל יום
-            await this._writeExcelFile(rows, sheetTitle, fileName);
-
-            NotificationManager.show(
-                `הקובץ יוצא בהצלחה! ${rows.length} שורות`,
-                'success'
-            );
-
-        } catch (error) {
-            console.error('שגיאה בייצוא משימות:', error);
-            NotificationManager.show('שגיאה בייצוא: ' + error.message, 'error');
-        }
-    }
-
-    // -------------------------------------------------------
-    // בניית שורות הנתונים לאקסל
-    // כל שורה = משימה ביום מסוים
-    // -------------------------------------------------------
-    _buildExportRows(allTasks, fromDate, toDate) {
-        const rows = [];
-        const dayNames = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
-
-        allTasks.forEach(task => {
-            // ── קבע את טווח התאריכים הרלוונטי למשימה ──────────────
-            const taskCreated = new Date(task.createdAt);
-            taskCreated.setHours(0, 0, 0, 0);
-
-            const taskDeleted = task.isDeleted && task.deletionDate
-                ? new Date(task.deletionDate)
-                : null;
-            if (taskDeleted) taskDeleted.setHours(23, 59, 59, 999);
-
-            // ── קבע את טווח הסריקה ──────────────────────────────────
-            const scanFrom = fromDate
-                ? new Date(Math.max(fromDate.getTime(), taskCreated.getTime()))
-                : new Date(taskCreated);
-
-            const scanTo = toDate
-                ? (taskDeleted
-                    ? new Date(Math.min(toDate.getTime(), taskDeleted.getTime()))
-                    : new Date(toDate))
-                : (taskDeleted
-                    ? new Date(taskDeleted)
-                    : new Date()); // עד היום אם לא נמחקה
-
-            scanTo.setHours(23, 59, 59, 999);
-
-            if (scanFrom > scanTo) return; // אין טווח תקין
-
-            // ── סרוק כל יום בטווח ───────────────────────────────────
-            const current = new Date(scanFrom);
-            current.setHours(0, 0, 0, 0);
-
-            while (current <= scanTo) {
-                const dateStr = this._toIsoDate(current);
-                const dayOfWeek = current.getDay();
-
-                // בדוק אם המשימה רלוונטית ליום זה
-                const relevantDays = this._getRelevantDaysForDate(task, dateStr);
-                const isScheduledDay = !relevantDays ||
-                    relevantDays.length === 0 ||
-                    relevantDays.includes(dayOfWeek);
-
-                const hasHistory = this.taskHasHistoryForDate(task, dateStr);
-
-                if (!isScheduledDay && !hasHistory) {
-                    current.setDate(current.getDate() + 1);
-                    continue;
-                }
-
-                // ── נתוני הסטטוס ליום זה ────────────────────────────
-                const isCompleted = task.completionDates &&
-                    task.completionDates.includes(dateStr);
-                const skipReason = task.skipReasons &&
-                    task.skipReasons[dateStr];
-                const skipUserName = task.skipUserNames &&
-                    task.skipUserNames[dateStr];
-                const completedBy = task.completedByEmployees &&
-                    task.completedByEmployees[dateStr];
-                const completionTime = task.completionTimes &&
-                    task.completionTimes[dateStr];
-                const skipTime = task.skipTimes &&
-                    task.skipTimes[dateStr];
-
-                // ── הערות ליום זה ────────────────────────────────────
-                const notesForDay = (task.notesByDate && task.notesByDate[dateStr])
-                    ? task.notesByDate[dateStr]
-                    : [];
-                const notesText = notesForDay
-                    .map(n => `[${n.time || ''} ${n.userName || ''}]: ${n.text || ''}`)
-                    .join('\n');
-
-                // ── סטטוס ────────────────────────────────────────────
-                let status = 'ממתין';
-                if (isCompleted) status = 'הושלם';
-                else if (skipReason) status = 'לא בוצע';
-
-                // ── עדיפות בעברית ────────────────────────────────────
-                const priorityMap = { high: 'גבוהה', medium: 'בינונית', low: 'נמוכה' };
-                const priorityHe = priorityMap[task.priority] || task.priority || '';
-
-                // ── שעת ביצוע ────────────────────────────────────────
-                const execTime = (task.taskHour && task.taskMinute)
-                    ? `${task.taskHour}:${task.taskMinute}`
-                    : '';
-
-                // ── ימי ביצוע ────────────────────────────────────────
-                const daysText = relevantDays && relevantDays.length > 0 && relevantDays.length < 7
-                    ? relevantDays.sort((a, b) => a - b)
-                        .map(d => dayNames[d])
-                        .join(', ')
-                    : 'כל ימות השבוע';
-
-                rows.push({
-                    date: dateStr,
-                    dayName: dayNames[dayOfWeek],
-                    taskTitle: task.title || '',
-                    taskDescription: task.description || '',
-                    priority: priorityHe,
-                    execTime: execTime,
-                    daysOfWeek: daysText,
-                    status: status,
-                    completedBy: completedBy || '',
-                    completionTime: completionTime || '',
-                    skipReason: skipReason || '',
-                    skipUserName: skipUserName || '',
-                    skipTime: skipTime || '',
-                    notes: notesText,
-                    isScheduledDay: isScheduledDay,
-                    hasAlarm: task.enableAlarm !== false && !!execTime,
-                });
-
-                current.setDate(current.getDate() + 1);
-            }
-        });
-
-        // ── מיון לפי תאריך ואז שם משימה ────────────────────────────
-        rows.sort((a, b) => {
-            if (a.date !== b.date) return a.date.localeCompare(b.date);
-            return a.taskTitle.localeCompare(b.taskTitle, 'he');
-        });
-
-        return rows;
-    }
-
-    // -------------------------------------------------------
-    // קבלת ימי הביצוע הרלוונטיים לתאריך מסוים
-    // -------------------------------------------------------
-    _getRelevantDaysForDate(task, dateStr) {
-        const selectedDate = new Date(dateStr);
-        selectedDate.setHours(0, 0, 0, 0);
-
-        let relevantDays = task.daysOfWeek || [0, 1, 2, 3, 4, 5, 6];
-
-        if (task.daysOfWeekHistory && task.daysOfWeekHistory.length > 0) {
-            const sortedHistory = [...task.daysOfWeekHistory].sort(
-                (a, b) => new Date(a.changeDate) - new Date(b.changeDate)
-            );
-
-            for (let i = sortedHistory.length - 1; i >= 0; i--) {
-                const changeDate = new Date(sortedHistory[i].changeDate);
-                changeDate.setHours(0, 0, 0, 0);
-
-                if (changeDate <= selectedDate) {
-                    relevantDays = sortedHistory[i].newDays;
-                    break;
-                } else if (i === 0) {
-                    relevantDays = sortedHistory[0].oldDays;
-                }
-            }
-        }
-
-        return relevantDays;
-    }
-
-    // -------------------------------------------------------
-    // כתיבת קובץ האקסל
-    // -------------------------------------------------------
-
-    // ── כתיבת קובץ האקסל - מעודכן עם גליון לכל יום ──
-    async _writeExcelFile(rows, sheetTitle, fileName) {
-        const wb = new ExcelJS.Workbook();
-        wb.creator = 'NOC Portal';
-        wb.created = new Date();
-
-        // ── צבעים ──────────────────────────────────────────────────────
-        const C = {
-            headerBg: '320F5B',
-            headerFont: 'FFFFFF',
-            subHeaderBg: '667eea',
-            subHeaderFont: 'FFFFFF',
-            completedBg: 'E8F5E9',
-            completedBorder: '28A745',
-            skippedBg: 'FFF3CD',
-            skippedBorder: 'FFC107',
-            pendingBg: 'FFFFFF',
-            altBg: 'F8F9FF',
-            historyOnlyBg: 'FFF9E6',
-            borderColor: 'D0D5DD',
-            completedFont: '1B5E20',
-            skippedFont: '856404',
-            pendingFont: '334155',
-        };
-
-        const totalCols = 14;
-
-        // ── פונקציות עזר ───────────────────────────────────────────────
-        const thinBorder = () => ({
-            top: { style: 'thin', color: { argb: 'FF' + C.borderColor } },
-            bottom: { style: 'thin', color: { argb: 'FF' + C.borderColor } },
-            left: { style: 'thin', color: { argb: 'FF' + C.borderColor } },
-            right: { style: 'thin', color: { argb: 'FF' + C.borderColor } },
-        });
-
-        const mediumTopBorder = () => ({
-            top: { style: 'medium', color: { argb: 'FF' + C.borderColor } },
-            bottom: { style: 'thin', color: { argb: 'FF' + C.borderColor } },
-            left: { style: 'thin', color: { argb: 'FF' + C.borderColor } },
-            right: { style: 'thin', color: { argb: 'FF' + C.borderColor } },
-        });
-
-        const applyStyle = (cell, {
-            bgColor = null,
-            fontColor = '000000',
-            bold = false,
-            hAlign = 'center',
-            fontSize = 10,
-            wrapText = false,
-            italic = false,
-        } = {}) => {
-            cell.font = {
-                name: 'Arial',
-                size: fontSize,
-                bold,
-                italic,
-                color: { argb: 'FF' + fontColor },
-            };
-            cell.alignment = {
-                horizontal: hAlign,
-                vertical: 'middle',
-                wrapText,
-                readingOrder: 'rightToLeft',
-            };
-            cell.border = thinBorder();
-            if (bgColor) {
-                cell.fill = {
-                    type: 'pattern',
-                    pattern: 'solid',
-                    fgColor: { argb: 'FF' + bgColor },
-                };
-            }
-        };
-
-        const colWidths = [14, 10, 30, 30, 12, 14, 28, 12, 16, 14, 28, 16, 14, 35];
-
-        const headers = [
-            'תאריך', 'יום', 'שם משימה', 'תיאור', 'עדיפות',
-            'שעת ביצוע', 'ימי ביצוע', 'סטטוס', 'בוצע ע"י',
-            'שעת השלמה', 'סיבת אי ביצוע', 'לא בוצע ע"י',
-            'שעת אי ביצוע', 'הערות',
-        ];
-
-        // ── פונקציה לכתיבת כותרות גליון ──────────────────────────────
-        const writeSheetHeaders = (ws, title) => {
-            ws.views = [{
-                rightToLeft: true,
-                state: 'frozen',
-                ySplit: 2
-            }];
-            ws.properties = { defaultRowHeight: 18 };
-
-            // שורה 1 - כותרת ראשית
-            ws.mergeCells(1, 1, 1, totalCols);
-            const titleCell = ws.getCell(1, 1);
-            titleCell.value = title;
-            applyStyle(titleCell, {
-                bgColor: C.headerBg,
-                fontColor: C.headerFont,
-                bold: true,
-                hAlign: 'center',
-                fontSize: 14,
-            });
-            ws.getRow(1).height = 30;
-
-            // שורה 2 - כותרות עמודות
-            headers.forEach((h, i) => {
-                const cell = ws.getCell(2, i + 1);
-                cell.value = h;
-                applyStyle(cell, {
-                    bgColor: C.subHeaderBg,
-                    fontColor: C.subHeaderFont,
-                    bold: true,
-                    hAlign: 'center',
-                    fontSize: 11,
-                });
-                ws.getColumn(i + 1).width = colWidths[i];
-            });
-            ws.getRow(2).height = 22;
-        };
-
-        // ── פונקציה לכתיבת שורת נתונים ───────────────────────────────
-        const writeDataRow = (ws, row, excelRow, rowBg, fontColor) => {
-            const dateDisplay = row.date
-                ? row.date.split('-').reverse().join('/')
-                : '';
-
-            const rowData = [
-                dateDisplay,
-                row.dayName,
-                row.taskTitle,
-                row.taskDescription,
-                row.priority,
-                row.execTime,
-                row.daysOfWeek,
-                row.status,
-                row.completedBy,
-                row.completionTime,
-                row.skipReason,
-                row.skipUserName,
-                row.skipTime,
-                row.notes,
-            ];
-
-            rowData.forEach((val, colIdx) => {
-                const cell = ws.getCell(excelRow, colIdx + 1);
-                cell.value = val || '';
-
-                applyStyle(cell, {
-                    bgColor: rowBg,
-                    fontColor: fontColor,
-                    hAlign: (colIdx === 2 || colIdx === 3 ||
-                        colIdx === 6 || colIdx === 13)
-                        ? 'right' : 'center',
-                    wrapText: (colIdx === 2 || colIdx === 3 ||
-                        colIdx === 6 || colIdx === 10 ||
-                        colIdx === 13),
-                    fontSize: 10,
-                });
-
-                // עמודת סטטוס - צבע מיוחד
-                if (colIdx === 7) {
-                    let statusBg, statusFont;
-                    if (val === 'הושלם') {
-                        statusBg = '28A745'; statusFont = 'FFFFFF';
-                    } else if (val === 'לא בוצע') {
-                        statusBg = 'FFC107'; statusFont = '212529';
-                    } else {
-                        statusBg = '6C757D'; statusFont = 'FFFFFF';
-                    }
-                    applyStyle(cell, {
-                        bgColor: statusBg,
-                        fontColor: statusFont,
-                        bold: true,
-                        hAlign: 'center',
-                        fontSize: 10,
-                    });
-                }
-
-                // עמודת שם משימה - מודגש
-                if (colIdx === 2 && val) {
-                    cell.font = {
-                        name: 'Arial',
-                        size: 10,
-                        bold: true,
-                        color: { argb: 'FF' + fontColor },
-                    };
-                }
-
-                // עמודת עדיפות - צבע לפי ערך
-                if (colIdx === 4 && val) {
-                    let priorityColor = '667EEA';
-                    if (val === 'גבוהה') priorityColor = 'DC3545';
-                    else if (val === 'בינונית') priorityColor = 'FFA502';
-                    else if (val === 'נמוכה') priorityColor = '28A745';
-
-                    cell.font = {
-                        name: 'Arial',
-                        size: 10,
-                        bold: true,
-                        color: { argb: 'FF' + priorityColor },
-                    };
-                }
-            });
-
-            //רוחב עמודות מותאם לתוכן
-            rowData.forEach((val, colIdx) => {
-                if (val) {
-                    const col = ws.getColumn(colIdx + 1);
-                    const contentLen = String(val).length;
-                    const currentWidth = col.width || colWidths[colIdx];
-                    // הגדל רוחב אם התוכן ארוך, עד מקסימום 60
-                    col.width = Math.min(
-                        60,
-                        Math.max(currentWidth, contentLen * 1.1)
-                    );
-                }
-            });
-
-            // חישוב גובה שורה דינמי לפי אורך התוכן
-            // עמודות עם wrapText שיכולות להגדיל את גובה השורה
-            const wrappedColumns = [
-                { val: row.taskTitle, width: colWidths[2] },  // שם משימה
-                { val: row.taskDescription, width: colWidths[3] },  // תיאור
-                { val: row.daysOfWeek, width: colWidths[6] },  // ימי ביצוע
-                { val: row.skipReason, width: colWidths[10] },  // סיבת אי ביצוע
-                { val: row.notes, width: colWidths[13] },  // הערות
-            ];
-
-            // חשב כמה שורות טקסט נדרשות לכל עמודה
-            const LINE_HEIGHT = 15; // גובה שורת טקסט בסיסית בפיקסלים
-            const MIN_HEIGHT = 17; // גובה מינימלי
-            const MAX_HEIGHT = 120; // גובה מקסימלי
-
-            let maxLines = 1;
-
-            wrappedColumns.forEach(({ val, width }) => {
-                if (!val) return;
-
-                const text = String(val);
-                const charsPerLine = Math.floor(width * 1.8); // הערכת תווים לשורה לפי רוחב עמודה
-
-                // ספור שורות חדשות ידניות (\n)
-                const manualLines = text.split('\n');
-
-                // חשב כמה שורות נדרשות לכל פסקה
-                let totalLines = 0;
-                manualLines.forEach(line => {
-                    const linesNeeded = Math.ceil(line.length / charsPerLine) || 1;
-                    totalLines += linesNeeded;
-                });
-
-                if (totalLines > maxLines) {
-                    maxLines = totalLines;
-                }
-            });
-
-            // קבע גובה שורה לפי מספר השורות המקסימלי
-            const calculatedHeight = Math.min(
-                MAX_HEIGHT,
-                Math.max(MIN_HEIGHT, maxLines * LINE_HEIGHT)
-            );
-
-            ws.getRow(excelRow).height = calculatedHeight;
-        };
-
-        // ── פונקציה לכתיבת שורת סיכום ────────────────────────────────
-        const writeSummaryRow = (ws, excelRow, rowsForSheet) => {
-            ws.mergeCells(excelRow, 1, excelRow, totalCols);
-            const summaryCell = ws.getCell(excelRow, 1);
-
-            const completedCount =
-                rowsForSheet.filter(r => r.status === 'הושלם').length;
-            const skippedCount =
-                rowsForSheet.filter(r => r.status === 'לא בוצע').length;
-            const pendingCount =
-                rowsForSheet.filter(r => r.status === 'ממתין').length;
-
-            summaryCell.value =
-                `סה"כ: ${rowsForSheet.length} שורות | ` +
-                `הושלמו: ${completedCount} | ` +
-                `לא בוצעו: ${skippedCount} | ` +
-                `ממתינות: ${pendingCount}`;
-
-            applyStyle(summaryCell, {
-                bgColor: C.headerBg,
-                fontColor: C.headerFont,
-                bold: true,
-                hAlign: 'center',
-                fontSize: 11,
-            });
-            ws.getRow(excelRow).height = 22;
-        };
-
-        // ── פונקציה לכתיבת גליון ─────────────────────────────────────
-        const writeWorksheet = (ws, rowsForSheet, title) => {
-            writeSheetHeaders(ws, title);
-
-            let excelRow = 3;
-            let prevDate = '';
-            let isAlt = false;
-
-            rowsForSheet.forEach(row => {
-                //שמור prevDate לפני עדכון לבדיקת גבול
-                const isNewDate = row.date !== prevDate;
-
-                if (isNewDate) {
-                    isAlt = !isAlt;
-                    prevDate = row.date;
-                }
-
-                // קבע צבעי שורה לפי סטטוס
-                let rowBg, fontColor;
-                if (row.status === 'הושלם') {
-                    rowBg = C.completedBg; fontColor = C.completedFont;
-                } else if (row.status === 'לא בוצע') {
-                    rowBg = C.skippedBg; fontColor = C.skippedFont;
-                } else {
-                    rowBg = isAlt ? C.altBg : C.pendingBg;
-                    fontColor = C.pendingFont;
-                }
-
-                if (!row.isScheduledDay) {
-                    rowBg = C.historyOnlyBg;
-                }
-
-                writeDataRow(ws, row, excelRow, rowBg, fontColor);
-
-                //גבול עבה בין תאריכים שונים
-                if (isNewDate && excelRow > 3) {
-                    for (let c = 1; c <= totalCols; c++) {
-                        ws.getCell(excelRow, c).border = mediumTopBorder();
-                    }
-                }
-
-                excelRow++;
-            });
-
-            writeSummaryRow(ws, excelRow, rowsForSheet);
-        };
-
-        // ── 1. גליון "הכל" ────────────────────────────────────────────
-        const wsAllName = sheetTitle
-            .replace(/[*?:\\/\[\]]/g, '-')
-            .substring(0, 31);
-
-        const wsAll = wb.addWorksheet(wsAllName, {
-            views: [{ rightToLeft: true, state: 'frozen', ySplit: 2 }],
-            properties: { defaultRowHeight: 18 },
-        });
-
-        writeWorksheet(wsAll, rows, sheetTitle);
-
-        // ── 2. גליון לכל יום ─────────────────────────────────────────
-        // קבץ שורות לפי תאריך
-        const rowsByDate = {};
-        rows.forEach(row => {
-            if (!rowsByDate[row.date]) {
-                rowsByDate[row.date] = [];
-            }
-            rowsByDate[row.date].push(row);
-        });
-
-        // מיין תאריכים
-        const sortedDates = Object.keys(rowsByDate).sort();
-
-        sortedDates.forEach(dateStr => {
-            const rowsForDay = rowsByDate[dateStr];
-
-            // שם הגליון: dd/mm/yyyy -> dd-mm-yyyy (תווים לא חוקיים)
-            const dateDisplay = dateStr.split('-').reverse().join('-');
-            const dayName = rowsForDay[0]?.dayName || '';
-
-            // שם גליון: "01-01-2025 ראשון" (מקסימום 31 תווים)
-            const wsName = `${dateDisplay} ${dayName}`.substring(0, 31);
-
-            const wsDayTitle =
-                `משימות ליום ${dateDisplay} (${dayName})`;
-
-            const wsDay = wb.addWorksheet(wsName, {
-                views: [{
-                    rightToLeft: true,
-                    state: 'frozen',
-                    ySplit: 2
-                }],
-                properties: { defaultRowHeight: 18 },
-            });
-
-            writeWorksheet(wsDay, rowsForDay, wsDayTitle);
-        });
-
-        // ── הורד את הקובץ ────────────────────────────────────────────
-        const buffer = await wb.xlsx.writeBuffer();
-        const blob = new Blob([buffer], {
-            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        });
-        saveAs(blob, fileName);
     }
 
     // Get Hebrew day name

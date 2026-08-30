@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
@@ -11,22 +12,23 @@ using System.Threading.Tasks;
 [Route("[controller]/[action]")]
 public class SuiteConfigController : Controller
 {
-    private readonly string _csvPath =
-        @"R:\USERS\TASHTIT\NOC\Portal\files\suite_config.csv";
-    private readonly string _testCaseMappingPath = @"R:\USERS\TASHTIT\NOC\Portal\files\test_case_mapping.csv";
+    private readonly string _csvPath;
 
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly SecretsService _secrets;
+    private readonly string _elasticBaseUrl = "https://172.22.250.10:9200";
+    private readonly string _elasticUser     = "grafana_user";
+    private readonly string _elasticPassword = "Grafana_user1";
 
-    private string _elasticBaseUrl => _secrets.ElasticBaseUrl;
-    private string _elasticUser    => _secrets.ElasticUsername;
-    private string _elasticPassword => _secrets.ElasticPassword;
-
-    public SuiteConfigController(IHttpClientFactory httpClientFactory,
-        SecretsService secrets)   
+    public SuiteConfigController(IHttpClientFactory httpClientFactory)
     {
         _httpClientFactory = httpClientFactory;
-        _secrets           = secrets;
+        _csvPath = Path.Combine(Directory.GetCurrentDirectory(), "assets", "files", "suite_config.csv");
+    }
+
+    public SuiteConfigController(IHttpClientFactory httpClientFactory, IWebHostEnvironment env)
+        : this(httpClientFactory)
+    {
+        _csvPath = Path.Combine(env.WebRootPath, "assets", "files", "suite_config.csv");
     }
 
     // ==========================================
@@ -387,7 +389,7 @@ public class SuiteConfigController : Controller
         catch (Exception ex)
         {
             Console.Error.WriteLine(
-                $"FetchSuiteInfoFromElastic Error: {ex.Message}");
+                $"FetchSuiteInfoFromElastic error: {ex.Message}");
         }
 
         return null;
@@ -472,164 +474,6 @@ public class SuiteConfigController : Controller
         return result.ToArray();
     }
 
-    
-
-    [HttpGet]
-    public IActionResult GetTestCaseMappings()
-    {
-        try
-        {
-            var mappings = ReadTestCaseMappings();
-            return Json(new { success = true, mappings });
-        }
-        catch (Exception ex)
-        {
-            return Json(new { success = false, message = ex.Message });
-        }
-    }
-
-    [HttpPost]
-    public IActionResult AddTestCaseMapping(
-        [FromBody] TestCaseMappingModel model)
-    {
-        try
-        {
-            if (string.IsNullOrWhiteSpace(model.TestId))
-                return Json(new { success = false, message = "TestId חסר" });
-
-            // הוסף ולידציה ל-CloudBeatCaseId
-            if (string.IsNullOrWhiteSpace(model.CloudBeatCaseId))
-                return Json(new { success = false, message = "CloudBeat Case ID חסר" });
-
-            var mappings = ReadTestCaseMappings();
-
-            if (mappings.Any(m => m.TestId.Equals(
-                    model.TestId, StringComparison.OrdinalIgnoreCase)))
-                return Json(new { success = false, message = "TestId כבר קיים" });
-
-            mappings.Add(new TestCaseMapping
-            {
-                Id            = mappings.Any() ? mappings.Max(m => m.Id) + 1 : 1,
-                TestId        = model.TestId.Trim(),
-                CloudBeatCaseId = model.CloudBeatCaseId.Trim(),
-                AddedAt       = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
-            });
-
-            SaveTestCaseMappings(mappings);
-            return Json(new { success = true, message = "המיפוי נוסף בהצלחה" });
-        }
-        catch (Exception ex)
-        {
-            return Json(new { success = false, message = ex.Message });
-        }
-    }
-
-    [HttpPost]
-    public IActionResult UpdateTestCaseMapping(
-        [FromBody] TestCaseMappingModel model)
-    {
-        try
-        {
-            if (model.Id == null)
-                return Json(new { success = false, message = "מזהה חסר" });
-
-            // הוסף ולידציה
-            if (string.IsNullOrWhiteSpace(model.CloudBeatCaseId))
-                return Json(new { success = false, message = "CloudBeat Case ID חסר" });
-
-            var mappings = ReadTestCaseMappings();
-            var existing = mappings.FirstOrDefault(m => m.Id == model.Id);
-
-            if (existing == null)
-                return Json(new { success = false, message = "מיפוי לא נמצא" });
-
-            existing.CloudBeatCaseId = model.CloudBeatCaseId.Trim();
-
-            SaveTestCaseMappings(mappings);
-            return Json(new { success = true, message = "המיפוי עודכן בהצלחה" });
-        }
-        catch (Exception ex)
-        {
-            return Json(new { success = false, message = ex.Message });
-        }
-    }
-
-    [HttpPost]
-    public IActionResult DeleteTestCaseMapping(
-        [FromBody] DeleteSuiteConfigModel model)
-    {
-        try
-        {
-            if (model.Id == null)
-                return Json(new { success = false, message = "מזהה חסר" });
-
-            var mappings = ReadTestCaseMappings();
-            var toDelete = mappings.FirstOrDefault(m => m.Id == model.Id);
-
-            if (toDelete == null)
-                return Json(new { success = false, message = "מיפוי לא נמצא" });
-
-            mappings.Remove(toDelete);
-            SaveTestCaseMappings(mappings);
-            return Json(new { success = true, message = "המיפוי נמחק בהצלחה" });
-        }
-        catch (Exception ex)
-        {
-            return Json(new { success = false, message = ex.Message });
-        }
-    }
-
-    public List<TestCaseMapping> ReadTestCaseMappings()
-    {
-        var result = new List<TestCaseMapping>();
-
-        if (!System.IO.File.Exists(_testCaseMappingPath))
-            return result;
-
-        var lines = System.IO.File.ReadAllLines(_testCaseMappingPath);
-
-        for (int i = 1; i < lines.Length; i++)
-        {
-            if (string.IsNullOrWhiteSpace(lines[i])) continue;
-            var cols = lines[i].Split(',');
-            if (cols.Length < 3) continue;
-            if (!int.TryParse(cols[0].Trim(), out var id)) continue;
-
-            result.Add(new TestCaseMapping
-            {
-                Id              = id,
-                TestId          = cols.Length > 1 ? cols[1].Trim() : "",
-                CloudBeatCaseId = cols.Length > 2 ? cols[2].Trim() : "",
-                AddedAt         = cols.Length > 3 ? cols[3].Trim() : ""
-            });
-        }
-        return result;
-    }
-
-    private void SaveTestCaseMappings(List<TestCaseMapping> mappings)
-    {
-        var dir = Path.GetDirectoryName(_testCaseMappingPath);
-        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-            Directory.CreateDirectory(dir);
-
-        var lines = new List<string>
-        {
-            "id,test_id,cloudbeat_case_id,added_at"
-        };
-
-        foreach (var m in mappings.OrderBy(x => x.Id))
-        {
-            lines.Add(string.Join(",",
-                m.Id,
-                m.TestId,
-                m.CloudBeatCaseId,
-                m.AddedAt
-            ));
-        }
-
-        System.IO.File.WriteAllLines(_testCaseMappingPath, lines);
-    }
-
     // ==========================================
     // מודלים
     // ==========================================
@@ -669,21 +513,4 @@ public class SuiteConfigController : Controller
     {
         public int? Id { get; set; }
     }
-    
-    public class TestCaseMapping
-    {
-        public int    Id              { get; set; }
-        public string TestId          { get; set; } = "";
-        public string CloudBeatCaseId   { get; set; } = ""; 
-        public string AddedAt         { get; set; } = "";
-        public string MappingType      { get; set; } = "case";
-    }
-
-    public class TestCaseMappingModel
-    {
-        public int?   Id              { get; set; }
-        public string TestId          { get; set; } = "";
-        public string CloudBeatCaseId   { get; set; } = "";
-    }
 }
-

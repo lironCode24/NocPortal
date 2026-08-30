@@ -9,19 +9,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@ViewData["Title"]</title>
-    <link rel="icon" type="image/x-icon" href="https://www.menoramivt.co.il/customers-homepage/static/img/favicon.ico">
+    <link rel="icon"  type="image/png" href="~/images/logo.png" >
     <link rel="stylesheet" href="https://cdn.menoramivt.co.il/public/fonts/fonts.css">
-    <link rel="stylesheet" href="/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="/assets/fontawesome/css/all.min.css">
     <link rel="stylesheet" href="~/css/noc-portal.css">
-    <link rel="stylesheet" href="/lib/flatpickr-4.6.13/dist/flatpickr.min.css">
-    <script src="/lib/flatpickr-4.6.13/dist/flatpickr.min.js"></script>
-    <script src="/lib/flatpickr-4.6.13/dist/l10n/he.js"></script>
-    <script src="/lib/xlsx/xlsx.full.min.js"></script>
-    <script src="/lib/xlsx/exceljs.min.js"></script>
-    <script src="/lib/xlsx/FileSaver.min.js"></script>
-    <script src="/lib/html2canvas/html2canvas.min.js"></script>
-    <script src="/lib/npm/chart.js"></script>
-    <script src="/lib/npm/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/he.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@latest/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@latest/dist/exceljs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/file-saver@latest/dist/FileSaver.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@latest/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <style>
         body {
             font-family: 'Assistant', sans-serif;
@@ -35,35 +35,14 @@
 <body>
     <div id="userMenuTemplate" style="display:none">
         <div class="user-menu-section">
-            <div class="user-menu-section-right">
-                <div class="user-info" id="userHi">
-                    <i class="fas fa-user-circle"></i>
-                    <span class="user-display-name">
-                        היי, @User.FindFirst("DisplayName")?.Value
-                    </span>
-                </div>
-
-                <!-- ══ הודעות ממתינות ══════════════════════════════════════ -->
-                <div class="user-messages-row" id="userMessagesRow" 
-                    style="display:none">
-                    <button class="btn-messages-indicator" 
-                            id="btnMessagesIndicator"
-                            onclick="openPendingMessages()">
-                        <div class="messages-bell-wrap">
-                            <i class="fas fa-bell"></i>
-                            <span class="messages-badge" 
-                                id="messagesBadge">0</span>
-                        </div>
-                        <span class="messages-indicator-text">
-                            הודעות הממתינות לאישור
-                        </span>
-                        <i class="fas fa-chevron-left messages-arrow"></i>
-                    </button>
-                </div>
-                <!-- ══════════════════════════════════════════════════════════ -->
-            </div>
             <div class="user-info">
-                <form method="post" action="/Auth/Logout" onsubmit="clearUserLocalStorage()">
+                <i class="fas fa-user-circle"></i>
+                <span class="user-display-name">
+                    היי, @User.FindFirst("DisplayName")?.Value
+                </span>
+
+            <div class="user-info">
+                <form method="post" action="/Auth/Logout">
                     @Html.AntiForgeryToken()
                     <button type="submit" class="btn-header-logout">
                         <i class="fas fa-sign-out-alt"></i>
@@ -71,33 +50,14 @@
                     </button>
                 </form>
                 <button id="backToPortalBtn"
-                        style="display:none"
-                        class="dashboard-toolbar-btn"
-                        onclick="window.location.href='/home'">
-                    Back to Portal
+                    style="display:none"
+                    class="dashboard-toolbar-btn"
+                    onclick="window.location.href='/home'">Back to Home
                 </button>
             </div>
-        </div>
     </div>
     <!-- תוכן הדף יוכנס דינמית על ידי DashboardsManager -->
-    <script src="~/js/DashboardsManager.js"asp-append-version="true"></script>
-    <script src="~/js/message-popup.js"></script>
+    <script src="~/js/DashboardsManager.js"></script>
 </body>
 
 </html>
-
-<script>
-        function clearUserLocalStorage() {
-            // מחק נתוני משתמש מ-localStorage
-            const keysToRemove = [
-                'currentUser',
-                'lastSelectedEmployee'
-            ];
-            
-            keysToRemove.forEach(key => localStorage.removeItem(key));
-            
-            // מחק מ-sessionStorage
-            sessionStorage.removeItem('currentUser');
-            
-        }
-</script>

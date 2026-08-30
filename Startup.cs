@@ -30,36 +30,30 @@ namespace MyWebApp
             services.AddControllersWithViews();
             services.AddHttpClient();
 
-            services.AddSingleton<SecretsService>();
-            services.AddSingleton<AuditLogService>();
-            services.AddSingleton<SystemMessageService>();
-            services.AddSingleton<EmailService>();
-            services.AddSingleton<PasswordResetService>();
-
             services.AddScoped<SuiteConfigController>();
 
             // ── Authentication ───────────────────────────────────────
-            services.AddAuthentication(
-                CookieAuthenticationDefaults.AuthenticationScheme)
+            services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
                 .AddCookie(options =>
                 {
-                    options.LoginPath         = "/Auth/Login";
-                    options.LogoutPath        = "/Auth/Logout";
-                    options.AccessDeniedPath  = "/Auth/AccessDenied";
-                    options.ExpireTimeSpan    = System.TimeSpan.FromHours(8);
+                    options.LoginPath        = "/Auth/Login";
+                    options.LogoutPath       = "/Auth/Logout";
+                    options.AccessDeniedPath = "/Auth/AccessDenied";
+                    options.ExpireTimeSpan   = System.TimeSpan.FromHours(8);
                     options.SlidingExpiration = true;
-                    options.Cookie.Name       = "NocPortal.Auth";
-                    options.Cookie.HttpOnly   = true;
-                    options.Cookie.SecurePolicy =
-                        CookieSecurePolicy.SameAsRequest;
+                    options.Cookie.Name      = "NocPortal.Auth";
+                    options.Cookie.HttpOnly  = true;
+                    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
                 });
 
             // ── Authorization + Policies ─────────────────────────────
             services.AddAuthorization(options =>
             {
+                // רק NOC
                 options.AddPolicy("NocOnly", policy =>
                     policy.RequireRole("NOC", "Admin"));
 
+                // NOC או DASHBOARD
                 options.AddPolicy("DashboardAccess", policy =>
                     policy.RequireRole("NOC", "DASHBOARD", "Admin"));
             });
@@ -68,9 +62,7 @@ namespace MyWebApp
             services.AddSingleton<UserService>();
         }
 
-        public void Configure(
-            IApplicationBuilder app,
-            IWebHostEnvironment env)
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
             if (env.IsDevelopment())
             {
@@ -85,64 +77,37 @@ namespace MyWebApp
             app.UseHttpsRedirection();
             app.UseStaticFiles();
 
-            app.UseStaticFiles(new StaticFileOptions
-            {
-                FileProvider = new PhysicalFileProvider(
-                    @"R:\USERS\TASHTIT\NOC\Portal\fontawesome"),
-                RequestPath = "/fontawesome"
-            });
-
             app.UseCookiePolicy();
             app.UseRouting();
 
+            // ── סדר חשוב! ────────────────────────────────────────────
             app.UseAuthentication();
             app.UseAuthorization();
 
             app.UseEndpoints(endpoints =>
             {
                 endpoints.MapControllerRoute(
+                    name: "landing",
+                    pattern: "",
+                    defaults: new { controller = "Home", action = "Landing" });
+
+                endpoints.MapControllerRoute(
                     name: "home",
                     pattern: "Home",
-                    defaults: new
-                    {
-                        controller = "Home",
-                        action = "Index"
-                    });
+                    defaults: new { controller = "Home", action = "Index" });
 
                 endpoints.MapControllerRoute(
                     name: "dashboards",
                     pattern: "Dashboards",
-                    defaults: new
-                    {
-                        controller = "Dashboards",
-                        action = "Index"
-                    });
-
-                endpoints.MapControllerRoute(
-                    name: "systemValidate",
-                    pattern: "SystemsCatalog/Validate/{id}",
-                    defaults: new
-                    {
-                        controller = "SystemsCatalog",
-                        action = "Validate"
-                    });
-
-                endpoints.MapControllerRoute(
-                    name: "systemsCatalog",
-                    pattern: "SystemsCatalog",
-                    defaults: new
-                    {
-                        controller = "SystemsCatalog",
-                        action = "Index"
-                    });
+                    defaults: new { controller = "Dashboards", action = "Index" });
 
                 endpoints.MapControllerRoute(
                     name: "default",
                     pattern: "{controller=Auth}/{action=Login}/{id?}");
             });
 
-            app.ApplicationServices
-               .GetRequiredService<UserService>();
+            // ── אתחל UserService בהפעלה ──────────────────────────────
+            app.ApplicationServices.GetRequiredService<UserService>();
         }
     }
 }

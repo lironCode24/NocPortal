@@ -9,10 +9,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@ViewData["Title"]</title>
-    <link rel="icon" type="image/x-icon"
-          href="https://www.menoramivt.co.il/customers-homepage/static/img/favicon.ico">
+    <link rel="icon" type="image/png" href="~/images/logo.png" >
     <link rel="stylesheet" href="https://cdn.menoramivt.co.il/public/fonts/fonts.css">
-    <link rel="stylesheet" href="/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="/assets/fontawesome/css/all.min.css">
     <link rel="stylesheet" href="~/css/noc-portal.css">
     <style>
         /* ── Login Page Styles ── */
@@ -42,8 +41,8 @@
         }
 
         .login-logo img {
-            height: 50px;
-            filter: brightness(0) invert(1);
+            height: 150px;
+            filter: brightness(0.1) invert(0.99);
         }
 
         .login-title {
@@ -129,7 +128,6 @@
             color: rgba(255,255,255,0.3);
         }
 
-        /* ── כפתור כניסה ראשי ── */
         .btn-login {
             width: 100%;
             padding: 13px;
@@ -153,7 +151,6 @@
             transform: none;
         }
 
-        /* ── הודעות ── */
         .error-message {
             background: rgba(220, 53, 69, 0.2);
             border: 1px solid rgba(220, 53, 69, 0.4);
@@ -167,111 +164,31 @@
             gap: 8px;
         }
 
-        /* ── קישור שכחתי סיסמה ── */
-        .forgot-password-link {
-            text-align: left;
-            margin-top: -12px;
-            margin-bottom: 16px;
-        }
-
-        .forgot-password-link a {
-            color: rgba(255,255,255,0.45);
-            font-size: 0.82rem;
-            text-decoration: none;
-            transition: color 0.2s;
-        }
-
-        .forgot-password-link a:hover {
-            color: #4a9eff;
-            text-decoration: underline;
-        }
-
-        /* ── מפריד ── */
-        .divider {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin: 20px 0;
-        }
-
-        .divider::before,
-        .divider::after {
-            content: '';
-            flex: 1;
-            height: 1px;
-            background: rgba(255,255,255,0.1);
-        }
-
-        .divider span {
-            color: rgba(255,255,255,0.3);
-            font-size: 0.8rem;
-            white-space: nowrap;
-        }
-
-        /* ── כפתור שינוי סיסמה (למחובר) ── */
-        .btn-secondary {
-            width: 100%;
-            padding: 11px;
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.15);
-            border-radius: 8px;
-            color: rgba(255,255,255,0.7);
-            font-size: 0.9rem;
-            font-weight: 500;
-            font-family: inherit;
-            cursor: pointer;
-            transition: background 0.2s, border-color 0.2s, color 0.2s;
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-
-        .btn-secondary:hover {
-            background: rgba(255,255,255,0.1);
-            border-color: rgba(255,255,255,0.3);
-            color: #fff;
-        }
-
-        /* ── קישורי תחתית ── */
-        .bottom-links {
+        .register-link {
             text-align: center;
             margin-top: 24px;
             color: rgba(255,255,255,0.5);
             font-size: 0.9rem;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
         }
 
-        .bottom-links a {
+        .register-link a {
             color: #4a9eff;
             text-decoration: none;
             font-weight: 500;
         }
 
-        .bottom-links a:hover { text-decoration: underline; }
-
-        .bottom-links .separator {
-            color: rgba(255,255,255,0.2);
-            margin: 0 6px;
-        }
+        .register-link a:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
     <div class="login-container">
-
-        <!-- לוגו -->
         <div class="login-logo">
-            <img src="https://cdn.menoramivt.co.il/public/images/20260113/3ggtc2mkccjb39-menora-logo-ido.png"
-                 alt="מנורה מבטחים">
+            <img src="/images/logo.png" alt="Noc Portal Logo">
         </div>
 
         <h1 class="login-title">פורטל חדר מחשב</h1>
         <p class="login-subtitle">כניסה למערכת - NOC Portal</p>
 
-        <!-- הודעת שגיאה -->
         @if (!string.IsNullOrEmpty(Model.ErrorMessage))
         {
             <div class="error-message">
@@ -280,14 +197,12 @@
             </div>
         }
 
-        <!-- טופס כניסה -->
         <form method="post" asp-action="Login" asp-controller="Auth">
             @Html.AntiForgeryToken()
 
-            <input type="hidden" name="returnUrl"
+            <input type="hidden" name="returnUrl" 
                    value="@(ViewBag.ReturnUrl ?? string.Empty)" />
 
-            <!-- שם משתמש -->
             <div class="form-group">
                 <label for="username">שם משתמש</label>
                 <div class="input-wrapper">
@@ -302,7 +217,6 @@
                 </div>
             </div>
 
-            <!-- סיסמה -->
             <div class="form-group">
                 <label for="password">סיסמה</label>
                 <div class="input-wrapper">
@@ -313,8 +227,8 @@
                            placeholder="הכנס סיסמה"
                            autocomplete="current-password"
                            required />
-                    <button type="button"
-                            class="toggle-password-btn"
+                    <button type="button" 
+                            class="toggle-password-btn" 
                             id="togglePassword"
                             title="הצג/הסתר סיסמה"
                             tabindex="-1">
@@ -323,59 +237,39 @@
                 </div>
             </div>
 
-            <!-- קישור שכחתי סיסמה - מתחת לשדה הסיסמה -->
-            <div class="forgot-password-link">
-                <a asp-action="ForgotPassword" asp-controller="Auth">
-                    <i class="fas fa-key"></i> שכחתי סיסמה
-                </a>
-            </div>
-
-            <!-- כפתור כניסה -->
             <button type="submit" class="btn-login" id="loginBtn">
                 <i class="fas fa-sign-in-alt" id="loginIcon"></i>
                 <span id="loginText">כניסה למערכת</span>
             </button>
         </form>
 
-        <!-- מפריד -->
-        <div class="divider">
-            <span>או</span>
+        <div class="register-link">
+            אין לך חשבון?
+            <a asp-action="Register" asp-controller="Auth">הרשמה</a>
         </div>
-
-        <!-- קישורי תחתית -->
-        <div class="bottom-links">
-            <div>
-                אין לך חשבון?
-                <a asp-action="Register" asp-controller="Auth">הרשמה</a>
-            </div>
-        </div>
-
     </div>
 
     <script>
         // מצב Loading בעת שליחת הטופס
         document.querySelector('form').addEventListener('submit', function () {
-            const btn  = document.getElementById('loginBtn');
+            const btn = document.getElementById('loginBtn');
             const icon = document.getElementById('loginIcon');
             const text = document.getElementById('loginText');
 
-            btn.disabled       = true;
-            icon.className     = 'fas fa-spinner fa-spin';
-            text.textContent   = 'מתחבר...';
+            btn.disabled = true;
+            icon.className = 'fas fa-spinner fa-spin';
+            text.textContent = 'מתחבר...';
         });
 
         // Toggle הצגת סיסמה
-        document.getElementById('togglePassword')
-            .addEventListener('click', function () {
-                const input = document.getElementById('password');
-                const icon  = document.getElementById('togglePasswordIcon');
+        document.getElementById('togglePassword').addEventListener('click', function () {
+            const input = document.getElementById('password');
+            const icon = document.getElementById('togglePasswordIcon');
 
-                const isPassword = input.type === 'password';
-                input.type       = isPassword ? 'text' : 'password';
-                icon.className   = isPassword
-                    ? 'fas fa-eye-slash'
-                    : 'fas fa-eye';
-            });
+            const isPassword = input.type === 'password';
+            input.type = isPassword ? 'text' : 'password';
+            icon.className = isPassword ? 'fas fa-eye-slash' : 'fas fa-eye';
+        });
     </script>
 </body>
 </html>

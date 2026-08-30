@@ -19,9 +19,6 @@ class ActivityManager {
         this.originalTasksOrder = [];
 
         this.currentUser = null;
-        this.alarmCheckInterval = null;
-        this.shownAlarms = new Set();
-        this.currentTaskPopup = null;
     }
 
     async loadEmployees() {
@@ -121,7 +118,6 @@ class ActivityManager {
                 dateDisplay.textContent = 'לא נבחרה פעילות';
             }
         }
-        this.startActivityAlarmMonitoring();
         this.startAutoRefresh();
     }
 
@@ -169,11 +165,8 @@ class ActivityManager {
                 this.activities = data;
             }
 
-            // *** תיקון: בדוק אם האלמנט קיים לפני קריאת הערך ***
-            const sortOrderEl = document.getElementById('activitySortOrder');
-            const sortOrder = sortOrderEl ? sortOrderEl.value : 'date';
+            const sortOrder = document.getElementById('activitySortOrder').value;
             this.sortActivities(sortOrder);
-
         } catch (error) {
             console.error('Error fetching activities:', error);
             this.activities = [];
@@ -440,7 +433,7 @@ class ActivityManager {
         const newStatus = !activity.archived;
 
         // *** חדש: הוצאה מארכיון רק לאדמין ***
-        if (activity.archived && !this.isAdmin()) {
+        if (!newStatus === false && activity.archived) {
             // newStatus = false = הוצאה מארכיון
         }
 
@@ -710,22 +703,17 @@ class ActivityManager {
     async importExcelActivity() {
         const fileInput = document.querySelector('#importExcelModal #excelFileInput');
         if (!fileInput.files || fileInput.files.length === 0) {
-            NotificationManager.show('יש לבחור קובץ', 'warning');
+            NotificationManager.show('יש לבחור קובץ אקסל', 'warning');
             return;
         }
 
         const file = fileInput.files[0];
-        const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
-        const isWord = file.name.endsWith('.docx') || file.name.endsWith('.doc');
-
-        if (!isExcel && !isWord) {
-            NotificationManager.show(
-                'יש לבחור קובץ אקסל (.xlsx/.xls) או Word (.docx/.doc)',
-                'warning'
-            );
+        if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+            NotificationManager.show('יש לבחור קובץ אקסל בלבד (.xlsx או .xls)', 'warning');
             return;
         }
 
+        // הצג אינדיקטור טעינה
         const submitBtn = document.getElementById('excelImportSubmitBtn');
         const originalBtnText = submitBtn.textContent;
         submitBtn.disabled = true;
@@ -733,23 +721,14 @@ class ActivityManager {
 
         try {
             const formData = new FormData();
-
-            if (isWord) {
-                formData.append('wordFile', file);   //מתאים ל-ImportFromWord(IFormFile wordFile)
-            } else {
-                formData.append('excelFile', file);  //מתאים ל-ImportFromExcel(IFormFile excelFile)
-            }
-
+            formData.append('excelFile', file);
+            // הוסף את תאריך הפעילות לבקשה
             const activityDateInput = document.getElementById('excelImportDateHidden');
             if (activityDateInput && activityDateInput.value) {
                 formData.append('activityDate', activityDateInput.value);
             }
 
-            const endpoint = isWord
-                ? '/Activities/ImportFromWord'
-                : '/Activities/ImportFromExcel';
-
-            const response = await fetch(endpoint, {
+            const response = await fetch('/Activities/ImportFromExcel', {
                 method: 'POST',
                 body: formData
             });
@@ -757,14 +736,14 @@ class ActivityManager {
             const result = await response.json();
 
             if (result.success) {
-                NotificationManager.show(
-                    `הקובץ יובא בהצלחה! נוספה פעילות: ${result.activityName}`,
-                    'success'
-                );
+                NotificationManager.show(`הקובץ יובא בהצלחה! נוספה פעילות: ${result.activityName}`, 'success');
                 this.closeImportExcelModal();
+
+                // רענן את רשימת הפעילויות
                 await this.loadActivities();
                 this.renderActivityTabs();
 
+                // בחר את הפעילות החדשה
                 if (result.activityId) {
                     this.selectActivity(result.activityId);
                 }
@@ -772,9 +751,10 @@ class ActivityManager {
                 NotificationManager.show(result.error || 'שגיאה בייבוא הקובץ', 'error');
             }
         } catch (error) {
-            console.error('Error importing file:', error);
+            console.error('Error importing Excel file:', error);
             NotificationManager.show('שגיאה בחיבור לשרת', 'error');
         } finally {
+            // החזר את הכפתור למצב הרגיל
             submitBtn.disabled = false;
             submitBtn.textContent = originalBtnText;
         }
@@ -786,11 +766,8 @@ class ActivityManager {
         if (!file) return;
 
         // בדוק אם הקובץ הוא אקסל
-        const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
-        const isWord = file.name.endsWith('.docx') || file.name.endsWith('.doc');
-
-        if (!isExcel && !isWord) {
-            NotificationManager.show('יש לבחור קובץ אקסל (.xlsx/.xls) או Word (.docx/.doc)', 'warning');
+        if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+            NotificationManager.show('יש לבחור קובץ אקסל בלבד (.xlsx או .xls)', 'warning');
             event.target.value = '';
             return;
         }
@@ -876,20 +853,17 @@ class ActivityManager {
                 const filtersDiv = document.createElement('div');
                 filtersDiv.className = 'activity-filters';
                 filtersDiv.innerHTML = `
-                    <div class="filter-toggle">
-                        <input type="checkbox" 
-                            id="showArchivedActivities" 
-                            onchange="activityManager.filterActivitiesByArchiveStatus()">
-                        <label for="showArchivedActivities">הצג פעילויות בארכיון</label>
-                    </div>
-                    <div class="sort-options">
-                        <select id="activitySortOrder" 
-                                onchange="activityManager.sortActivities(this.value)">
-                            <option value="date">לפי תאריך</option>
-                            <option value="name">לפי שם</option>
-                        </select>
-                    </div>
-                `;
+                <div class="filter-toggle">
+                    <input type="checkbox" id="showArchivedActivities" onchange="activityManager.filterActivitiesByArchiveStatus()">
+                    <label for="showArchivedActivities">הצג פעילויות בארכיון</label>
+                </div>
+                <div class="sort-options">
+                    <select id="activitySortOrder" onchange="activityManager.sortActivities(this.value)">
+                        <option value="date">לפי תאריך</option>
+                        <option value="name">לפי שם</option>
+                    </select>
+                </div>
+            `;
                 container.appendChild(filtersDiv);
             }
 
@@ -1198,24 +1172,33 @@ class ActivityManager {
     // Load tasks for activity
     async loadActivityTasks(activityId, date) {
         try {
-            const response = await fetch(
-                `/Activities/GetActivityTasks?activityId=${activityId}&date=${date}`
-            );
+            const response = await fetch(`/Activities/GetActivityTasks?activityId=${activityId}&date=${date}`);
             const data = await response.json();
 
             if (data.error) {
                 console.error('Error loading tasks:', data.error);
                 this.renderActivityTasks([]);
             } else {
+                // שמור את הסדר המקורי
                 this.originalTasksOrder = [...data];
+
                 let tasksToRender = [...data];
 
+                // שמור את מצב החיפוש הנוכחי
+                const searchInput = document.getElementById('activitySearchInput');
+                const currentSearchTerm = searchInput ? searchInput.value.trim() : '';
+                this.searchActivities(currentSearchTerm);
+
+                // החל את המיון הנוכחי
                 if (this.currentSort === 'time') {
                     tasksToRender = this.sortTasksByTime(tasksToRender);
+                } else if (this.currentSort === 'selfOrder') {
+                    // שמור על הסדר המקורי
                 }
 
                 this.renderActivityTasks(tasksToRender);
 
+                // נעל את כל הכפתורים אם הפעילות בארכיון
                 const activity = this.activities.find(a => a.id === activityId);
                 if (activity && activity.archived) {
                     this.lockArchivedActivityTasks();
@@ -1520,10 +1503,9 @@ class ActivityManager {
     async openEmployeeCompletionModal(taskId) {
         this.isModalOpen = true;
 
+        // Get the task data
         try {
-            const response = await fetch(
-                `/Activities/GetTask?taskId=${taskId}&activityId=${this.currentActivityId}`
-            );
+            const response = await fetch(`/Activities/GetTask?taskId=${taskId}&activityId=${this.currentActivityId}`);
             const result = await response.json();
 
             if (!result.success || !result.task) {
@@ -1536,38 +1518,21 @@ class ActivityManager {
             document.getElementById('activityCompletionTaskId').value = taskId;
             document.getElementById('activityCompletionTaskTitle').textContent = task.title;
 
-            // *** שינוי: קבל שם יוזר מחובר ***
-            const currentUserName = this.currentUser
-                ? (this.currentUser.displayName || this.currentUser.username || this.currentUser.name || 'משתמש')
-                : 'משתמש';
-
-            // עדכן שדה נסתר
-            const employeeHidden = document.getElementById('activityCompletionEmployeeName');
-            if (employeeHidden) {
-                employeeHidden.value = currentUserName;
-            }
-
-            // עדכן תצוגה
-            const userDisplay = document.getElementById('completionCurrentUserDisplay');
-            if (userDisplay) {
-                userDisplay.textContent = currentUserName;
-            }
-
-            // executor name
+            // Pre-fill executor name with responsible person if available
             let defaultExecutor = '';
             if (task.responsiblePerson) {
                 defaultExecutor = task.responsiblePerson;
             }
             if (task.secondaryResponsible) {
-                defaultExecutor = defaultExecutor
-                    ? `${defaultExecutor}, ${task.secondaryResponsible}`
-                    : task.secondaryResponsible;
+                defaultExecutor = defaultExecutor ? `${defaultExecutor}, ${task.secondaryResponsible}` : task.secondaryResponsible;
             }
             document.getElementById('activityCompletionExecutorName').value = defaultExecutor;
 
+            // Populate employee dropdown
+            await this.populateEmployeeSelect('activityCompletionEmployeeName');
+
             document.getElementById('activityEmployeeCompletionModal').style.display = 'block';
             document.body.style.overflow = 'hidden';
-
         } catch (error) {
             console.error('Error loading task details:', error);
             NotificationManager.show('שגיאה בטעינת נתוני המשימה', 'error');
@@ -1675,6 +1640,13 @@ class ActivityManager {
         }
     }
 
+    // Save last selected employee to localStorage
+    saveLastSelectedEmployee(employeeName) {
+        if (employeeName && employeeName !== '') {
+            localStorage.setItem('lastSelectedEmployee', employeeName);
+        }
+    }
+
     // Create task HTML 
     createTaskHTML(task) {
         const isCompleted = task.completionDates && task.completionDates.includes(this.currentDate);
@@ -1709,14 +1681,14 @@ class ActivityManager {
 
         return `
     <div class="task-item ${isCompleted ? 'completed' : ''} ${skipReason ? 'skipped' : ''} ${isPastDate ? 'past-date' : ''}" 
-        data-task-id="${task.id}"
-        draggable="${isDraggable}"
-        ondblclick="activityManager.openTaskViewPopup('${task.id}')"
-        ${isDraggable ? `
-        ondragstart="activityManager.handleTaskDragStart(event)"
-        ondragover="activityManager.handleTaskDragOver(event)"
-        ondrop="activityManager.handleTaskDrop(event)"
-        ondragend="activityManager.handleTaskDragEnd(event)"` : ''}>
+         data-task-id="${task.id}"
+         draggable="${isDraggable}"
+         ${isDraggable ? `
+         ondragstart="activityManager.handleTaskDragStart(event)"
+         ondragover="activityManager.handleTaskDragOver(event)"
+         ondrop="activityManager.handleTaskDrop(event)"
+         ondragend="activityManager.handleTaskDragEnd(event)"
+         ` : ''}>
         
         ${!isPastDate && isDraggable ? `
         <div class="drag-handle" title="גרור לשינוי סדר">
@@ -1812,25 +1784,14 @@ class ActivityManager {
         
         <div class="task-actions">
             ${!isCompleted && !skipReason ? `
-                <button class="task-action-btn skip" 
-                        onclick="activityManager.openSkipModal('${task.id}')">
+                <button class="task-action-btn skip" onclick="activityManager.openSkipModal('${task.id}')">
                     <i class="fas fa-ban"></i>
                 </button>
             ` : ''}
-            ${skipReason ? `
-                <button class="task-action-btn clear-skip" 
-                        onclick="activityManager.clearSkipReason('${task.id}')" 
-                        title="בטל סיבת אי ביצוע">
-                    <i class="fas fa-undo"></i>
-                </button>
-            ` : ''}
-            ${task.taskHour && task.taskMinute ? `
-                <button class="task-action-btn alarm ${task.hasAlarm ? 'alarm-active' : ''}"
-                        onclick="activityManager.toggleTaskAlarm('${task.id}')"
-                        title="${task.hasAlarm ? 'בטל תזכורת' : 'הגדר תזכורת'}">
-                    <i class="fas fa-bell"></i>
-                </button>
-            ` : ''}
+            ${skipReason ?
+                `<button class="task-action-btn clear-skip" onclick="activityManager.clearSkipReason('${task.id}')" title="בטל סיבת אי ביצוע">
+                <i class="fas fa-undo"></i>
+            </button>` : ''}
             <button class="task-action-btn edit" onclick="activityManager.editTask('${task.id}')">
                 <i class="fas fa-edit"></i>
             </button>
@@ -2053,86 +2014,11 @@ class ActivityManager {
         }
     }
 
-    // *** פונקציה חדשה - הוסף אחרי toggleTask ***
-    async markTaskAsCompletedByCurrentUser(taskId, task) {
-        try {
-            console.log(this.currentUser)
-            // קבל את שם היוזר המחובר
-            const employeeName = this.currentUser
-                ? (this.currentUser.displayName || this.currentUser.username || this.currentUser.name || 'משתמש')
-                : 'משתמש';
-
-            const now = new Date();
-            const completionTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
-
-            const response = await fetch('/Activities/ToggleTask', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    taskId: taskId,
-                    activityId: this.currentActivityId,
-                    date: this.currentDate,
-                    title: task.title,
-                    description: task.description || "",
-                    priority: task.priority || "medium",
-                    taskDate: task.taskDate || "",
-                    taskHour: task.taskHour || "",
-                    taskMinute: task.taskMinute || "",
-                    responsiblePerson: task.responsiblePerson || "",
-                    secondaryResponsible: task.secondaryResponsible || "",
-                    notes: task.notes || "",
-                    completedByEmployee: employeeName,
-                    completionTime: completionTime,
-                    executorName: ""
-                })
-            });
-
-            const result = await response.json();
-
-            if (result.success) {
-                // עדכן סטטוס ל"בוצע"
-                await fetch('/Activities/UpdateTask', {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        id: taskId,
-                        activityId: this.currentActivityId,
-                        status: 'בוצע',
-                        title: task.title,
-                        description: task.description || "",
-                        priority: task.priority || "medium",
-                        taskDate: task.taskDate || "",
-                        taskHour: task.taskHour || "",
-                        taskMinute: task.taskMinute || "",
-                        responsiblePerson: task.responsiblePerson || "",
-                        secondaryResponsible: task.secondaryResponsible || "",
-                        notes: task.notes || "",
-                        completedByEmployee: employeeName,
-                        completionTime: completionTime,
-                        executorName: ""
-                    })
-                });
-
-                await this.loadActivityTasks(this.currentActivityId, this.currentDate);
-                NotificationManager.show(
-                    `משימה הושלמה על ידי ${employeeName}!`,
-                    'success'
-                );
-            } else {
-                NotificationManager.show(result.error || 'שגיאה בעדכון המשימה', 'error');
-            }
-        } catch (error) {
-            console.error('Error completing task:', error);
-            NotificationManager.show('שגיאה בחיבור לשרת', 'error');
-        }
-    }
-
     // Toggle task completion
     async toggleTask(taskId) {
         try {
-            const taskResponse = await fetch(
-                `/Activities/GetTask?taskId=${taskId}&activityId=${this.currentActivityId}`
-            );
+            // First, get the current task data to preserve all fields
+            const taskResponse = await fetch(`/Activities/GetTask?taskId=${taskId}&activityId=${this.currentActivityId}`);
             const taskResult = await taskResponse.json();
 
             if (!taskResult.success || !taskResult.task) {
@@ -2141,18 +2027,21 @@ class ActivityManager {
             }
 
             const task = taskResult.task;
+
+            // Check if task is currently skipped
             const isSkipped = task.skipReasons && task.skipReasons[this.currentDate];
 
+            // If task is skipped, clear the skip reason instead of marking as completed
             if (isSkipped) {
                 await this.clearSkipReason(taskId);
                 return;
             }
 
-            const isCompleted = task.completionDates &&
-                task.completionDates.includes(this.currentDate);
+            // Check if task is already completed
+            const isCompleted = task.completionDates && task.completionDates.includes(this.currentDate);
 
             if (isCompleted) {
-                // ביטול ביצוע - כמו קודם
+                // If already completed, toggle it off
                 const response = await fetch('/Activities/ToggleTask', {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
@@ -2173,6 +2062,7 @@ class ActivityManager {
                 });
 
                 const result = await response.json();
+
                 if (result.success) {
                     // Determine new status based on completion
                     const newStatus = result.completed ? 'בוצע' : 'חדש';
@@ -2196,14 +2086,15 @@ class ActivityManager {
                             notes: task.notes || ""
                         })
                     });
+
                     await this.loadActivityTasks(this.currentActivityId, this.currentDate);
                     NotificationManager.show('משימה בוטלה', 'info');
                 } else {
                     NotificationManager.show(result.error || 'שגיאה בעדכון המשימה', 'error');
                 }
             } else {
-                // *** שינוי: סמן ביצוע עם היוזר המחובר - ללא מודל ***
-                await this.markTaskAsCompletedByCurrentUser(taskId, task);
+                // If not completed, open the employee selection modal
+                await this.openEmployeeCompletionModal(taskId);
             }
         } catch (error) {
             console.error('Error toggling task:', error);
@@ -2213,14 +2104,6 @@ class ActivityManager {
 
     async updateTaskStatus(taskId, newStatus, showNotification = true) {
         try {
-            // *** קבל את שם המשתמש המחובר ***
-            const currentUserName = this.currentUser
-                ? (this.currentUser.displayName ||
-                    this.currentUser.username ||
-                    this.currentUser.name ||
-                    'משתמש')
-                : 'משתמש';
-
             // Get current task data to preserve all fields
             const taskResponse = await fetch(`/Activities/GetTask?taskId=${taskId}&activityId=${this.currentActivityId}`);
             const taskResult = await taskResponse.json();
@@ -2242,6 +2125,7 @@ class ActivityManager {
             if (newStatus === 'בוצע') {
                 // Remove skip if exists
                 if (isCurrentlySkipped) {
+                    // Clear skip by updating task without skip data
                     await fetch('/Activities/UpdateTask', {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
@@ -2258,7 +2142,7 @@ class ActivityManager {
                             responsiblePerson: task.responsiblePerson || "",
                             secondaryResponsible: task.secondaryResponsible || "",
                             notes: task.notes || "",
-                            clearSkipForDate: this.currentDate
+                            clearSkipForDate: this.currentDate  // Signal to clear skip
                         })
                     });
                 }
@@ -2317,7 +2201,7 @@ class ActivityManager {
                             activityId: this.currentActivityId,
                             date: this.currentDate,
                             skipReason: 'שונה סטטוס למבוטלת',
-                            skipUserName: currentUserName,  // *** שם המשתמש המחובר ***
+                            skipUserName: 'מערכת',
                             title: task.title,
                             description: task.description || "",
                             priority: task.priority || "medium",
@@ -2333,6 +2217,7 @@ class ActivityManager {
             } else {
                 // For other statuses (חדש, ממתין, בביצוע) - remove both completion and skip
                 if (isCurrentlyCompleted) {
+                    // Remove completion by toggling
                     await fetch('/Activities/ToggleTask', {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
@@ -2354,6 +2239,7 @@ class ActivityManager {
                 }
 
                 if (isCurrentlySkipped) {
+                    // Clear skip by updating task
                     await fetch('/Activities/UpdateTask', {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
@@ -2370,7 +2256,7 @@ class ActivityManager {
                             responsiblePerson: task.responsiblePerson || "",
                             secondaryResponsible: task.secondaryResponsible || "",
                             notes: task.notes || "",
-                            clearSkipForDate: this.currentDate
+                            clearSkipForDate: this.currentDate  // Signal to clear skip
                         })
                     });
                 }
@@ -2421,10 +2307,6 @@ class ActivityManager {
 
     // Add task to activity
     openAddTaskModal() {
-        if (!this.isAdmin()) {
-            NotificationManager.show('אין הרשאה להוסיף משימות', 'warning');
-            return;
-        }
         this.isModalOpen = true;
         if (!this.currentActivityId) {
             NotificationManager.show('יש לבחור פעילות תחילה', 'warning');
@@ -2573,25 +2455,11 @@ class ActivityManager {
         document.getElementById('activitySkipTaskId').value = taskId;
         document.getElementById('activitySkipReasonSelect').value = '';
         document.getElementById('activitySkipReasonCustom').value = '';
+
+        // Populate employee dropdown
+        await this.populateEmployeeSelect('activitySkipUserName');
+
         document.getElementById('activityCustomReasonGroup').style.display = 'none';
-
-        // *** שינוי: קבל שם יוזר מחובר ***
-        const currentUserName = this.currentUser
-            ? (this.currentUser.displayName || this.currentUser.username || this.currentUser.name || 'משתמש')
-            : 'משתמש';
-
-        // עדכן את השדה הנסתר
-        const userNameHidden = document.getElementById('activitySkipUserName');
-        if (userNameHidden) {
-            userNameHidden.value = currentUserName;
-        }
-
-        // עדכן את תצוגת השם
-        const userDisplay = document.getElementById('skipCurrentUserDisplay');
-        if (userDisplay) {
-            userDisplay.textContent = currentUserName;
-        }
-
         document.getElementById('activitySkipReasonModal').style.display = 'block';
         document.body.style.overflow = 'hidden';
     }
@@ -2745,655 +2613,6 @@ class ActivityManager {
         }
     }
 
-    // ─────────────────────────────────────────────
-    // 1. HISTORY - היסטוריית שינויים
-    // ─────────────────────────────────────────────
-
-    async loadTaskHistory(taskId) {
-        try {
-            const response = await fetch(
-                `/Activities/GetTaskHistory?taskId=${taskId}&activityId=${this.currentActivityId}`
-            );
-            const result = await response.json();
-            if (result.success) {
-                return result.history || [];
-            }
-            return [];
-        } catch (error) {
-            console.error('Error loading task history:', error);
-            return [];
-        }
-    }
-
-    renderTaskHistory(history) {
-        if (!history || history.length === 0) {
-            return `
-            <div class="task-history-empty">
-                <i class="fas fa-history"></i>
-                <p>אין היסטוריית שינויים</p>
-            </div>`;
-        }
-
-        const actionIcons = {
-            'created': { icon: 'fas fa-plus-circle', color: '#28a745', label: 'נוצרה' },
-            'updated': { icon: 'fas fa-edit', color: '#667eea', label: 'עודכנה' },
-            'completed': { icon: 'fas fa-check-circle', color: '#28a745', label: 'הושלמה' },
-            'uncompleted': { icon: 'fas fa-undo', color: '#ffc107', label: 'בוטל ביצוע' },
-            'skipped': { icon: 'fas fa-ban', color: '#dc3545', label: 'לא בוצעה' },
-            'unskipped': { icon: 'fas fa-undo', color: '#17a2b8', label: 'בוטל דילוג' },
-            'status_changed': { icon: 'fas fa-exchange-alt', color: '#764ba2', label: 'שונה סטטוס' },
-            'deleted': { icon: 'fas fa-trash', color: '#dc3545', label: 'נמחקה' },
-        };
-
-        return history.map(entry => {
-            const actionInfo = actionIcons[entry.action] ||
-                { icon: 'fas fa-circle', color: '#999', label: entry.action };
-
-            const date = entry.timestamp
-                ? new Date(entry.timestamp).toLocaleDateString('he-IL')
-                : '';
-            const time = entry.timestamp
-                ? new Date(entry.timestamp).toLocaleTimeString('he-IL',
-                    { hour: '2-digit', minute: '2-digit' })
-                : '';
-
-            let detailsHtml = '';
-            if (entry.changes && Object.keys(entry.changes).length > 0) {
-                const fieldLabels = {
-                    title: 'כותרת',
-                    description: 'תיאור',
-                    priority: 'עדיפות',
-                    status: 'סטטוס',
-                    taskDate: 'תאריך',
-                    taskHour: 'שעה',
-                    taskMinute: 'דקות',
-                    responsiblePerson: 'אחראי',
-                    secondaryResponsible: 'אחראי משנה',
-                    notes: 'הערות',
-                };
-
-                detailsHtml = `<div class="history-changes">`;
-                Object.entries(entry.changes).forEach(([field, change]) => {
-                    const label = fieldLabels[field] || field;
-                    detailsHtml += `
-                    <div class="history-change-item">
-                        <span class="change-field">${label}:</span>
-                        <span class="change-before">${change.before || '(ריק)'}</span>
-                        <i class="fas fa-arrow-left change-arrow"></i>
-                        <span class="change-after">${change.after || '(ריק)'}</span>
-                    </div>`;
-                });
-                detailsHtml += `</div>`;
-            }
-
-            if (entry.note) {
-                detailsHtml += `
-                <div class="history-note">
-                    <i class="fas fa-comment"></i>
-                    <span>${entry.note}</span>
-                </div>`;
-            }
-
-            return `
-            <div class="history-entry-item">
-                <div class="history-entry-icon"
-                     style="background:${actionInfo.color}20;
-                            border:2px solid ${actionInfo.color}40;">
-                    <i class="${actionInfo.icon}"
-                       style="color:${actionInfo.color};"></i>
-                </div>
-                <div class="history-entry-content">
-                    <div class="history-entry-header">
-                        <span class="history-action-label"
-                              style="color:${actionInfo.color};">
-                            ${actionInfo.label}
-                        </span>
-                        ${entry.userName
-                    ? `<span class="history-user">
-                                   <i class="fas fa-user"></i> ${entry.userName}
-                               </span>`
-                    : ''}
-                        <span class="history-time">
-                            <i class="fas fa-clock"></i> ${date} ${time}
-                        </span>
-                    </div>
-                    ${detailsHtml}
-                </div>
-            </div>`;
-        }).join('');
-    }
-
-    // ─────────────────────────────────────────────
-    // 2. TASK POPUP - פופאפ צפייה במשימה
-    // ─────────────────────────────────────────────
-
-    async openTaskViewPopup(taskId) {
-        try {
-            const response = await fetch(
-                `/Activities/GetTask?taskId=${taskId}&activityId=${this.currentActivityId}`
-            );
-            const result = await response.json();
-
-            if (!result.success || !result.task) {
-                NotificationManager.show('שגיאה בטעינת המשימה', 'error');
-                return;
-            }
-
-            const task = result.task;
-            const history = await this.loadTaskHistory(taskId);
-
-            // סגור פופאפ קיים
-            this.closeTaskViewPopup();
-
-            const isCompleted = task.completionDates &&
-                task.completionDates.includes(this.currentDate);
-            const skipReason = task.skipReasons &&
-                task.skipReasons[this.currentDate];
-
-            const priorityLabels = {
-                high: { label: 'גבוהה', color: '#dc3545' },
-                medium: { label: 'בינונית', color: '#ffc107' },
-                low: { label: 'נמוכה', color: '#667eea' },
-            };
-            const pInfo = priorityLabels[task.priority] ||
-                { label: task.priority, color: '#999' };
-
-            const statusColors = {
-                'חדש': '#2196F3',
-                'ממתין': '#FF9800',
-                'בביצוע': '#9C27B0',
-                'בוצע': '#4CAF50',
-                'מבוטלת': '#F44336',
-            };
-            const statusColor = statusColors[task.status] || '#999';
-
-            const popup = document.createElement('div');
-            popup.id = 'taskViewPopup';
-            popup.className = 'task-view-popup-overlay';
-            popup.innerHTML = `
-            <div class="task-view-popup">
-                <!-- Header -->
-                <div class="task-view-header">
-                    <div class="task-view-title-row">
-                        <div class="task-priority-dot"
-                             style="background:${pInfo.color};"
-                             title="עדיפות ${pInfo.label}"></div>
-                        <h2 class="task-view-title">${task.title}</h2>
-                        <button class="task-view-close"
-                                onclick="activityManager.closeTaskViewPopup()">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-                    <div class="task-view-badges">
-                        <span class="task-view-badge"
-                              style="background:${statusColor}20;
-                                     color:${statusColor};
-                                     border:1px solid ${statusColor}40;">
-                            ${task.status || 'חדש'}
-                        </span>
-                        <span class="task-view-badge priority-badge"
-                              style="background:${pInfo.color}20;
-                                     color:${pInfo.color};
-                                     border:1px solid ${pInfo.color}40;">
-                            <i class="fas fa-flag"></i> ${pInfo.label}
-                        </span>
-                        ${isCompleted
-                    ? `<span class="task-view-badge"
-                                     style="background:#28a74520;color:#28a745;
-                                            border:1px solid #28a74540;">
-                                   <i class="fas fa-check"></i> הושלם
-                               </span>`
-                    : ''}
-                        ${skipReason
-                    ? `<span class="task-view-badge"
-                                     style="background:#dc354520;color:#dc3545;
-                                            border:1px solid #dc354540;">
-                                   <i class="fas fa-ban"></i> לא בוצע
-                               </span>`
-                    : ''}
-                    </div>
-                </div>
-
-                <!-- Tabs -->
-                <div class="task-view-tabs">
-                    <button class="task-view-tab active"
-                            onclick="activityManager.switchTaskViewTab('details', this)">
-                        <i class="fas fa-info-circle"></i> פרטים
-                    </button>
-                    <button class="task-view-tab"
-                            onclick="activityManager.switchTaskViewTab('history', this)">
-                        <i class="fas fa-history"></i>
-                        היסטוריה
-                        ${history.length > 0
-                    ? `<span class="tab-badge">${history.length}</span>`
-                    : ''}
-                    </button>
-                </div>
-
-                <!-- Tab: Details -->
-                <div id="taskViewTabDetails" class="task-view-tab-content active">
-                    <div class="task-view-body">
-                        ${task.description
-                    ? `<div class="task-view-section">
-                                   <div class="task-view-section-label">
-                                       <i class="fas fa-align-left"></i> תיאור
-                                   </div>
-                                   <div class="task-view-section-value">
-                                       ${task.description}
-                                   </div>
-                               </div>`
-                    : ''}
-
-                        <div class="task-view-grid">
-                            ${task.taskDate
-                    ? `<div class="task-view-info-item">
-                                       <i class="fas fa-calendar" style="color:#667eea;"></i>
-                                       <div>
-                                           <div class="info-label">תאריך</div>
-                                           <div class="info-value">
-                                               ${this.formatDate(task.taskDate)}
-                                           </div>
-                                       </div>
-                                   </div>`
-                    : ''}
-                            ${task.taskHour && task.taskMinute
-                    ? `<div class="task-view-info-item">
-                                       <i class="fas fa-clock" style="color:#667eea;"></i>
-                                       <div>
-                                           <div class="info-label">שעה</div>
-                                           <div class="info-value">
-                                               ${task.taskHour}:${task.taskMinute}
-                                               ${task.hasAlarm
-                        ? `<i class="fas fa-bell alarm-icon-active"
-                                                         title="תזכורת פעילה"></i>`
-                        : ''}
-                                           </div>
-                                       </div>
-                                   </div>`
-                    : ''}
-                            ${task.responsiblePerson
-                    ? `<div class="task-view-info-item">
-                                       <i class="fas fa-user" style="color:#667eea;"></i>
-                                       <div>
-                                           <div class="info-label">אחראי</div>
-                                           <div class="info-value">
-                                               ${task.responsiblePerson}
-                                           </div>
-                                       </div>
-                                   </div>`
-                    : ''}
-                            ${task.secondaryResponsible
-                    ? `<div class="task-view-info-item">
-                                       <i class="fas fa-user-friends"
-                                          style="color:#667eea;"></i>
-                                       <div>
-                                           <div class="info-label">אחראי משנה</div>
-                                           <div class="info-value">
-                                               ${task.secondaryResponsible}
-                                           </div>
-                                       </div>
-                                   </div>`
-                    : ''}
-                        </div>
-
-                        ${task.notes
-                    ? `<div class="task-view-section">
-                                   <div class="task-view-section-label">
-                                       <i class="fas fa-sticky-note"></i> הערות
-                                   </div>
-                                   <div class="task-view-section-value notes-value">
-                                       ${task.notes}
-                                   </div>
-                               </div>`
-                    : ''}
-
-                        ${isCompleted && task.completedByEmployees
-                    ? (() => {
-                        const dates = Object.keys(task.completedByEmployees)
-                            .sort((a, b) => new Date(b) - new Date(a));
-                        if (!dates.length) return '';
-                        const d = dates[0];
-                        return `
-                                    <div class="task-view-section completion-section">
-                                        <div class="task-view-section-label">
-                                            <i class="fas fa-user-check"></i> ביצוע
-                                        </div>
-                                        <div class="completion-info">
-                                            <span>
-                                                <i class="fas fa-user"></i>
-                                                ${task.completedByEmployees[d]}
-                                            </span>
-                                            ${task.completionTimes && task.completionTimes[d]
-                                ? `<span>
-                                                       <i class="fas fa-clock"></i>
-                                                       ${task.completionTimes[d]}
-                                                   </span>`
-                                : ''}
-                                        </div>
-                                    </div>`;
-                    })()
-                    : ''}
-
-                        ${skipReason
-                    ? `<div class="task-view-section skip-section">
-                                   <div class="task-view-section-label">
-                                       <i class="fas fa-ban"></i> סיבת אי ביצוע
-                                   </div>
-                                   <div class="task-view-section-value">
-                                       ${skipReason}
-                                   </div>
-                               </div>`
-                    : ''}
-                    </div>
-                </div>
-
-                <!-- Tab: History -->
-                <div id="taskViewTabHistory"
-                     class="task-view-tab-content"
-                     style="display:none;">
-                    <div class="task-view-body history-body">
-                        <div class="task-history-list">
-                            ${this.renderTaskHistory(history)}
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Footer -->
-                <div class="task-view-footer">
-                    <button class="task-view-btn edit-btn"
-                            onclick="activityManager.closeTaskViewPopup();
-                                     activityManager.editTask('${taskId}')">
-                        <i class="fas fa-edit"></i> ערוך
-                    </button>
-                    <button class="task-view-btn close-btn"
-                            onclick="activityManager.closeTaskViewPopup()">
-                        <i class="fas fa-times"></i> סגור
-                    </button>
-                </div>
-            </div>`;
-
-            document.body.appendChild(popup);
-            this.currentTaskPopup = popup;
-            this.isModalOpen = true;
-
-            // סגירה בלחיצה על הרקע
-            popup.addEventListener('click', (e) => {
-                if (e.target === popup) this.closeTaskViewPopup();
-            });
-
-            // סגירה ב-Escape
-            this._taskPopupEscHandler = (e) => {
-                if (e.key === 'Escape') this.closeTaskViewPopup();
-            };
-            document.addEventListener('keydown', this._taskPopupEscHandler);
-
-        } catch (error) {
-            console.error('Error opening task view popup:', error);
-            NotificationManager.show('שגיאה בפתיחת המשימה', 'error');
-        }
-    }
-
-    closeTaskViewPopup() {
-        if (this.currentTaskPopup) {
-            this.currentTaskPopup.remove();
-            this.currentTaskPopup = null;
-        }
-        if (this._taskPopupEscHandler) {
-            document.removeEventListener('keydown', this._taskPopupEscHandler);
-            this._taskPopupEscHandler = null;
-        }
-        this.isModalOpen = false;
-    }
-
-    switchTaskViewTab(tabName, btnEl) {
-        // הסר active מכל הטאבים
-        document.querySelectorAll('.task-view-tab').forEach(t =>
-            t.classList.remove('active')
-        );
-        document.querySelectorAll('.task-view-tab-content').forEach(c =>
-            c.style.display = 'none'
-        );
-
-        // הפעל את הטאב הנבחר
-        btnEl.classList.add('active');
-        const content = document.getElementById(
-            `taskViewTab${tabName.charAt(0).toUpperCase() + tabName.slice(1)}`
-        );
-        if (content) content.style.display = 'block';
-    }
-
-    // ─────────────────────────────────────────────
-    // 3. ALARM - תזכורת (פעמון) למשימה
-    // ─────────────────────────────────────────────
-    startActivityAlarmMonitoring() {
-        if (this.alarmCheckInterval) return;
-
-        this.alarmCheckInterval = setInterval(() => {
-            this.checkActivityAlarms();
-        }, 60000); // כל דקה - בסדר
-
-        // המתן קצת כדי שהפעילויות יטענו קודם
-        setTimeout(() => {
-            this.checkActivityAlarms();
-        }, 2000);
-    }
-
-    stopActivityAlarmMonitoring() {
-        if (this.alarmCheckInterval) {
-            clearInterval(this.alarmCheckInterval);
-            this.alarmCheckInterval = null;
-        }
-    }
-
-    async checkActivityAlarms() {
-        try {
-            const today = new Date().toISOString().split('T')[0];
-
-            // בדוק את כל הפעילויות הלא מאורכבות
-            const activitiesToCheck = this.activities.filter(a => !a.archived);
-
-            for (const activity of activitiesToCheck) {
-                const response = await fetch(
-                    `/Activities/GetActivityTasks?activityId=${activity.id}&date=${today}`
-                );
-                const tasks = await response.json();
-                if (!Array.isArray(tasks)) continue;
-
-                const now = new Date();
-                const currentTime = now.getHours() * 60 + now.getMinutes();
-
-                tasks.forEach(task => {
-                    if (!task.hasAlarm || !task.taskHour || !task.taskMinute) return;
-
-                    const isCompleted = task.completionDates &&
-                        task.completionDates.includes(today);
-                    if (isCompleted) return;
-
-                    const taskTime = parseInt(task.taskHour) * 60 + parseInt(task.taskMinute);
-                    const diff = taskTime - currentTime;
-
-                    if (diff >= -5 && diff <= 5) {
-                        const alarmKey = `${task.id}_${today}_${task.taskHour}:${task.taskMinute}`;
-                        if (!this.shownAlarms.has(alarmKey)) {
-                            // שמור את ה-activityId הנכון לתזכורת
-                            this.showActivityAlarmNotification(task, diff, activity.id);
-                            this.shownAlarms.add(alarmKey);
-                            setTimeout(() => this.shownAlarms.delete(alarmKey), 900000);
-                        }
-                    }
-                });
-            }
-        } catch (error) {
-            console.error('Error checking activity alarms:', error);
-        }
-    }
-
-    showActivityAlarmNotification(task, diffMinutes) {
-        const resolvedActivityId = task.activityId || this.currentActivityId;
-        const currentActivity = this.activities.find(a => a.id === resolvedActivityId);
-        const activityName = currentActivity ? currentActivity.name : '';
-
-        const popup = document.createElement('div');
-        popup.className = 'activity-alarm-popup';
-
-        const timeText = diffMinutes === 0
-            ? 'עכשיו!'
-            : diffMinutes > 0
-                ? `בעוד ${diffMinutes} דקות`
-                : `לפני ${Math.abs(diffMinutes)} דקות`;
-
-        popup.innerHTML = `
-    <div class="activity-alarm-content">
-        <div class="activity-alarm-header">
-            <i class="fas fa-bell alarm-bell-ring"></i>
-            <span>תזכורת משימה</span>
-            <button class="alarm-close-btn"
-                    onclick="this.closest('.activity-alarm-popup').remove()">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-        <div class="activity-alarm-body">
-            ${activityName ? `
-            <div class="alarm-activity-name">
-                <i class="fas fa-folder-open"></i>
-                <span>פעילות: <strong>${activityName}</strong></span>
-            </div>
-            ` : ''}
-            <div class="alarm-task-name">${task.title}</div>
-            <div class="alarm-time-info">
-                <i class="fas fa-clock"></i>
-                ${task.taskHour}:${task.taskMinute} — ${timeText}
-            </div>
-            ${task.responsiblePerson
-                ? `<div class="alarm-responsible">
-                       <i class="fas fa-user"></i>
-                       ${task.responsiblePerson}
-                   </div>`
-                : ''}
-        </div>
-        <div class="activity-alarm-footer">
-
-            <button class="alarm-action-btn primary"
-                    onclick="
-                        const btn = this;
-                        btn.disabled = true;
-                        const popupEl = btn.closest('.activity-alarm-popup');
-                        activityManager.selectActivity('${resolvedActivityId}')
-                            .then(() => activityManager.toggleTask('${task.id}'))
-                            .then(() => popupEl.remove())
-                            .catch(() => { btn.disabled = false; });
-                    ">
-                <i class="fas fa-check"></i> סמן כבוצע
-            </button>
-
-            <button class="alarm-action-btn navigate"
-                    onclick="activityManager.navigateToAlarmTask(
-                                '${resolvedActivityId}',
-                                '${task.id}',
-                                this.closest('.activity-alarm-popup')
-                             )">
-                <i class="fas fa-external-link-alt"></i> עבור למשימה
-            </button>
-
-            <button class="alarm-action-btn secondary"
-                    onclick="this.closest('.activity-alarm-popup').remove();">
-                <i class="fas fa-times"></i> סגור
-            </button>
-        </div>
-    </div>`;
-
-        document.body.appendChild(popup);
-
-        // הסר אוטומטית אחרי 2 דקות
-        setTimeout(() => {
-            if (popup.parentNode) popup.remove();
-        }, 120000);
-    }
-
-    // *** פונקציה חדשה: ניווט לפעילות ומשימה מתוך התזכורת ***
-    async navigateToAlarmTask(activityId, taskId, popupElement) {
-        // סגור את הפופאפ
-        if (popupElement) popupElement.remove();
-
-        // אם הפעילות כבר נבחרת - רק פתח את פופאפ המשימה
-        if (this.currentActivityId === activityId) {
-            await this.openTaskViewPopup(taskId);
-            this.scrollToTask(taskId);
-            return;
-        }
-
-        // בחר את הפעילות (טוען את המשימות שלה)
-        await this.selectActivity(activityId);
-
-        // המתן שהמשימות יטענו ואז פתח את הפופאפ
-        setTimeout(async () => {
-            await this.openTaskViewPopup(taskId);
-            this.scrollToTask(taskId);
-        }, 500);
-    }
-
-    // *** פונקציה חדשה: גלילה למשימה ספציפית והדגשתה ***
-    scrollToTask(taskId) {
-        const taskElement = document.querySelector(
-            `.task-item[data-task-id="${taskId}"]`
-        );
-        if (!taskElement) return;
-
-        // גלול למשימה
-        taskElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-        // הדגש את המשימה לרגע
-        taskElement.classList.add('task-highlight-pulse');
-        setTimeout(() => {
-            taskElement.classList.remove('task-highlight-pulse');
-        }, 3000);
-    }
-
-    async toggleTaskAlarm(taskId) {
-        try {
-            const taskResponse = await fetch(
-                `/Activities/GetTask?taskId=${taskId}&activityId=${this.currentActivityId}`
-            );
-            const taskResult = await taskResponse.json();
-            if (!taskResult.success || !taskResult.task) return;
-
-            const task = taskResult.task;
-            const newAlarm = !task.hasAlarm;
-
-            const response = await fetch('/Activities/UpdateTask', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id: taskId,
-                    activityId: this.currentActivityId,
-                    title: task.title,
-                    description: task.description || '',
-                    priority: task.priority || 'medium',
-                    taskDate: task.taskDate || '',
-                    taskHour: task.taskHour || '',
-                    taskMinute: task.taskMinute || '',
-                    responsiblePerson: task.responsiblePerson || '',
-                    secondaryResponsible: task.secondaryResponsible || '',
-                    notes: task.notes || '',
-                    status: task.status || 'חדש',
-                    hasAlarm: newAlarm
-                })
-            });
-
-            const result = await response.json();
-            if (result.success) {
-                await this.loadActivityTasks(this.currentActivityId, this.currentDate);
-                NotificationManager.show(
-                    newAlarm ? 'תזכורת הוגדרה!' : 'תזכורת בוטלה',
-                    newAlarm ? 'success' : 'info'
-                );
-            }
-        } catch (error) {
-            console.error('Error toggling alarm:', error);
-            NotificationManager.show('שגיאה בעדכון התזכורת', 'error');
-        }
-    }
-
     // Date handling
     handleDateChange(isoDate) {
         if (isoDate) {
@@ -3505,8 +2724,7 @@ class ActivityManager {
         sortOptions.className = 'sort-options';
         sortOptions.innerHTML = `
         <label for="activityTasksSort">מיון משימות:</label>
-        <select id="activityTasksSort" 
-                onchange="activityManager.changeSortMode(this.value)">
+        <select id="activityTasksSort" onchange="activityManager.changeSortMode(this.value)">
             <option value="time">לפי שעה</option>
             <option value="selfOrder">סידור חופשי</option>
         </select>
@@ -3579,257 +2797,6 @@ class ActivityManager {
         });
     }
 
-    // Open templates modal and load templates list
-    async openTemplatesModal() {
-        this.isModalOpen = true;
-        document.getElementById('activityTemplatesModal').style.display = 'block';
-        document.body.style.overflow = 'hidden';
-
-        // Load templates when modal opens
-        await this.loadTemplates();
-    }
-
-    // Close templates modal
-    closeTemplatesModal() {
-        this.isModalOpen = false;
-        document.getElementById('activityTemplatesModal').style.display = 'none';
-        document.body.style.overflow = 'auto';
-    }
-
-    // Load templates from server
-    async loadTemplates() {
-        const listContainer = document.getElementById('templatesList');
-        if (!listContainer) return;
-
-        // Show loading state
-        listContainer.innerHTML = `
-        <div class="templates-loading">
-            <i class="fas fa-spinner fa-spin"></i>
-            <span>טוען טמפלייטים...</span>
-        </div>
-    `;
-
-        try {
-            const response = await fetch('/Activities/GetActivityTemplates');
-            const result = await response.json();
-
-            if (!result.success) {
-                listContainer.innerHTML = `
-                <div class="templates-error">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <span>${result.error || 'שגיאה בטעינת הטמפלייטים'}</span>
-                </div>
-            `;
-                return;
-            }
-
-            const templates = result.templates;
-
-            if (!templates || templates.length === 0) {
-                listContainer.innerHTML = `
-                <div class="templates-empty">
-                    <i class="fas fa-folder-open"></i>
-                    <p>לא נמצאו טמפלייטים זמינים.</p>
-                    <small>העלה טמפלייט ראשון באמצעות הכפתור למעלה</small>
-                </div>
-            `;
-                return;
-            }
-
-            // *** כפתור מחיקה לכל שורה ***
-            listContainer.innerHTML = templates.map(template => `
-            <div class="template-item" id="template-${template.fileName.replace(/\./g, '-')}">
-                <div class="template-info">
-                    <i class="fas fa-file-excel template-icon"></i>
-                    <div class="template-details">
-                        <span class="template-name">${template.displayName}</span>
-                        <span class="template-meta">
-                            ${this.formatFileSize(template.fileSize)} · 
-                            עודכן: ${template.lastModified}
-                        </span>
-                    </div>
-                </div>
-                <div class="template-actions">
-                    <button class="template-download-btn" 
-                            onclick="activityManager.downloadTemplate('${template.fileName}')"
-                            title="הורד טמפלייט">
-                        <i class="fas fa-download"></i>
-                        הורד
-                    </button>
-                    ${this.isAdmin() ? `
-                    <button class="template-delete-btn" 
-                            onclick="activityManager.deleteTemplate('${template.fileName}')"
-                            title="מחק טמפלייט">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                    ` : ''}
-                </div>
-            </div>
-        `).join('');
-
-        } catch (error) {
-            console.error('Error loading templates:', error);
-            listContainer.innerHTML = `
-            <div class="templates-error">
-                <i class="fas fa-exclamation-triangle"></i>
-                <span>שגיאה בחיבור לשרת</span>
-            </div>
-        `;
-        }
-    }
-
-    // Download a specific template
-    downloadTemplate(fileName) {
-        // Trigger file download via direct link
-        const downloadUrl = `/Activities/DownloadTemplate?fileName=${encodeURIComponent(fileName)}`;
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.download = fileName;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-
-        NotificationManager.show(`מוריד: ${fileName}`, 'info');
-    }
-
-    // פתיחת בורר קבצים להעלאת טמפלייט
-    openUploadTemplateDialog() {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.xlsx,.xls';
-        input.style.display = 'none';
-
-        input.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                this.uploadTemplate(file);
-            }
-            document.body.removeChild(input);
-        });
-
-        document.body.appendChild(input);
-        input.click();
-    }
-
-    // העלאת טמפלייט לשרת
-    async uploadTemplate(file) {
-        // ולידציה
-        if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
-            NotificationManager.show(
-                'יש לבחור קובץ אקסל בלבד (.xlsx או .xls)',
-                'warning'
-            );
-            return;
-        }
-
-        // הצג אינדיקטור טעינה
-        const uploadBtn = document.getElementById('uploadTemplateBtn');
-        if (uploadBtn) {
-            uploadBtn.disabled = true;
-            uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> מעלה...';
-        }
-
-        // הצג שורת התקדמות
-        this.showTemplateUploadProgress(file.name);
-
-        try {
-            const formData = new FormData();
-            formData.append('templateFile', file);
-
-            const response = await fetch('/Activities/UploadTemplate', {
-                method: 'POST',
-                body: formData
-            });
-
-            const result = await response.json();
-
-            if (result.success) {
-                NotificationManager.show(
-                    `הטמפלייט "${file.name}" הועלה בהצלחה!`,
-                    'success'
-                );
-                // רענן את רשימת הטמפלייטים
-                await this.loadTemplates();
-            } else {
-                NotificationManager.show(
-                    result.error || 'שגיאה בהעלאת הטמפלייט',
-                    'error'
-                );
-            }
-        } catch (error) {
-            console.error('Error uploading template:', error);
-            NotificationManager.show('שגיאה בחיבור לשרת', 'error');
-        } finally {
-            // החזר כפתור למצב רגיל
-            if (uploadBtn) {
-                uploadBtn.disabled = false;
-                uploadBtn.innerHTML =
-                    '<i class="fas fa-upload"></i> העלה טמפלייט';
-            }
-            this.hideTemplateUploadProgress();
-        }
-    }
-
-    // הצג שורת התקדמות העלאה
-    showTemplateUploadProgress(fileName) {
-        const container = document.getElementById('templateUploadProgress');
-        if (!container) return;
-
-        container.style.display = 'flex';
-        container.innerHTML = `
-        <div class="template-upload-progress-inner">
-            <i class="fas fa-spinner fa-spin"></i>
-            <span>מעלה: <strong>${fileName}</strong></span>
-        </div>
-    `;
-    }
-
-    // הסתר שורת התקדמות
-    hideTemplateUploadProgress() {
-        const container = document.getElementById('templateUploadProgress');
-        if (container) {
-            container.style.display = 'none';
-            container.innerHTML = '';
-        }
-    }
-
-    // מחיקת טמפלייט
-    async deleteTemplate(fileName) {
-        if (!confirm(`האם למחוק את הטמפלייט "${fileName}"?`)) return;
-
-        try {
-            const response = await fetch(
-                `/Activities/DeleteTemplate?fileName=${encodeURIComponent(fileName)}`,
-                { method: 'DELETE' }
-            );
-
-            const result = await response.json();
-
-            if (result.success) {
-                NotificationManager.show(
-                    `הטמפלייט "${fileName}" נמחק בהצלחה`,
-                    'success'
-                );
-                await this.loadTemplates();
-            } else {
-                NotificationManager.show(
-                    result.error || 'שגיאה במחיקת הטמפלייט',
-                    'error'
-                );
-            }
-        } catch (error) {
-            console.error('Error deleting template:', error);
-            NotificationManager.show('שגיאה בחיבור לשרת', 'error');
-        }
-    }
-
-    // Format file size to human-readable string
-    formatFileSize(bytes) {
-        if (bytes < 1024) return bytes + ' B';
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-    }
-
     // Auto refresh data
     startAutoRefresh() {
         // נקה interval קיים אם יש
@@ -3884,10 +2851,7 @@ let activityManager;
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function () {
-    // אם ActivitiesDashboard כבר יצר instance - אל תיצור שוב
-    if (!window.activityManager) {
-        activityManager = new ActivityManager();
-        activityManager.initialize();
-    }
+    activityManager = new ActivityManager();
+    activityManager.initialize();
 });
 

@@ -1,4 +1,5 @@
 
+using Microsoft.AspNetCore.Hosting;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -17,16 +18,14 @@ namespace MyWebApp.Controllers
         private readonly string _proceduresPath;
         private readonly string _pdfCachePath; 
         private readonly string _metadataPath; 
-        private readonly string _quickProceduresPath;
+        private readonly string _contentRootPath;
 
-        public ProceduresController()
+        public ProceduresController(IWebHostEnvironment env)
         {
-            _proceduresPath = @"R:\USERS\TASHTIT\NOC\נהלים";
+            _contentRootPath = env.WebRootPath;
+            _proceduresPath = Path.Combine(_contentRootPath, "portal", "נהלים");
             _pdfCachePath = Path.Combine(Path.GetTempPath(), "ProceduresPdfCache");
-            _metadataPath = Path.Combine(@"R:\USERS\TASHTIT\NOC\Portal\files\Procedures", "Metadata");
-            _quickProceduresPath = Path.Combine(
-                @"R:\USERS\TASHTIT\NOC\Portal\files\Procedures", 
-                "QuickProcedures");
+            _metadataPath = Path.Combine(_contentRootPath, "assets", "files", "Procedures", "Metadata");
 
             // Create cache directory if it doesn't exist
             if (!Directory.Exists(_pdfCachePath))
@@ -45,10 +44,6 @@ namespace MyWebApp.Controllers
             {
                 Directory.CreateDirectory(_metadataPath);
             }
-            if (!Directory.Exists(_quickProceduresPath))
-            {
-                Directory.CreateDirectory(_quickProceduresPath);
-            }
         }
 
         [HttpGet]
@@ -63,8 +58,6 @@ namespace MyWebApp.Controllers
 
                 // Get all files including files in subdirectories
                 var files = Directory.GetFiles(_proceduresPath, "*.*", SearchOption.AllDirectories)
-                    // *** תיקון: סנן קבצי נעילה זמניים של Office (מתחילים ב-~$) ***
-                    .Where(filePath => !Path.GetFileName(filePath).StartsWith("~$"))
                     .Select(filePath => new
                     {
                         fileName = Path.GetFileName(filePath),
@@ -87,6 +80,7 @@ namespace MyWebApp.Controllers
                 return Json(new { error = ex.Message });
             }
         }
+
 
         [HttpGet]
         public IActionResult ViewFile(string fileName, string folderPath = "")
@@ -135,9 +129,7 @@ namespace MyWebApp.Controllers
                         Response.Headers.Add("Content-Disposition", "inline; filename*=UTF-8''" + System.Net.WebUtility.UrlEncode(Path.GetFileNameWithoutExtension(fileName) + ".pdf"));
                         Response.Headers.Add("Content-Length", pdfBytes.Length.ToString());
                         Response.Headers.Add("Accept-Ranges", "bytes");
-                        Response.Headers.Add("Cache-Control", "public, max-age=3600,no-cache, no-store, must-revalidate");
-                        Response.Headers.Add("Pragma", "no-cache");
-                        Response.Headers.Add("Expires", "0");
+                        Response.Headers.Add("Cache-Control", "public, max-age=3600");
                         
                         return File(pdfBytes, "application/pdf");
                     }
@@ -204,7 +196,7 @@ namespace MyWebApp.Controllers
                     catch (Exception ex)
                     {
                         Console.WriteLine($"Unexpected error serving PDF: {filePath}, Error: {ex.Message}");
-                        return StatusCode(500, new { error = $"Error: {ex.Message}" });
+                        return StatusCode(500, new { error = $"שגיאה: {ex.Message}" });
                     }
                 }
                 
@@ -534,7 +526,7 @@ namespace MyWebApp.Controllers
             try
             {
                 // Path to images folder
-                var imagesPath = @"R:\USERS\TASHTIT\NOC\Portal\files\ProcedureImages";
+                var imagesPath = Path.Combine(_contentRootPath, "assets", "files", "ProcedureImages");
                 var imagePath = Path.Combine(imagesPath, fileName);
                 
                 if (!System.IO.File.Exists(imagePath))
@@ -554,46 +546,30 @@ namespace MyWebApp.Controllers
         }
         
         [HttpDelete]
-        public IActionResult DeleteCachedPdf(string fileName, string folderPath = "")
+        public IActionResult DeleteCachedPdf(string fileName)
         {
             try
             {
-                string originalFilePath;
+                // Get file info to generate cache file name
+                var files = Directory.GetFiles(_proceduresPath, fileName, SearchOption.AllDirectories);
                 
-                if (!string.IsNullOrEmpty(folderPath))
+                if (files.Length == 0)
                 {
-                    originalFilePath = Path.Combine(_proceduresPath, folderPath, fileName);
-                    if (!System.IO.File.Exists(originalFilePath))
-                    {
-                        return Json(new { success = false, error = "Original file not found" });
-                    }
-                }
-                else
-                {
-                    var files = Directory.GetFiles(_proceduresPath, fileName, SearchOption.AllDirectories);
-                    if (files.Length == 0)
-                    {
-                        return Json(new { success = false, error = "Original file not found" });
-                    }
-                    originalFilePath = files[0];
-                }
-
-                // *** תיקון: מחק את כל קבצי הקאש שמתאימים לשם הקובץ ***
-                // במקום לחפש לפי LastWriteTime ספציפי
-                var fileNameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
-                var deletedCount = 0;
-                
-                // מצא ומחק את כל קבצי הקאש עם הקידומת הזו
-                var cachedFiles = Directory.GetFiles(_pdfCachePath, $"{fileNameWithoutExt}_*.pdf");
-                foreach (var cachedFile in cachedFiles)
-                {
-                    System.IO.File.Delete(cachedFile);
-                    deletedCount++;
+                    return Json(new { success = false, error = "Original file not found" });
                 }
                 
-                if (deletedCount > 0)
+                var originalFilePath = files[0];
+                var fileInfo = new FileInfo(originalFilePath);
+                
+                // Generate cache file name (same logic as in conversion methods)
+                var cacheFileName = $"{Path.GetFileNameWithoutExtension(fileName)}_{fileInfo.LastWriteTime.Ticks}.pdf";
+                var cachedPdfPath = Path.Combine(_pdfCachePath, cacheFileName);
+                
+                // Delete cached PDF if exists
+                if (System.IO.File.Exists(cachedPdfPath))
                 {
-                    return Json(new { success = true, message = $"Deleted {deletedCount} cached PDF(s)" });
+                    System.IO.File.Delete(cachedPdfPath);
+                    return Json(new { success = true, message = "Cached PDF deleted successfully" });
                 }
                 
                 return Json(new { success = true, message = "No cached PDF found" });
@@ -639,132 +615,6 @@ namespace MyWebApp.Controllers
             catch (Exception ex)
             {
                 return Json(new { error = ex.Message });
-            }
-        }
-
-        [HttpGet]
-        public IActionResult GetQuickProcedures()
-        {
-            try
-            {
-                if (!Directory.Exists(_quickProceduresPath))
-                    return Json(new List<object>());
-
-                var files = Directory.GetFiles(_quickProceduresPath, "*.json")
-                    .Select(f =>
-                    {
-                        var json = System.IO.File.ReadAllText(f, Encoding.UTF8);
-                        var obj = System.Text.Json.JsonSerializer.Deserialize<
-                            Dictionary<string, string>>(json);
-                        return obj;
-                    })
-                    .Where(obj => obj != null)
-                    .OrderByDescending(obj => obj.ContainsKey("lastModified") 
-                        ? obj["lastModified"] : "")
-                    .ToList();
-
-                return Json(files);
-            }
-            catch (Exception ex)
-            {
-                return Json(new { error = ex.Message });
-            }
-        }
-
-        [HttpPost]
-        public async Task<IActionResult> SaveQuickProcedure(
-            [FromBody] QuickProcedureRequest request)
-        {
-            try
-            {
-                if (string.IsNullOrWhiteSpace(request.Title))
-                    return Json(new { success = false, error = "כותרת חסרה" });
-
-                if (string.IsNullOrWhiteSpace(request.Content))
-                    return Json(new { success = false, error = "תוכן חסר" });
-
-                // הגדל מגבלה - תמונות base64 גדולות יותר
-                // בדוק רק את הטקסט (ללא תגי HTML ותמונות)
-                var textOnly = System.Text.RegularExpressions.Regex.Replace(
-                    request.Content, "<[^>]*>", "");
-                textOnly = System.Text.RegularExpressions.Regex.Replace(
-                    textOnly, @"data:image[^;]+;base64,[A-Za-z0-9+/=]+", "[תמונה]");
-
-                if (textOnly.Length > 2000)
-                    return Json(new { success = false, error = "התוכן חורג מ-2000 תווים" });
-
-                // בדוק גודל כולל (כולל תמונות) - מקסימום 5MB
-                if (request.Content.Length > 5 * 1024 * 1024)
-                    return Json(new { success = false, error = "התוכן גדול מדי (מקסימום 5MB כולל תמונות)" });
-
-                // אם עריכה - מחק קובץ ישן
-                if (!string.IsNullOrEmpty(request.Id))
-                {
-                    var oldFile = Path.Combine(_quickProceduresPath,
-                        $"{request.Id}.json");
-                    if (System.IO.File.Exists(oldFile))
-                        System.IO.File.Delete(oldFile);
-                }
-
-                var id = request.Id ?? Guid.NewGuid().ToString("N");
-                var userName = !string.IsNullOrEmpty(request.UserName)
-                    ? request.UserName
-                    : User.Identity?.Name ?? "Unknown";
-
-                if (userName.Contains("\\"))
-                    userName = userName.Split('\\')[1];
-
-                var data = new Dictionary<string, string>
-                {
-                    ["id"]           = id,
-                    ["title"]        = request.Title,
-                    ["content"]      = request.Content,  // שמור HTML כולל תמונות
-                    ["modifiedBy"]   = userName,
-                    ["lastModified"] = DateTime.Now.ToString("dd/MM/yyyy HH:mm")
-                };
-
-                var json = System.Text.Json.JsonSerializer.Serialize(data,
-                    new System.Text.Json.JsonSerializerOptions
-                    {
-                        WriteIndented = true,
-                        Encoder = System.Text.Encodings.Web.JavaScriptEncoder
-                            .UnsafeRelaxedJsonEscaping
-                    });
-
-                var filePath = Path.Combine(_quickProceduresPath, $"{id}.json");
-                await System.IO.File.WriteAllTextAsync(filePath, json, Encoding.UTF8);
-
-                return Json(new { success = true, id = id });
-            }
-            catch (Exception ex)
-            {
-                return Json(new { success = false, error = ex.Message });
-            }
-        }
-
-        [HttpDelete]
-        public IActionResult DeleteQuickProcedure(string id)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(id))
-                    return Json(new { success = false, error = "ID חסר" });
-
-                // אבטחה: וודא שה-ID לא מכיל תווים מסוכנים
-                if (id.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
-                    return Json(new { success = false, error = "ID לא תקין" });
-
-                var filePath = Path.Combine(_quickProceduresPath, $"{id}.json");
-
-                if (!System.IO.File.Exists(filePath))
-                    return Json(new { success = false, error = "הנוהל לא נמצא" });
-
-                System.IO.File.Delete(filePath);
-                return Json(new { success = true, message = "הנוהל המהיר נמחק" });
-            }
-            catch (Exception ex)
-            {
-                return Json(new { success = false, error = ex.Message });
             }
         }
 
@@ -954,10 +804,6 @@ namespace MyWebApp.Controllers
         {
             // Generate cache file name based on original file hash
             var fileInfo = new FileInfo(wordFilePath);
-            
-            // רענן את מידע הקובץ מהדיסק (חשוב לקבצי רשת!)
-            fileInfo.Refresh();
-            
             var cacheFileName = $"{Path.GetFileNameWithoutExtension(wordFilePath)}_{fileInfo.LastWriteTime.Ticks}.pdf";
             var pdfPath = Path.Combine(_pdfCachePath, cacheFileName);
             
@@ -965,13 +811,10 @@ namespace MyWebApp.Controllers
             if (System.IO.File.Exists(pdfPath))
             {
                 var pdfInfo = new FileInfo(pdfPath);
-                pdfInfo.Refresh(); // רענן גם את מידע קובץ הקאש
                 if (pdfInfo.LastWriteTime >= fileInfo.LastWriteTime)
                 {
                     return pdfPath;
                 }
-                // מחק קאש ישן
-                System.IO.File.Delete(pdfPath);
             }
             
             // Convert Word to PDF using helper class
@@ -979,7 +822,7 @@ namespace MyWebApp.Controllers
             {
                 try
                 {
-                    helper.OpenDocument(wordFilePath, true);
+                    helper.OpenDocument(wordFilePath, true); // readOnly = true
                     helper.SaveAsPdf(pdfPath);
                     return pdfPath;
                 }
@@ -994,10 +837,6 @@ namespace MyWebApp.Controllers
         private string ConvertExcelToPdf(string excelFilePath)
         {
             var fileInfo = new FileInfo(excelFilePath);
-            
-            // רענן את מידע הקובץ מהדיסק
-            fileInfo.Refresh();
-            
             var cacheFileName = $"{Path.GetFileNameWithoutExtension(excelFilePath)}_{fileInfo.LastWriteTime.Ticks}.pdf";
             var pdfPath = Path.Combine(_pdfCachePath, cacheFileName);
             
@@ -1005,12 +844,10 @@ namespace MyWebApp.Controllers
             if (System.IO.File.Exists(pdfPath))
             {
                 var pdfInfo = new FileInfo(pdfPath);
-                pdfInfo.Refresh();
                 if (pdfInfo.LastWriteTime >= fileInfo.LastWriteTime)
                 {
                     return pdfPath;
                 }
-                System.IO.File.Delete(pdfPath);
             }
             
             // Convert Excel to PDF using helper class
@@ -1093,12 +930,4 @@ namespace MyWebApp.Controllers
             }
         }
     }
-}
-
-public class QuickProcedureRequest
-{
-    public string? Id { get; set; }
-    public string Title { get; set; } = "";
-    public string Content { get; set; } = "";
-    public string? UserName { get; set; }
 }

@@ -32,15 +32,6 @@ namespace NocPortal.Models
         [JsonPropertyName("displayName")]
         public string DisplayName { get; set; } = string.Empty;
 
-        [JsonPropertyName("email")]
-        public string Email { get; set; } = string.Empty;
-
-        [JsonPropertyName("mustChangePassword")]
-        public bool MustChangePassword { get; set; } = false;
-
-        [JsonPropertyName("temporaryPasswordSetAt")]
-        public DateTime? TemporaryPasswordSetAt { get; set; }
-
         public List<string> AllowedDashboards { get; set; } = new();
     }
 
@@ -58,7 +49,6 @@ namespace NocPortal.Models
         public string Password { get; set; } = string.Empty;
         public string ConfirmPassword { get; set; } = string.Empty;
         public string DisplayName { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;
         public UserRole Role { get; set; } = UserRole.Dashboard;
         public string? ErrorMessage { get; set; }
         public string? SuccessMessage { get; set; }

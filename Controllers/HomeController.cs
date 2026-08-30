@@ -22,6 +22,16 @@ namespace MyWebApp.Controllers
         }
         // ─────────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// Public landing page - no authorization required
+        /// </summary>
+        [AllowAnonymous]
+        [HttpGet("/")]
+        public IActionResult Landing()
+        {
+            return View();
+        }
+
         [Authorize(Roles = "Admin,NOC")]
         public IActionResult Index()
         {

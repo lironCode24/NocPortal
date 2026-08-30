@@ -32,10 +32,6 @@ class MessagesManager {
         this.emailMappingCache = null; // מטמון למיפוי מיילים
         this.missingEmailMappings = new Set(); // שמירת שמות שלא נמצאו במיפוי
 
-        this._selectedPermIds = new Set();
-
-        this.currentUser = null;
-        this.loadCurrentUser();
 
         this.setupSearch();
         this.setupFilters();
@@ -52,82 +48,6 @@ class MessagesManager {
         this.setupAlertImageDragDrop();
         this.setupTablePasteSupport();
         this.addTableStyles();
-        this.loadCurrentUserRole();
-
-        this._permanentAccessList = [];
-        this.loadPermanentAccessList(); // טעינה ראשונית ברקע
-    }
-
-    // פונקציה לטעינת תפקיד המשתמש הנוכחי
-    async loadCurrentUserRole() {
-        try {
-            const response = await fetch('/Auth/GetCurrentUserRole');
-            if (response.ok) {
-                const data = await response.json();
-                this.currentUserRole = data.role || 'user';
-                this.currentUserName = data.username || '';
-            }
-        } catch (error) {
-            console.warn('Could not load user role:', error);
-            this.currentUserRole = 'user'; // ברירת מחדל - משתמש רגיל
-        }
-    }
-
-    getCurrentUserName() {
-        if (this.currentUser?.displayName) return this.currentUser.displayName;
-        if (this.currentUser?.username) return this.currentUser.username;
-        return this.getLastSelectedEmployee() || '';
-    }
-
-    async loadCurrentUser() {
-        try {
-            const cached = sessionStorage.getItem('currentUser');
-            if (cached) {
-                this.currentUser = JSON.parse(cached);
-                this._applyCurrentUserAsReadonly('messageAuthor');
-                return;
-            }
-            const response = await fetch('/Auth/Me', { credentials: 'include' });
-            if (response.ok) {
-                this.currentUser = await response.json();
-                sessionStorage.setItem('currentUser', JSON.stringify(this.currentUser));
-            }
-        } catch (err) {
-            console.warn('Could not load current user:', err);
-            this.currentUser = null;
-        }
-    }
-
-    _applyCurrentUserAsAuthor() {
-        const userName = this.getCurrentUserName();
-        if (!userName) return;
-
-        // ← שמור כברירת מחדל ב-localStorage
-        this.saveLastSelectedAuthor(userName);
-
-        // ← עדכן שדה מחבר אם המודל פתוח
-        const authorSelect = document.getElementById('messageAuthor');
-        if (!authorSelect) return;
-
-        const optionExists = Array.from(authorSelect.options)
-            .some(opt => opt.value === userName);
-
-        if (optionExists) {
-            authorSelect.value = userName;
-        } else {
-            // ← אם לא קיים ברשימה - הוסף אפשרות
-            const option = document.createElement('option');
-            option.value = userName;
-            option.textContent = userName;
-            authorSelect.appendChild(option);
-            authorSelect.value = userName;
-        }
-    }
-
-    // פונקציית עזר לבדיקת הרשאת Admin
-    isAdmin() {
-        return this.currentUserRole === 'Admin' ||
-            this.currentUserRole === 'admin';
     }
 
     async loadEmployees() {
@@ -191,13 +111,6 @@ class MessagesManager {
 
         // הוסף את מאזין האירועים לכל הפופאפים
         document.addEventListener('click', preventOutsideClick, true);
-
-        document.addEventListener('mousedown', (e) => {
-            // סגור dropdowns אם לחצו מחוץ ל-toolbar
-            if (!e.target.closest('.toolbar-btn-wrap')) {
-                this._closeAllDropdowns();
-            }
-        });
     }
 
     saveLastSelectedAuthor(authorName) {
@@ -216,24 +129,16 @@ class MessagesManager {
         const authorSelect = document.getElementById('messageAuthor');
         if (!authorSelect) return;
 
-        // ← שנה: בדוק יוזר מחובר קודם
-        const currentUser = this.getCurrentUserName();
-        const authorToSet = currentUser || this.getLastSelectedAuthor();
+        const lastAuthor = this.getLastSelectedAuthor();
+        if (lastAuthor) {
+            // Check if author exists in options
+            const optionExists = Array.from(authorSelect.options).some(
+                option => option.value === lastAuthor
+            );
 
-        if (!authorToSet) return;
-
-        const optionExists = Array.from(authorSelect.options)
-            .some(opt => opt.value === authorToSet);
-
-        if (optionExists) {
-            authorSelect.value = authorToSet;
-        } else if (currentUser) {
-            // ← הוסף את היוזר המחובר אם לא קיים
-            const option = document.createElement('option');
-            option.value = currentUser;
-            option.textContent = currentUser;
-            authorSelect.appendChild(option);
-            authorSelect.value = currentUser;
+            if (optionExists) {
+                authorSelect.value = lastAuthor;
+            }
         }
     }
 
@@ -272,8 +177,10 @@ class MessagesManager {
         const authorSelect = document.getElementById('messageAuthor');
         if (!authorSelect) return;
 
+        // Clear existing options except the first one
         authorSelect.innerHTML = '<option value="">בחר מחבר...</option>';
 
+        // Add employee options
         this.employees.forEach(employee => {
             const option = document.createElement('option');
             option.value = employee.name;
@@ -281,43 +188,20 @@ class MessagesManager {
             authorSelect.appendChild(option);
         });
 
-        // ← שנה: העדף יוזר מחובר על פני lastSelectedAuthor
-        const currentUser = this.getCurrentUserName();
-        const lastAuthor = this.getLastSelectedAuthor();
-        const authorToSet = currentUser || lastAuthor;
-
-        if (authorToSet) {
-            const optionExists = Array.from(authorSelect.options)
-                .some(opt => opt.value === authorToSet);
-
-            if (optionExists) {
-                authorSelect.value = authorToSet;
-            } else if (currentUser) {
-                // ← הוסף את היוזר המחובר אם לא קיים ברשימה
-                const option = document.createElement('option');
-                option.value = currentUser;
-                option.textContent = currentUser;
-                authorSelect.appendChild(option);
-                authorSelect.value = currentUser;
-            }
-        }
+        // Set last selected author as default (shared with DailyTasksManager)
+        this.setDefaultAuthor();
     }
 
     handleEmployeeLoadError() {
-        const currentUser = this.getCurrentUserName();
-        let author = currentUser || '';
-
-        if (!author) {
-            // fallback - קרא מה-select רק אם אין יוזר מחובר
-            const authorSelect = document.getElementById('permitAuthor');
-            const customAuthorInput = document.getElementById('permitCustomAuthorInput');
-            if (authorSelect) {
-                if (authorSelect.value === 'other') {
-                    author = customAuthorInput?.value.trim() || '';
-                } else {
-                    author = authorSelect.value;
-                }
-            }
+        const authorSelect = document.getElementById('messageAuthor');
+        if (authorSelect) {
+            // Convert select back to input if needed
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.id = 'messageAuthor';
+            input.className = 'form-input';
+            input.placeholder = 'מנהל מערכת';
+            authorSelect.parentNode.replaceChild(input, authorSelect);
         }
     }
 
@@ -532,76 +416,8 @@ class MessagesManager {
         }
     }
 
-    async getEmailByNameWithFallback(name) {
-        if (!name || name.trim() === '' ||
-            name === '-' || name === 'NULL') {
-            return '';
-        }
-
-        // ─── שלב 1: בדוק cache מקומי ─────────────────────────────
-        const cached = this.getEmailByName(name);
-        if (cached && (
-            !cached.includes('menoramivt.co.il') ||
-            this.emailMappingCache?.[name.toLowerCase()]
-        )) {
-            return cached;
-        }
-
-        // ─── שלב 2: שאל את השרת (ספר טלפונים + עץ ארגוני) ──────
-        try {
-            const response = await fetch(
-                `/PhoneDirectory/GetManagerEmail?name=${encodeURIComponent(name)}`
-            );
-            const data = await response.json();
-
-            if (data.success && data.email) {
-                if (!this.emailMappingCache) this.emailMappingCache = {};
-                this.emailMappingCache[name.toLowerCase()] = data.email;
-                return data.email;
-            }
-        } catch (e) {
-            console.log(`לא ניתן לאחזר מייל עבור: ${name} מספר הטלפונים`)
-            NotificationManager.show(
-                `לא ניתן לאחזר מייל עבור: ${name} מספר הטלפונים`,
-                'warning'
-            );
-        }
-
-        // ─── שלב 3: fallback לעץ ארגוני ─────────────────────────
-        try {
-            const response = await fetch(
-                `/OrgTree/GetEmployeeSubTree?employeeId=${encodeURIComponent(name)}`
-            );
-            const data = await response.json();
-
-            if (data.success && data.root) {
-                // נסה למצוא מייל של המנהל
-                const managerName = data.root.managerId;
-                if (managerName) {
-                    const managerEmail = await this.getEmailByNameWithFallback(
-                        managerName
-                    );
-                    if (managerEmail) {
-                        console.log(`'${name}' לא נמצא - משתמש במנהל: ${managerName}`)
-                        NotificationManager.show(
-                            `'${name}' לא נמצא - משתמש במנהל: ${managerName}`,
-                            'info'
-                        );
-                        return managerEmail;
-                    }
-                }
-            }
-        } catch (e) {
-            console.warn('Could not fetch from org tree:', e);
-        }
-
-        // ─── שלב 4: הוסף לרשימת החסרים ──────────────────────────
-        this.missingEmailMappings.add(name);
-        return '';
-    }
-
     // פונקציה להכנת רשימות נמענים למייל UC4
-    async prepareUC4EmailRecipientsAsync(processedData) {
+    prepareUC4EmailRecipients(processedData) {
         const { jobsByResponsible, nullResponsibleJobs } = processedData;
 
         // בניית רשימת נמענים
@@ -613,49 +429,39 @@ class MessagesManager {
         // פונקציית עזר להוספת מיילים עם טיפול בפיצול לפי נקודה-פסיק
         const addEmailToList = (emailList, email, skipIfExists = true) => {
             if (!email) return;
+
             // פיצול במקרה של מספר מיילים מופרדים בנקודה-פסיק
             const emailParts = email.split(';');
+
             for (let part of emailParts) {
                 part = part.trim();
                 if (!part) continue;
+
                 const emailLower = part.toLowerCase();
 
                 // בדוק אם המייל כבר קיים (אם skipIfExists=true)
                 if (skipIfExists && addedEmails.has(emailLower)) continue;
+
                 emailList.push(part);
                 addedEmails.add(emailLower);
             }
         };
 
-        // ─── הוסף אחראים עם fallback ─────────────────────────────
+        // הוספת אחראים לרשימת הנמענים
         for (const responsible of Object.keys(jobsByResponsible)) {
-            if (!responsible || responsible === '-' ||
-                responsible === 'NULL' ||
-                responsible.trim() === '') continue;
-
-            // ← שימוש בפונקציה החדשה עם fallback
-            const email = await this.getEmailByNameWithFallback(responsible);
+            // הוספת האחראי כנמען
+            const email = this.getEmailByName(responsible);
             if (email) {
                 addEmailToList(toAddresses, email);
-            } else {
-                console.warn(
-                    `[UC4] לא נמצא מייל עבור: ${responsible}`
-                );
             }
         }
 
-        // ─── CC קבוע ─────────────────────────────────────────────
+        // רשימת עותקים קבועה
         let ccAddresses = [];
         const fixedCCs = [
             "yanivkat@menoramivt.co.il",
-            "davidday@menoramivt.co.il",
-            "pdl-automationteam@menoramivt.net",
             "anata@menora.co.il",
-            "borisk@menora.co.il",
-            "yomtovg@menoramivt.co.il",
-            "zoharlu@menoramivt.co.il",
-            "chenmo@menoramivt.co.il",
-            "monak@menoramivt.co.il"
+            "borisk@menora.co.il"
         ];
 
         // הוסף את הכתובות הקבועות לרשימת העותקים אם הן לא כבר ברשימת הנמענים
@@ -663,35 +469,32 @@ class MessagesManager {
             addEmailToList(ccAddresses, ccEmail);
         }
 
-        // ─── אחראים משניים ───────────────────────────────────────
+        // הוספת אחראים משניים לעותקים
         for (const jobs of Object.values(jobsByResponsible)) {
-            for (const job of jobs) {
-                if (job.responsibleUser1 &&
-                    job.responsibleUser1 !== 'NULL') {
-                    const email = await this.getEmailByNameWithFallback(
-                        job.responsibleUser1
-                    );
-                    if (email) addEmailToList(ccAddresses, email);
+            jobs.forEach(job => {
+                if (job.responsibleUser1 && job.responsibleUser1 !== 'NULL') {
+                    const email = this.getEmailByName(job.responsibleUser1);
+                    if (email) {
+                        addEmailToList(ccAddresses, email);
+                    }
                 }
-            }
+            });
         }
 
         // הוספת אחראים משניים מג'ובים ללא אחראי
-        for (const job of nullResponsibleJobs) {
-            if (job.responsibleUser1 &&
-                job.responsibleUser1 !== 'NULL') {
-                const email = await this.getEmailByNameWithFallback(
-                    job.responsibleUser1
-                );
-                if (email) addEmailToList(ccAddresses, email);
+        nullResponsibleJobs.forEach(job => {
+            if (job.responsibleUser1 && job.responsibleUser1 !== 'NULL') {
+                const email = this.getEmailByName(job.responsibleUser1);
+                if (email) {
+                    addEmailToList(ccAddresses, email);
+                }
             }
-        }
+        });
+
         // אם יש ג'ובים ללא אחראי, הוסף את רשימת תפוצה צוות אוטומציה תהליכים לנמענים
         if (nullResponsibleJobs.length > 0) {
-            addEmailToList(
-                toAddresses,
-                "pdl-automationteam@menoramivt.net"
-            );
+            const automationTeamEmail = "pdl-automationteam@menoramivt.net";
+            addEmailToList(toAddresses, automationTeamEmail);
         }
 
         return { toAddresses, ccAddresses };
@@ -742,6 +545,7 @@ class MessagesManager {
         }
     }
 
+    // פונקציה לעיבוד נתוני הג'ובים מ-UC4
     processUC4JobData(tableData) {
         try {
             // מיפוי אינדקסים של העמודות הרלוונטיות
@@ -824,129 +628,6 @@ class MessagesManager {
                 // אם יש אחראי ראשי
                 else {
                     // הוסף לרשימת האחראי הראשי
-                    if (!jobsByResponsible[job.responsibleUser]) {
-                        jobsByResponsible[job.responsibleUser] = [];
-                    }
-                    jobsByResponsible[job.responsibleUser].push(job);
-                }
-            });
-
-            return {
-                jobsByResponsible,
-                nullResponsibleJobs,
-                allJobs: filteredJobs
-            };
-        } catch (error) {
-            console.error('Error processing UC4 job data:', error);
-            throw error;
-        }
-    }
-
-    // פונקציה לעיבוד נתוני הג'ובים מ-controll m
-    processControlMJobData(tableData) {
-        try {
-            const headers = tableData[0];
-
-            // מיפוי עמודות - עם fallback לעמודות חלופיות
-            const folderIndex = headers.indexOf('Folder');
-            const jobNameIndex = headers.indexOf('Job Name');
-            const startTimeIndex = headers.indexOf('Start Time');
-            const endTimeIndex = headers.indexOf('End Time');
-            const hostIndex = headers.indexOf('Host');
-            const runIdIndex = headers.indexOf('Run ID');
-            const runAsUserIndex = headers.indexOf('Run as user');
-            const runTimeIndex = headers.indexOf('Run Time (Sec.)');
-
-            // עמודות אופציונליות (לפורמט הישן)
-            const jobTypeIndex = headers.indexOf('Job Type');
-            const statusIndex = headers.indexOf('Status');
-            const responsibleUserIndex = headers.indexOf('Responsible User');
-            const responsibleUser1Index = headers.indexOf('Responsible User1');
-
-            // *** סינון מותאם לפי הפורמט שנמצא ***
-            const filteredJobs = tableData.slice(1).filter(row => {
-                // אם יש עמודת Job Type - סנן לפיה
-                if (jobTypeIndex !== -1) {
-                    return row[jobTypeIndex] === 'JOBS';
-                }
-
-                // אחרת - קח את כל השורות שיש להן שם ג'וב
-                if (jobNameIndex !== -1) {
-                    return row[jobNameIndex] && row[jobNameIndex].trim() !== '';
-                }
-
-                return true;
-            }).map(row => {
-                // טיפול בתאריך Start Time
-                let startTime = startTimeIndex !== -1 ? row[startTimeIndex] : '';
-
-                // אם Start Time מכיל 1900 - השתמש בעמודה אחרת
-                if (startTime && startTime.includes('1900')) {
-                    const activationTimeIndex = headers.indexOf('Activation Time');
-                    if (activationTimeIndex !== -1) {
-                        startTime = row[activationTimeIndex];
-                    }
-                }
-
-                return {
-                    jobName: jobNameIndex !== -1 ? (row[jobNameIndex] || '') : '',
-                    jobParent: folderIndex !== -1 ? (row[folderIndex] || '') : '',
-                    folder: folderIndex !== -1 ? (row[folderIndex] || '') : '',
-                    startTime: startTime || '',
-                    endTime: endTimeIndex !== -1 ? (row[endTimeIndex] || '') : '',
-                    runTime: runTimeIndex !== -1 ? (row[runTimeIndex] || '') : '',
-                    host: hostIndex !== -1 ? (row[hostIndex] || '') : '',
-                    runId: runIdIndex !== -1 ? (row[runIdIndex] || '') : '',
-                    runAsUser: runAsUserIndex !== -1 ? (row[runAsUserIndex] || '') : '',
-                    status: statusIndex !== -1 ? (row[statusIndex] || '') : 'FAILED', // ← ברירת מחדל
-                    responsibleUser: responsibleUserIndex !== -1 ? (row[responsibleUserIndex] || '') : '',
-                    responsibleUser1: responsibleUser1Index !== -1 ? (row[responsibleUser1Index] || '') : '',
-                };
-            });
-
-            // מיון לפי Start Time
-            filteredJobs.sort((a, b) => {
-                const parseDate = (dateStr) => {
-                    if (!dateStr) return new Date(0);
-
-                    // פורמט: "May 27, 2026 14:40:00 AM"
-                    try {
-                        return new Date(dateStr);
-                    } catch (e) { }
-
-                    // פורמט: "DD.MM.YYYY HH:MM:SS"
-                    try {
-                        const [datePart, timePart] = dateStr.split(' ');
-                        const [day, month, year] = datePart.split('.');
-                        return new Date(`${year}-${month}-${day} ${timePart}`);
-                    } catch (e) { }
-
-                    return new Date(0);
-                };
-
-                return parseDate(a.startTime) - parseDate(b.startTime);
-            });
-
-            // חלוקה לקבוצות לפי אחראים
-            const jobsByResponsible = {};
-            const nullResponsibleJobs = [];
-
-            filteredJobs.forEach(job => {
-                if (!job.responsibleUser ||
-                    job.responsibleUser === 'NULL' ||
-                    job.responsibleUser === '') {
-
-                    if (job.responsibleUser1 &&
-                        job.responsibleUser1 !== 'NULL' &&
-                        job.responsibleUser1 !== '') {
-                        if (!jobsByResponsible[job.responsibleUser1]) {
-                            jobsByResponsible[job.responsibleUser1] = [];
-                        }
-                        jobsByResponsible[job.responsibleUser1].push(job);
-                    } else {
-                        nullResponsibleJobs.push(job);
-                    }
-                } else {
                     if (!jobsByResponsible[job.responsibleUser]) {
                         jobsByResponsible[job.responsibleUser] = [];
                     }
@@ -1115,294 +796,80 @@ class MessagesManager {
     // פונקציה מעודכנת להכנת מייל UC4
     async prepareUC4JobsEmail(messageId) {
         try {
-            const overlay = document.getElementById('shiftsLoadingOverlay')
-                || this.createLoadingOverlay();
+            // הצג אינדיקטור טעינה
+            const overlay = document.getElementById('shiftsLoadingOverlay') || this.createLoadingOverlay();
             overlay.classList.add('show');
 
+            // איפוס רשימת השמות החסרים
             this.missingEmailMappings.clear();
 
+            // טען את מיפוי המיילים אם עוד לא נטען
             if (!this.emailMappingCache) {
                 await this.loadEmailMapping();
             }
 
             const message = this.allMessages.find(m => m.id === messageId);
-            if (!message) {
-                NotificationManager.show('הודעה לא נמצאה', 'error');
+            if (!message || !message.tableData || message.tableData.length === 0) {
+                NotificationManager.show('אין נתונים להכנת מייל', 'error');
                 overlay.classList.remove('show');
                 return;
             }
 
-            let processedData;
-
-            if (message.tableData && message.tableData.length > 1) {
-                // ← העבר גם controlMTableData אם קיים
-                processedData = this._processTableDataForEmail(
-                    message.tableData,
-                    message.controlMTableData || null
-                );
-            } else if (message.csvFilePath) {
-                const processedCsv = await this.processUC4CsvFile(messageId);
-                if (!processedCsv) {
-                    overlay.classList.remove('show');
-                    return;
-                }
-                processedData = this._processTableDataForEmail(
-                    processedCsv.data,
-                    message.controlMTableData || null
-                );
-            } else {
-                NotificationManager.show('אין נתונים לשליחת מייל', 'error');
+            // עיבוד קובץ ה-CSV
+            const processedCsv = await this.processUC4CsvFile(messageId);
+            if (!processedCsv) {
                 overlay.classList.remove('show');
                 return;
             }
 
-            const emailContent = await this.buildUC4JobsEmail(
-                processedData, message.title
-            );
+            // עיבוד נתוני הטבלה מהקובץ המעובד
+            const processedData = this.processUC4JobData(processedCsv.data);
 
-            const { toAddresses, ccAddresses } =
-                await this.prepareUC4EmailRecipientsAsync(processedData);
+            // בניית תוכן המייל
+            const emailContent = await this.buildUC4JobsEmail(processedData, message.title);
 
-            // ===== הכנת קבצים מצורפים =====
+            // הכנת רשימות נמענים
+            const { toAddresses, ccAddresses } = this.prepareUC4EmailRecipients(processedData);
+
+            // הגדר את קובץ ה-CSV המעובד כקובץ מצורף
             this.attachmentPaths = [];
-            this.attachmentBlobs = []; // ← חדש
 
-            // צרף קובץ UC4 CSV אם קיים
-            if (message.csvFilePath) {
-                this.attachmentPaths.push(message.csvFilePath);
-            }
+            // יצירת URL לקובץ המעובד
+            const csvUrl = URL.createObjectURL(processedCsv.blob);
+            const csvLink = document.createElement('a');
+            csvLink.href = csvUrl;
+            csvLink.download = processedCsv.fileName;
 
-            // ===== חדש: צרף קובץ Control-M כ-CSV =====
-            if (message.controlMTableData && message.controlMTableData.length > 1) {
-                const controlMBlob = this._buildControlMCsvBlob(message.controlMTableData);
-                if (controlMBlob) {
-                    this.attachmentBlobs.push({
-                        blob: controlMBlob,
-                        name: `ControlM_Jobs_${new Date().toISOString().slice(0, 10)}.csv`,
-                        type: 'text/csv;charset=utf-8;'
-                    });
-                }
-            }
+            // הוסף את הקובץ המעובד לרשימת הקבצים המצורפים
+            this.attachmentBlobs = [{
+                name: processedCsv.fileName,
+                blob: processedCsv.blob,
+                type: 'text/csv'
+            }];
 
+            // הסר את אינדיקטור הטעינה
             overlay.classList.remove('show');
 
-            const subject = `דוח ג'ובים שנכשלו - ${message.title}`;
-
+            // בדוק אם יש שמות חסרים במיפוי
             if (this.missingEmailMappings.size > 0) {
-                this.showMissingEmailMappingsDialog(
-                    [...this.missingEmailMappings],
-                    () => {
-                        this._sendUC4EmailWithAttachments(
-                            subject, emailContent,
-                            toAddresses.join(';'),
-                            ccAddresses.join(';')
-                        );
-                    }
-                );
+                this.showMissingEmailMappingsDialog([...this.missingEmailMappings], () => {
+                    // פתח את המייל באאוטלוק עם הנמענים והעותקים אחרי שהמשתמש סגר את הדיאלוג
+                    const subject = `דוח ג'ובים שנכשלו - ${message.title}`;
+                    this.openEmailInOutlookWithBlobs(subject, emailContent, toAddresses.join(';'), ccAddresses.join(';'));
+                });
             } else {
-                this._sendUC4EmailWithAttachments(
-                    subject, emailContent,
-                    toAddresses.join(';'),
-                    ccAddresses.join(';')
-                );
+                // פתח את המייל באאוטלוק עם הנמענים והעותקים
+                const subject = `דוח ג'ובים שנכשלו - ${message.title}`;
+                this.openEmailInOutlookWithBlobs(subject, emailContent, toAddresses.join(';'), ccAddresses.join(';'));
             }
 
         } catch (error) {
             console.error('Error preparing UC4 jobs email:', error);
             NotificationManager.show('שגיאה בהכנת המייל', 'error');
+
             const overlay = document.getElementById('shiftsLoadingOverlay');
             if (overlay) overlay.classList.remove('show');
         }
-    }
-
-    _buildControlMCsvBlob(tableData) {
-        try {
-            if (!tableData || tableData.length === 0) return null;
-
-            // הסר עמודת 'מקור' מהתצוגה
-            const headers = tableData[0];
-            const sourceIdx = headers.indexOf('מקור');
-
-            const filteredData = tableData.map((row, idx) => {
-                if (sourceIdx === -1) return row;
-                return row.filter((_, colIdx) => colIdx !== sourceIdx);
-            });
-
-            // בנה CSV
-            const csvContent = filteredData.map(row =>
-                row.map(cell => {
-                    const cellStr = cell !== null && cell !== undefined
-                        ? String(cell) : '';
-                    if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
-                        return '"' + cellStr.replace(/"/g, '""') + '"';
-                    }
-                    return cellStr;
-                }).join(',')
-            ).join('\n');
-
-            // BOM + תוכן
-            return new Blob(
-                [new Uint8Array([0xEF, 0xBB, 0xBF]), new TextEncoder().encode(csvContent)],
-                { type: 'text/csv;charset=utf-8;' }
-            );
-        } catch (error) {
-            console.error('Error building Control-M CSV blob:', error);
-            return null;
-        }
-    }
-
-    async _sendUC4EmailWithAttachments(subject, htmlBody, to, cc = '') {
-        try {
-            // אם יש blob attachments - השתמש בפונקציה המתאימה
-            if (this.attachmentBlobs && this.attachmentBlobs.length > 0) {
-                await this.openEmailInOutlookWithBlobs(subject, htmlBody, to, cc);
-            } else {
-                await this.openEmailInOutlook(subject, htmlBody, to, cc);
-            }
-        } catch (error) {
-            console.error('Error sending UC4 email with attachments:', error);
-            NotificationManager.show('שגיאה בשליחת המייל', 'error');
-        }
-    }
-
-    _processTableDataForEmailBySource(tableData, source) {
-        if (!tableData || tableData.length < 2) {
-            return { jobsByResponsible: {}, nullResponsibleJobs: [], allJobs: [] };
-        }
-
-        const headers = tableData[0];
-
-        const colIndex = {};
-        headers.forEach((h, i) => {
-            if (h) colIndex[h.trim()] = i;
-        });
-
-        const allJobs = [];
-
-        for (let i = 1; i < tableData.length; i++) {
-            const row = tableData[i];
-            if (!row || row.length === 0) continue;
-
-            const getVal = (colName) => {
-                const idx = colIndex[colName];
-                return (idx !== undefined && row[idx])
-                    ? row[idx].toString().trim()
-                    : '';
-            };
-
-            const job = {
-                jobName: getVal("שם ג'וב") || getVal('Job Name') || row[1] || '',
-                jobParent: getVal('תיקייה') || getVal('Folder') || row[0] || '',
-                folder: getVal('תיקייה') || getVal('Folder') || row[0] || '',
-                startTime: getVal('זמן התחלה') || getVal('Start Time') || row[2] || '',
-                runTime: getVal("זמן ריצה (שנ')") || row[3] || '',
-                endTime: getVal('זמן סיום') || row[4] || '',
-                host: getVal('Host') || row[5] || '',
-                runId: getVal('Run ID') || row[6] || '',
-                runAsUser: getVal('משתמש') || row[7] || '',
-                status: 'FAILED',
-                responsibleUser: '',
-                responsibleUser1: '',
-                contacts: getVal('אנשי קשר') || row[8] || '',
-                source: source   // ← חשוב! סמן את המקור
-            };
-
-            // פרסר אנשי קשר לאחראי
-            // בדוק שאנשי הקשר אינם placeholder
-            if (job.contacts &&
-                job.contacts.trim() !== '' &&
-                job.contacts.trim() !== '-') {
-
-                const contactsList = job.contacts
-                    .split(',')
-                    .map(c => c.trim())
-                    .filter(c => c !== '' && c !== '-'); // ← סנן גם '-' בתוך הרשימה
-
-                if (contactsList.length > 0) {
-                    job.responsibleUser = contactsList[0] || '';
-                    job.responsibleUser1 = contactsList[1] || '';
-                }
-            }
-
-            if (job.jobName) allJobs.push(job);
-        }
-
-        // חלק לקבוצות לפי אחראי
-        const jobsByResponsible = {};
-        const nullResponsibleJobs = [];
-
-        allJobs.forEach(job => {
-            if (!job.responsibleUser ||
-                job.responsibleUser === 'NULL' ||
-                job.responsibleUser === '') {
-
-                if (job.responsibleUser1 &&
-                    job.responsibleUser1 !== 'NULL' &&
-                    job.responsibleUser1 !== '') {
-                    if (!jobsByResponsible[job.responsibleUser1]) {
-                        jobsByResponsible[job.responsibleUser1] = [];
-                    }
-                    jobsByResponsible[job.responsibleUser1].push(job);
-                } else {
-                    nullResponsibleJobs.push(job);
-                }
-            } else {
-                if (!jobsByResponsible[job.responsibleUser]) {
-                    jobsByResponsible[job.responsibleUser] = [];
-                }
-                jobsByResponsible[job.responsibleUser].push(job);
-            }
-        });
-
-        return { jobsByResponsible, nullResponsibleJobs, allJobs };
-    }
-
-    // המרת tableData (מערך של מערכים) לפורמט jobsByResponsible
-    _processTableDataForEmail(tableData, controlMTableData = null) {
-        // ===== עיבוד UC4 - שימוש בלוגיקה המקורית =====
-        let uc4Result = { jobsByResponsible: {}, nullResponsibleJobs: [], allJobs: [] };
-
-        if (tableData && tableData.length > 1) {
-            // השתמש בפונקציה המקורית שעובדת עם עמודות אנגלית
-            uc4Result = this.processUC4JobData(tableData);
-            // סמן את כל הג'ובים כ-UC4
-            uc4Result.allJobs.forEach(job => job.source = 'uc4');
-            Object.values(uc4Result.jobsByResponsible).forEach(jobs =>
-                jobs.forEach(job => job.source = 'uc4')
-            );
-            uc4Result.nullResponsibleJobs.forEach(job => job.source = 'uc4');
-        }
-
-        // ===== עיבוד Control-M =====
-        let controlMResult = { jobsByResponsible: {}, nullResponsibleJobs: [], allJobs: [] };
-
-        if (controlMTableData && controlMTableData.length > 1) {
-            controlMResult = this._processTableDataForEmailBySource(controlMTableData, 'controlm');
-        }
-
-        // ===== מיזוג התוצאות =====
-        const mergedJobsByResponsible = {};
-        const mergedNullJobs = [];
-
-        // הוסף ג'ובי UC4
-        Object.entries(uc4Result.jobsByResponsible).forEach(([resp, jobs]) => {
-            if (!mergedJobsByResponsible[resp]) mergedJobsByResponsible[resp] = [];
-            mergedJobsByResponsible[resp].push(...jobs);
-        });
-        mergedNullJobs.push(...uc4Result.nullResponsibleJobs);
-
-        // הוסף ג'ובי Control-M
-        Object.entries(controlMResult.jobsByResponsible).forEach(([resp, jobs]) => {
-            if (!mergedJobsByResponsible[resp]) mergedJobsByResponsible[resp] = [];
-            mergedJobsByResponsible[resp].push(...jobs);
-        });
-        mergedNullJobs.push(...controlMResult.nullResponsibleJobs);
-
-        return {
-            jobsByResponsible: mergedJobsByResponsible,
-            nullResponsibleJobs: mergedNullJobs,
-            allJobs: [...uc4Result.allJobs, ...controlMResult.allJobs]
-        };
     }
 
     // פונקציה חדשה לפתיחת מייל עם קבצים מצורפים מ-Blob
@@ -1419,7 +886,8 @@ To: ${to}`;
 
             // הוסף שדה CC אם יש
             if (cc) {
-                emlContent += `\nCc: ${cc}`;
+                emlContent += `
+Cc: ${cc}`;
             }
 
             emlContent += `
@@ -1430,44 +898,10 @@ Content-Type: text/html; charset=UTF-8
 
 ${htmlBody}`;
 
-            // ===== קבצים מנתיב (שרת) =====
-            if (this.attachmentPaths && this.attachmentPaths.length > 0) {
-                NotificationManager.show(
-                    `מכין ${this.attachmentPaths.length} קבצים מצורפים מהשרת...`, 'info'
-                );
-
-                for (const filePath of this.attachmentPaths) {
-                    try {
-                        const fileName = this.getFileDisplayName(filePath);
-                        const extension = fileName.split('.').pop().toLowerCase();
-                        const contentType = this.getAttachmentContentType(extension);
-
-                        const response = await fetch(
-                            `/Messages/GetFileAsBase64?filePath=${encodeURIComponent(filePath)}`
-                        );
-                        if (!response.ok) continue;
-
-                        const data = await response.json();
-                        if (!data.success || !data.base64Data) continue;
-
-                        emlContent += `
---${boundary}
-Content-Type: ${contentType}
-Content-Transfer-Encoding: base64
-Content-Disposition: attachment; filename="${fileName}"
-
-${data.base64Data}`;
-                    } catch (error) {
-                        console.error(`Error processing attachment ${filePath}:`, error);
-                    }
-                }
-            }
-
-            // ===== קבצים מ-Blob (נוצרו בזמן ריצה) =====
+            // הוסף קבצים מצורפים מ-Blob אם יש
             if (this.attachmentBlobs && this.attachmentBlobs.length > 0) {
-                NotificationManager.show(
-                    `מכין ${this.attachmentBlobs.length} קבצים מצורפים...`, 'info'
-                );
+                // הודעה למשתמש שמכינים את הקבצים המצורפים
+                NotificationManager.show(`מכין ${this.attachmentBlobs.length} קבצים מצורפים...`, 'info');
 
                 // הוסף כל קובץ מצורף
                 for (const attachment of this.attachmentBlobs) {
@@ -1498,7 +932,9 @@ ${base64Data}`;
                 }
             }
 
-            emlContent += `\n--${boundary}--`;
+            // סגור את הגבול
+            emlContent += `
+--${boundary}--`;
 
             const blob = new Blob([emlContent], { type: "message/rfc822" });
             const url = URL.createObjectURL(blob);
@@ -1508,6 +944,7 @@ ${base64Data}`;
             a.href = url;
             a.download = `${subject.replace(/[^א-תa-zA-Z0-9]/g, '_')}.eml`;
             a.style.display = "none";
+
             document.body.appendChild(a);
 
             // Download the file
@@ -1536,241 +973,112 @@ ${base64Data}`;
     async buildUC4JobsEmail(processedData, title) {
         const { jobsByResponsible, nullResponsibleJobs, allJobs } = processedData;
 
-        // ===== קיבוץ לפי אחראי, עם הפרדה פנימית לפי מקור =====
-        const responsibleMap = {}; // { responsible: { uc4: [], controlm: [] } }
-
-        Object.entries(jobsByResponsible).forEach(([responsible, jobs]) => {
-            if (!responsibleMap[responsible]) {
-                responsibleMap[responsible] = { uc4: [], controlm: [] };
-            }
-            jobs.forEach(job => {
-                if (job.source === 'controlm') {
-                    responsibleMap[responsible].controlm.push(job);
-                } else {
-                    responsibleMap[responsible].uc4.push(job);
-                }
-            });
-        });
-
-        // ג'ובים ללא אחראי - גם הם לפי מקור
-        const nullBySource = { uc4: [], controlm: [] };
-        nullResponsibleJobs.forEach(job => {
-            if (job.source === 'controlm') {
-                nullBySource.controlm.push(job);
-            } else {
-                nullBySource.uc4.push(job);
-            }
-        });
-
-        const hasNullJobs = nullBySource.uc4.length > 0 || nullBySource.controlm.length > 0;
-        const hasResponsibleJobs = Object.keys(responsibleMap).length > 0;
+        // יצירת רשימת אחראים לתצוגה בכותרת
+        const responsibleList = Object.keys(jobsByResponsible).join(', ');
 
         let htmlContent = `
-<!DOCTYPE html>
-<html dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <style>
-        body { font-family: Arial, sans-serif; direction: rtl; }
-        table { border-collapse: collapse; width: 100%;
-                margin-top: 10px; margin-bottom: 15px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
-        th { background-color: #f2f2f2; }
+    <!DOCTYPE html>
+    <html dir="rtl">
+    <head>
+        <meta charset="UTF-8">
+        <style>
+            body { font-family: Arial, sans-serif; direction: rtl; }
+            table { border-collapse: collapse; width: 100%; margin-top: 20px; margin-bottom: 30px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: right; }
+            th { background-color: #f2f2f2; }
+            .header { font-size: 18px; font-weight: bold; margin-bottom: 20px; }
+            .section-header { 
+                background-color: #e7f3fe;
+                padding: 10px;
+                margin-top: 30px;
+                margin-bottom: 10px;
+                border-right: 4px solid #2196F3;
+                font-weight: bold;
+            }
+            .footer {
+                margin-top: 30px;
+                font-size: 12px;
+                color: #666;
+                border-top: 1px solid #ddd;
+                padding-top: 10px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h2>דוח ג'ובים שנכשלו - ${title}</h2>
+            <p>סה"כ: ${allJobs.length} ג'ובים</p>
+        </div>`;
 
-        /* בלוק לכל אחראי */
-        .responsible-block {
-            margin-bottom: 30px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            overflow: hidden;
-        }
-
-        /* כותרת האחראי */
-        .responsible-header {
-            padding: 12px 18px;
-            font-size: 16px;
-            font-weight: bold;
-            background-color: #e7f3fe;
-            direction: rtl;
-            unicode-bidi: embed;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            flex-wrap: wrap;
-        }
-
-        .responsible-header.warning {
-            background: linear-gradient(135deg, #c0392b, #e74c3c);
-        }
-
-        .responsible-count {
-            font-size: 0.85rem;
-            background: rgba(255,255,255,0.2);
-            padding: 2px 10px;
-            border-radius: 12px;
-            direction: rtl;
-            unicode-bidi: embed;
-        }
-
-        .responsible-body {
-            padding: 12px 15px;
-            background: #fff;
-        }
-
-        /* כותרת מקור (UC4 / Control-M) בתוך בלוק האחראי */
-        .source-header {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 7px 12px;
-            margin-top: 10px;
-            margin-bottom: 5px;
-            border-radius: 6px;
-            font-weight: bold;
-            font-size: 0.92rem;
-            direction: rtl;
-            unicode-bidi: embed;
-        }
-
-        .source-header.uc4 {
-            background: #e3f0ff;
-            color: #1565C0;
-            border-right: 4px solid #2196F3;
-        }
-
-        .source-header.controlm {
-            background: #fff3e0;
-            color: #E65100;
-            border-right: 4px solid #FF6F00;
-        }
-
-        .source-header:first-child { margin-top: 0; }
-
-        .footer-note {
-            margin-top: 30px;
-            color: gray;
-            font-size: 0.9em;
-            border-top: 1px solid #eee;
-            padding-top: 10px;
-        }
-
-        .no-data {
-            padding: 20px;
-            text-align: center;
-            color: #888;
-            font-style: italic;
-        }
-
-        .summary-line {
-            color: #666;
-            font-size: 0.9em;
-            margin-bottom: 20px;
-            direction: rtl;
-        }
-    </style>
-</head>
-<body>
-    <h2 style="margin-bottom:5px; direction:rtl;">דוח ג'ובים שנכשלו - ${title}</h2>
-    <p class="summary-line">
-        סה"כ: ${allJobs.length} ג'ובים
-        ${allJobs.filter(j => j.source !== 'controlm').length > 0
-                ? `| UC4: ${allJobs.filter(j => j.source !== 'controlm').length}`
-                : ''}
-        ${allJobs.filter(j => j.source === 'controlm').length > 0
-                ? `| Control-M: ${allJobs.filter(j => j.source === 'controlm').length}`
-                : ''}
-    </p>`;
-
-        // ===== ג'ובים ללא אחראי =====
-        if (hasNullJobs) {
-            const totalNull = nullBySource.uc4.length + nullBySource.controlm.length;
-
+        // הוספת טבלה לג'ובים ללא אחראי אם יש כאלה
+        if (nullResponsibleJobs.length > 0) {
             htmlContent += `
-    <div class="responsible-block">
-        <div class="responsible-header warning">
-            <span style="direction:rtl; unicode-bidi:embed; display:inline-block;">
-                ⚠️ ג'ובים ללא אחראי — נדרש טיפול
-            </span>
-            <span class="responsible-count">סה"כ: ${totalNull}</span>
+        <div class="section-header warning" style="background-color: #ffebee; color: #d32f2f; font-weight: bold; border-right: 4px solid #d32f2f !important;">
+            ג'ובים ללא אחראי - צוות אוטומציה תהליכים, נדרש לעדכן אחראי (סה"כ: ${nullResponsibleJobs.length})
         </div>
-        <div class="responsible-body">`;
+        <table>
+            <tr>
+                <th>שם הג'וב</th>
+                <th>Job Parent</th>
+                <th>זמן התחלה</th>
+                <th>סטטוס</th>
+                <th>אחראי</th>
+                <th>אחראי משנה / מנהל מחלקה</th>
+                <th>מחלקות</th>
+            </tr>`;
 
-            if (nullBySource.uc4.length > 0) {
+            // הוספת שורות הטבלה
+            nullResponsibleJobs.forEach(job => {
                 htmlContent += `
-            <div class="source-header uc4">
-                <span style="direction:ltr; unicode-bidi:embed; display:inline-block;">🔵 UC4</span>
-                <span style="direction:rtl; unicode-bidi:embed; display:inline-block;">— ${nullBySource.uc4.length} ג'ובים</span>
-            </div>
-            ${this._buildJobsTable(nullBySource.uc4, 'uc4')}`;
-            }
+            <tr>
+                <td>${job.jobName}</td>
+                <td>${job.jobParent}</td>
+                <td>${this.formatDateTime(job.startTime)}</td>
+                <td>${job.status}</td>
+                <td>${job.responsibleUser}</td>
+                <td>${job.responsibleUser1}</td>
+                <td>${job.departments}</td>
+            </tr>`;
+            });
 
-            if (nullBySource.controlm.length > 0) {
-                htmlContent += `
-            <div class="source-header controlm">
-                <span style="direction:ltr; unicode-bidi:embed; display:inline-block;">🟠 Control-M</span>
-                <span style="direction:rtl; unicode-bidi:embed; display:inline-block;">— ${nullBySource.controlm.length} ג'ובים</span>
-            </div>
-            ${this._buildJobsTable(nullBySource.controlm, 'controlm')}`;
-            }
-
-            htmlContent += `</div></div>`;
+            htmlContent += `</table>`;
         }
 
-        // ===== ג'ובים לפי אחראי =====
-        for (const [responsible, jobsBySource] of Object.entries(responsibleMap)) {
-            const totalForResponsible =
-                jobsBySource.uc4.length + jobsBySource.controlm.length;
-
-            const hasUC4 = jobsBySource.uc4.length > 0;
-            const hasCM = jobsBySource.controlm.length > 0;
-
-            // *** תיקון: הפרד את השם מהטקסט העברי ***
+        // הוספת טבלה לכל אחראי
+        for (const [responsible, jobs] of Object.entries(jobsByResponsible)) {
             htmlContent += `
-    <div class="responsible-block">
-        <div class="responsible-header">
-            <span style="direction:rtl; unicode-bidi:embed; display:inline-block;">
-                👤 ג'ובים באחריות:&nbsp;
-            </span>
-
-            <span style="direction:ltr; unicode-bidi:embed; display:inline-block;">
-                ${responsible}
-                <span class="responsible-count" style="margin-left:6px;">
-                    (סה"כ: ${totalForResponsible})
-                </span>
-            </span>
+        <div class="section-header">
+            ג'ובים באחריות: ${responsible} (סה"כ: ${jobs.length})
         </div>
-        <div class="responsible-body">`;
+        
+        <table>
+            <tr>
+                <th>שם הג'וב</th>
+                <th>Job Parent</th>
+                <th>זמן התחלה</th>
+                <th>סטטוס</th>
+                <th>אחראי משנה / מנהל מחלקה</th>
+                <th>מחלקות</th>
+            </tr>`;
 
-            if (hasUC4) {
+            // הוספת שורות הטבלה
+            jobs.forEach(job => {
                 htmlContent += `
-            <div class="source-header uc4">
-                <span style="direction:ltr; unicode-bidi:embed; display:inline-block;font-weight: bold;">UC4</span>
-                <span style="direction:rtl; unicode-bidi:embed; display:inline-block;">: ${jobsBySource.uc4.length} ג'ובים</span>
-            </div>
-            ${this._buildJobsTable(jobsBySource.uc4, 'uc4')}`;
-            }
+            <tr>
+                <td>${job.jobName}</td>
+                <td>${job.jobParent}</td>
+                <td>${this.formatDateTime(job.startTime)}</td>
+                <td>${job.status}</td>
+                <td>${job.responsibleUser1}</td>
+                <td>${job.departments}</td>
+            </tr>`;
+            });
 
-            if (hasCM) {
-                htmlContent += `
-            <div class="source-header controlm">
-                <span style="direction:ltr; unicode-bidi:embed; display:inline-block;font-weight: bold;"> Control-M</span>
-                <span style="direction:rtl; unicode-bidi:embed; display:inline-block;">: ${jobsBySource.controlm.length} ג'ובים</span>
-            </div>
-            ${this._buildJobsTable(jobsBySource.controlm, 'controlm')}`;
-            }
-
-            htmlContent += `</div></div>`;
-        }
-
-        // אם אין נתונים כלל
-        if (!hasNullJobs && !hasResponsibleJobs) {
-            htmlContent += `<div class="no-data">לא נמצאו ג'ובים שנכשלו</div>`;
+            htmlContent += `</table>`;
         }
 
         htmlContent += `
-    <p class="footer-note">
-        הודעה זו נוצרה אוטומטית ממערכת NOC Portal
-    </p>
+        <p style="color:gray">הודעה זו נוצרה אוטומטית ממערכת NOC Portal</p>
 </body>
 </html>`;
 
@@ -1832,51 +1140,6 @@ ${base64Data}`;
         } catch (error) {
             return dateTimeStr;
         }
-    }
-
-    _buildJobsTable(jobs, source = 'uc4') {
-        if (!jobs || jobs.length === 0) return '';
-
-        const isControlM = source === 'controlm';
-
-        // עמודות שונות לפי מקור
-        const headers = isControlM
-            ? ['שם הג\'וב', 'תיקייה', 'זמן התחלה', 'סטטוס', 'אנשי קשר']
-            : ['שם הג\'וב', 'Job Parent', 'זמן התחלה', 'סטטוס', 'אחראי', 'אחראי משנה'];
-
-        let html = `<table>
-    <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
-
-        jobs.forEach(job => {
-            const startTime = job.startTime
-                ? this.formatDateTime(job.startTime)
-                : '-';
-
-            if (isControlM) {
-                html += `
-        <tr>
-            <td>${job.jobName || '-'}</td>
-            <td>${job.folder || job.jobParent || '-'}</td>
-            <td>${startTime}</td>
-            <td>${job.status || 'FAILED'}</td>
-            <td>${job.contacts || '-'}</td>
-        </tr>`;
-            } else {
-                // UC4 - שימוש בשדות המקוריים מ-processUC4JobData
-                html += `
-        <tr>
-            <td>${job.jobName || '-'}</td>
-            <td>${job.jobParent || '-'}</td>
-            <td>${startTime}</td>
-            <td>${job.status || '-'}</td>
-            <td>${job.responsibleUser || '-'}</td>
-            <td>${job.responsibleUser1 || '-'}</td>
-        </tr>`;
-            }
-        });
-
-        html += `</table>`;
-        return html;
     }
 
     async sendUC4JobsEmail(processedData, title) {
@@ -1945,14 +1208,6 @@ ${base64Data}`;
 
         // Trim and clean the name
         name = name.trim();
-
-        // ← תיקון: דלג על ערכי placeholder
-        if (name === '-' ||
-            name === 'NULL' ||
-            name === '' ||
-            name === 'N/A') {
-            return '';
-        }
 
         // Check if it's already an email address
         if (name.includes('@')) {
@@ -2103,133 +1358,16 @@ ${base64Data}`;
             });
             tab.addEventListener('dblclick', (e) => {
                 const category = e.currentTarget.getAttribute('data-category');
+
+                // אם זה טאב אישורי כניסה, פתח את מודל אישור הכניסה
                 if (category === 'אישורי כניסה') {
                     this.openEntryPermitModal();
                 } else {
-                    // כולל 'דוחות UC4' - פותח מודל הוספה רגיל
+                    // אחרת, פתח את מודל ההודעה הרגיל
                     this.openAddMessageModal();
                 }
             });
         });
-    }
-
-    async openUC4DailyReportModal() {
-        try {
-            // הצג אינדיקטור טעינה
-            const overlay = document.getElementById('shiftsLoadingOverlay') || this.createLoadingOverlay();
-            overlay.classList.add('show');
-
-            NotificationManager.show('טוען דוח UC4...', 'info');
-
-            // טען את הנתונים מהשרת
-            const reportData = await this.loadUC4DailyReport();
-
-            overlay.classList.remove('show');
-
-            if (!reportData || !reportData.success) {
-                NotificationManager.show('שגיאה בטעינת דוח UC4', 'error');
-                return;
-            }
-
-            const { data, reportFile, contactFile, generatedAt } = reportData;
-
-            if (!data || data.length === 0) {
-                NotificationManager.show('לא נמצאו ג\'ובים שנכשלו', 'info');
-                return;
-            }
-
-            // המר את נתוני הדוח לפורמט tableData
-            const tableData = this._convertUC4ReportToTableData(data);
-
-            // צור כותרת להודעה
-            const today = new Date().toLocaleDateString('he-IL');
-            const title = `דוח ג'ובים שנכשלו - ${today}`;
-
-            // שמור כהודעה אמיתית
-            const messageData = {
-                title: title,
-                category: 'דוחות UC4',
-                priority: 'רגיל',
-                author: this.getLastSelectedAuthor() || 'מערכת אוטומטית',
-                tableData: tableData,
-                csvFilePath: '' // אין קובץ CSV - הנתונים ישירות
-            };
-
-            // שמור לשרת
-            const response = await fetch('/Messages/AddMessage', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(messageData)
-            });
-
-            const result = await response.json();
-
-            if (result.success) {
-                NotificationManager.show(
-                    `דוח UC4 נשמר בהצלחה! נמצאו ${data.length} ג'ובים שנכשלו`,
-                    'success'
-                );
-
-                // טען מחדש את ההודעות
-                await this.loadMessages();
-
-                // מצא את ההודעה החדשה ופתח אותה
-                const newMessage = this.allMessages.find(m => m.title === title);
-                if (newMessage) {
-                    // שאל אם לשלוח מייל
-                    this.askToSendUC4Email(newMessage);
-                }
-            } else {
-                NotificationManager.show(result.error || 'שגיאה בשמירת הדוח', 'error');
-            }
-
-        } catch (error) {
-            console.error('Error in openUC4DailyReportModal:', error);
-            NotificationManager.show('שגיאה בטעינת דוח UC4', 'error');
-            const overlay = document.getElementById('shiftsLoadingOverlay');
-            if (overlay) overlay.classList.remove('show');
-        }
-    }
-
-    _convertUC4ReportToTableData(data) {
-        const headers = [
-            'תיקייה',
-            "שם ג'וב",
-            'זמן התחלה',
-            "זמן ריצה (שנ')",
-            'זמן סיום',
-            'Host',
-            'Run ID',
-            'משתמש',
-            'אנשי קשר',
-            'מקור'
-        ];
-
-        const rows = [headers];
-
-        data.forEach(job => {
-            const contactNames = job.contacts
-                ? job.contacts
-                    .map(c => c.userName || '')
-                    .filter(n => n)
-                    .join(', ')
-                : '';
-
-            rows.push([
-                job.folder || job.jobParent || '-',
-                job.jobName || '-',
-                job.lastFailureTime || '-',
-                job.runTime || '-',
-                job.endTime || '-',
-                job.host || '-',
-                job.runId || '-',
-                job.runAsUser || '-',
-                contactNames || '-',
-                job.source || 'controlm'
-            ]);
-        });
-
-        return rows;
     }
 
     // Handle time filter clicks
@@ -2506,20 +1644,6 @@ ${base64Data}`;
 
         html += emailsHtml;
 
-        if (message.attachments && message.attachments.length > 0) {
-            message.attachments.forEach(path => {
-                const fileName = this.getFileDisplayName(path);
-                const encodedPath = encodeURIComponent(path);
-                html += `
-                <div class="attached-file" 
-                     onclick="messagesManager.openAttachmentInModal(
-                         '${encodedPath}', '${fileName}')">
-                    <i class="fas fa-paperclip"></i>
-                    <span>${fileName}</span>
-                </div>`;
-            });
-        }
-
         html += '</div>';
         return html;
     }
@@ -2554,25 +1678,8 @@ ${base64Data}`;
             html += `<small>${message.tableData.length} שורות</small>`;
         }
 
-        // הוסף: הצגת מידע תצוגה
-        if (message.category === 'רשימות') {
-            if (message.alwaysShow === false && message.dueDate && message.endDate) {
-                html += `<div class="list-display-range">
-                <i class="fas fa-calendar-alt"></i>
-                <small>מוצג: ${this.formatDateForDisplay(message.dueDate)} 
-                עד ${this.formatDateForDisplay(message.endDate)}</small>
-            </div>`;
-            } else {
-                html += `<div class="list-display-range">
-                <i class="fas fa-infinity"></i>
-                <small>מוצג תמיד</small>
-            </div>`;
-            }
-        }
+        html += `<span class="read-more-btn" onclick="messagesManager.openMessagePopup('${message.id}')">צפה בדוח המלא</span>`;
 
-        html += `<span class="read-more-btn" 
-        onclick="messagesManager.openMessagePopup('${message.id}')">
-        צפה בדוח המלא</span>`;
         html += '</div>';
         return html;
     }
@@ -2652,9 +1759,9 @@ ${base64Data}`;
 
         if (message.attachedEmails && message.attachedEmails.length > 0) {
             const encodedPaths = encodeURIComponent(JSON.stringify(message.attachedEmails));
-            html += `<div class="attached-email" onclick="messagesManager.downloadAttachment('${encodedPaths}'); return false;">`;
+            html += `<div class="attached-email" onclick="messagesManager.downloadAttachment('${encodedPaths}');">`;
             html += '<i class="fas fa-envelope"></i>';
-            html += `<span>${message.attachedEmails.length} מיילים מצורפים - לחץ לפתיחה</span>`;
+            html += '<span>מייל מצורף - לחץ לפתיחה</span>';
             html += '</div>';
             html += '</br>';
         }
@@ -2775,17 +1882,10 @@ ${base64Data}`;
                 return;
             }
 
-            // ← שנה: אם אין מחבר - השתמש ביוזר המחובר
-            if (!messageData.author || messageData.author === '') {
-                const currentUser = this.getCurrentUserName();
-                if (currentUser) {
-                    messageData.author = currentUser;
-                } else {
-                    NotificationManager.show('חובה לבחור שם המחבר', 'error');
-                    return;
-                }
+            if (!messageData.author || messageData.author === "מנהל מערכת") {
+                NotificationManager.show('חובה לבחור שם המחבר', 'error');
+                return;
             }
-
 
             // Validation: Due date is required for "בקשות וביצוע" and 'סיכומי משמרת' category
             if (messageData.category === 'בקשות וביצוע' || messageData.category === 'סיכומי משמרת') {
@@ -2823,12 +1923,6 @@ ${base64Data}`;
                 const alertItemElements = document.querySelectorAll('.alert-item');
                 for (const element of alertItemElements) {
                     const text = element.querySelector('.alert-text').value;
-                    const hasText = text !== '';
-                    const hasImage = !!(element.file || element.dataset.imagePath);
-                    // ← תיקון: דלג על פריטים ריקים לחלוטין (ללא טקסט וללא תמונה)
-                    if (!hasText && !hasImage) {
-                        continue;
-                    }
 
                     // אם יש קובץ תמונה חדש להעלאה
                     if (element.file) {
@@ -2863,7 +1957,7 @@ ${base64Data}`;
                             imagePath: element.dataset.imagePath
                         });
                     } else {
-                        // יש טקסט אבל אין תמונה
+                        // אם אין תמונה, רק טקסט
                         uploadedFiles.alertImages.push({
                             text: text,
                             imagePath: null
@@ -2920,14 +2014,6 @@ ${base64Data}`;
                     messageData.attachments = uploadedFiles.attachments;
                 }
 
-                // בדוק אם יש לצרף צ'קליסט
-                const includeTasks = document.getElementById('includeDailyTasksCheckbox')?.checked;
-                if (includeTasks) {
-                    const tasksData = await this._collectDailyTasksForSummary();
-                    if (tasksData) {
-                        messageData.dailyTasksSummary = tasksData;
-                    }
-                }
                 // שאר שדות סיכום המשמרת
                 messageData.incidents = document.getElementById('incidentsInput')?.value || '';
                 messageData.openAlerts = document.getElementById('openAlertsInput')?.value || '';
@@ -3048,53 +2134,11 @@ ${base64Data}`;
             // הוספת נתונים ספציפיים לקטגוריה
             if (messageData.category === 'בקשות וביצוע') {
                 messageData.jobs = this.collectJobsData();
-
-                // ← תיקון: שמור קבצים קיימים מההודעה המקורית כברירת מחדל
-                if (messageData.id) {
-                    const existingMessage = this.allMessages.find(m => m.id === messageData.id);
-                    if (existingMessage && existingMessage.attachments &&
-                        existingMessage.attachments.length > 0) {
-                        messageData.attachments = [...existingMessage.attachments];
-                    }
-                }
-
-                const attachmentsContainer = document.getElementById('shiftAttachmentsContainer');
-                if (attachmentsContainer) {
-                    const attachmentItems = attachmentsContainer
-                        .querySelectorAll('.attachment-preview-item');
-
-                    if (attachmentItems.length > 0) {
-                        const attachmentPaths = [];
-
-                        for (const item of attachmentItems) {
-                            if (item.file) {
-                                const uploadResult = await this.uploadFile(
-                                    item.file,
-                                    messageData.id || 'temp'
-                                );
-                                if (uploadResult.success) {
-                                    attachmentPaths.push(uploadResult.filePath);
-                                }
-                            } else if (item.filePath) {
-                                attachmentPaths.push(item.filePath);
-                            }
-                        }
-
-                        if (attachmentPaths.length > 0) {
-                            messageData.attachments = attachmentPaths;
-                        } else {
-                            // ← המשתמש מחק את כל הקבצים - נקה
-                            messageData.attachments = [];
-                        }
-                    }
-                    // ← אם אין פריטים בכלל, שמור את הקיימים (כבר הוגדרו למעלה)
-                }
-
                 messageData.attachedEmail = attachedEmail || '';
             } else if (messageData.category === 'בקשות') {
                 messageData.attachedEmail = attachedEmail || '';
             }
-            else if (messageData.category === 'רשימות') {
+            else if (messageData.category === 'רשימות' || messageData.category === 'דוחות UC4') {
                 // אם מעלים קובץ חדש, נתיב הקובץ ונתוני הטבלה כבר מוגדרים
                 if (csvFile) {
                     const fileExtension = csvFile.name.split('.').pop().toLowerCase();
@@ -3121,24 +2165,6 @@ ${base64Data}`;
                             if (parseResult.success) {
                                 messageData.tableData = parseResult.data;
                             }
-                        }
-                    }
-                    if (messageData.category === 'רשימות') {
-                        const alwaysShowCheckbox = document.getElementById('listAlwaysShow');
-                        const alwaysShow = alwaysShowCheckbox ? alwaysShowCheckbox.checked : true;
-                        messageData.alwaysShow = alwaysShow;
-
-                        if (!alwaysShow) {
-                            // שמור תאריך סיום
-                            const endDateValue = document.getElementById('listEndDateHidden')?.value;
-                            if (endDateValue) {
-                                messageData.endDate = endDateValue;
-                            }
-                            // תאריך התחלה = dueDate שכבר קיים ב-messageData
-                        } else {
-                            // אם הצג תמיד - נקה תאריכים
-                            messageData.endDate = null;
-                            messageData.dueDate = null;
                         }
                     }
                     messageData.csvFilePath = csvFilePath;
@@ -3190,35 +2216,15 @@ ${base64Data}`;
                     return;
                 }
             } else if (messageData.category === 'סיכומי משמרת') {
-                // ← שמור את dailyTasksSummary שנאסף קודם (אם קיים)
-                const existingTasksSummary = messageData.dailyTasksSummary;
-
                 messageData.incidents = document.getElementById('incidentsInput')?.value || '';
                 messageData.openAlerts = document.getElementById('openAlertsInput')?.value || '';
                 messageData.specialActions = document.getElementById('specialActionsInput')?.value || '';
                 messageData.generalInfo = document.getElementById('generalInfoInput')?.value || '';
                 messageData.openItems = document.getElementById('openItemsInput')?.value || '';
-
-                // ← שחזר את dailyTasksSummary
-                if (existingTasksSummary) {
-                    messageData.dailyTasksSummary = existingTasksSummary;
-                } else {
-                    // ← אם לא נאסף קודם, נסה עכשיו
-                    const includeTasks = document.getElementById('includeDailyTasksCheckbox')?.checked;
-                    if (includeTasks) {
-                        const tasksData = await this._collectDailyTasksForSummary();
-                        if (tasksData) {
-                            messageData.dailyTasksSummary = tasksData;
-                        }
-                    }
-                }
             }
 
             // טיפול בטבלאות בסיכומי משמרת
             if (messageData.category === 'סיכומי משמרת') {
-                // ← שמור dailyTasksSummary לפני עיבוד הטבלאות
-                const savedTasksSummary = messageData.dailyTasksSummary;
-
                 const textareaFields = ['incidents', 'openAlerts', 'specialActions', 'generalInfo', 'openItems'];
 
                 textareaFields.forEach(field => {
@@ -3243,9 +2249,6 @@ ${base64Data}`;
                         messageData[field] = content;
                     }
                 });
-                if (savedTasksSummary) {
-                    messageData.dailyTasksSummary = savedTasksSummary;
-                }
             }
 
             // שמירה לשרת
@@ -3253,111 +2256,6 @@ ${base64Data}`;
                 this.saveLastSelectedAuthor(messageData.author);
             }
 
-            // ===== איסוף הגדרות תצוגה לרשימות =====
-            if (messageData.category === 'רשימות') {
-                const alwaysShowCheckbox = document.getElementById('listAlwaysShow');
-                const alwaysShow = alwaysShowCheckbox ? alwaysShowCheckbox.checked : true;
-
-                messageData.alwaysShow = alwaysShow;
-
-                if (!alwaysShow) {
-                    const endDateValue = document.getElementById('listEndDateHidden')?.value;
-
-                    if (endDateValue && endDateValue.trim() !== '') {
-                        messageData.endDate = endDateValue;
-                    } else {
-                        messageData.endDate = null;
-                    }
-
-                    // וודא שתאריך יעד (התחלה) קיים
-                    const startDateValue = document.getElementById('messageDueDateHidden')?.value;
-                    if (startDateValue) {
-                        messageData.dueDate = this.formatDateForDisplay(startDateValue);
-                    }
-                } else {
-                    // הצג תמיד - נקה תאריכים
-                    messageData.endDate = null;
-                    messageData.dueDate = null;
-                }
-            }
-
-            // ===== טיפול בקטגוריית דוחות UC4 =====
-            if (messageData.category === 'דוחות UC4') {
-
-                // ===== טיפול בנתוני UC4 (קובץ CSV) - זהה לגרסה הישנה =====
-                if (csvFile) {
-                    const fileExtension = csvFile.name.split('.').pop().toLowerCase();
-
-                    if (fileExtension === 'xlsx' || fileExtension === 'xls') {
-                        const convertResult = await this.convertExcelToCsv(
-                            csvFile, messageData.id || 'temp'
-                        );
-                        if (convertResult.success) {
-                            csvFilePath = convertResult.filePath;
-                            messageData.tableData = convertResult.data;
-                        } else {
-                            NotificationManager.show(
-                                convertResult.error || 'שגיאה בהמרת קובץ Excel', 'error'
-                            );
-                            return;
-                        }
-                    } else if (fileExtension === 'csv') {
-                        const uploadResult = await this.uploadFile(
-                            csvFile, messageData.id || 'temp'
-                        );
-                        if (uploadResult.success) {
-                            csvFilePath = uploadResult.filePath;
-                            const parseResult = await this.parseCsvFile(csvFilePath);
-                            if (parseResult.success) {
-                                messageData.tableData = parseResult.data;
-                            }
-                        }
-                    } else {
-                        NotificationManager.show('יש להעלות קובץ CSV או Excel בלבד', 'error');
-                        return;
-                    }
-                    messageData.csvFilePath = csvFilePath;
-
-                } else if (existingCsvPath) {
-                    csvFilePath = existingCsvPath;
-                    messageData.csvFilePath = csvFilePath;
-                    const parseResult = await this.parseCsvFile(existingCsvPath);
-                    if (parseResult.success) {
-                        messageData.tableData = parseResult.data;
-                    }
-                } else {
-                    NotificationManager.show(
-                        'חובה להעלות קובץ CSV בקטגוריה זו', 'error'
-                    );
-                    return;
-                }
-
-                // ===== טיפול בנתוני Control-M (אופציונלי) =====
-                let controlMData = null;
-
-                const controlMHidden = document.getElementById('controlMTableDataHidden');
-                if (controlMHidden && controlMHidden.value && controlMHidden.value.trim() !== '') {
-                    try {
-                        controlMData = JSON.parse(controlMHidden.value);
-                    } catch (e) {
-                        console.error('Error parsing Control-M data:', e);
-                        controlMData = null;
-                    }
-                }
-
-                if (!controlMData && this._pendingControlMTableData &&
-                    this._pendingControlMTableData.length > 0) {
-                    controlMData = this._pendingControlMTableData;
-                }
-
-                // שמור Control-M רק אם קיים - לא חובה
-                if (controlMData && controlMData.length > 0) {
-                    messageData.controlMTableData = this._tagTableDataWithSource(
-                        controlMData, 'controlm'
-                    );
-                }
-                // אם אין Control-M - זה בסדר, ממשיכים עם UC4 בלבד
-            }
             const url = isEditing ? '/Messages/EditMessage' : '/Messages/AddMessage';
             const method = isEditing ? 'PUT' : 'POST';
 
@@ -3393,18 +2291,14 @@ ${base64Data}`;
                 }
                 // הוספת בדיקה לדוחות UC4
                 else if (messageData.category === 'דוחות UC4') {
-                    // הנתונים כבר נשמרו לפני שליחת הבקשה
-                    // רק שאל אם לשלוח מייל
-                    const updatedMessage = result.message ||
-                        this.allMessages.find(m => m.id === result.id || m.id === messageData.id);
+                    // שמור את המשימה המעודכנת לשימוש בשליחת המייל
+                    const updatedMessage = result.message || this.allMessages.find(m => m.id === result.id || m.id === messageData.id);
                     if (updatedMessage) {
                         this.askToSendUC4Email(updatedMessage);
                     } else {
                         // אם לא מצאנו את המשימה המעודכנת, נטען את כל המשימות מחדש ואז נשאל
                         await this.loadMessages();
-                        const freshMessage = this.allMessages.find(
-                            m => m.id === result.id || m.id === messageData.id
-                        );
+                        const freshMessage = this.allMessages.find(m => m.id === result.id || m.id === messageData.id);
                         if (freshMessage) {
                             this.askToSendUC4Email(freshMessage);
                         }
@@ -3418,151 +2312,6 @@ ${base64Data}`;
             console.error('Error saving message:', error);
             const errorMessage = isEditing ? 'שגיאה בעדכון ההודעה' : 'שגיאה בהוספת ההודעה';
             NotificationManager.show(errorMessage, 'error');
-        }
-    }
-
-    // הוסף פונקציה עזר חדשה לקביעת המשמרת הנוכחית
-    _getCurrentShiftInfo() {
-        const now = new Date();
-        const currentHour = now.getHours();
-        const currentMinute = now.getMinutes();
-        const currentTime = currentHour * 60 + currentMinute;
-
-        // גבולות משמרות בדקות
-        const MORNING_START = 7 * 60;    // 07:00
-        const MORNING_END = 15 * 60;   // 15:00
-        const EVENING_START = 15 * 60;   // 15:00
-        const EVENING_END = 23 * 60;   // 23:00
-
-        let shiftType, shiftStart, shiftEnd, targetDate;
-
-        // מרווח ביטחון של שעה אחרי כל משמרת
-        // לילה:  23:00 - 08:00 (כולל שעת חפיפה)
-        // בוקר:  08:00 - 16:00 (כולל שעת חפיפה)
-        // ערב:   16:00 - 23:00
-        if (currentTime >= MORNING_START + 60 && currentTime < MORNING_END + 60) {
-            // משמרת בוקר: 07:00-15:00
-            shiftType = 'בוקר';
-            shiftStart = MORNING_START;
-            shiftEnd = MORNING_END;
-            targetDate = new Date(now);
-        } else if (currentTime >= EVENING_START + 60 && currentTime < EVENING_END + 60) {
-            // משמרת ערב: 15:00-23:00
-            shiftType = 'ערב';
-            shiftStart = EVENING_START;
-            shiftEnd = EVENING_END;
-            targetDate = new Date(now);
-        } else {
-            // משמרת לילה: 23:00-07:00
-            shiftType = 'לילה';
-            shiftStart = 23 * 60;
-            shiftEnd = 7 * 60;
-            // אחרי חצות ולפני 07:00 - הלילה התחיל אתמול
-            targetDate = new Date(now);
-
-            if (currentTime < MORNING_START + 60) {
-                targetDate.setDate(targetDate.getDate() - 1);
-            }
-        }
-
-        return { shiftType, shiftStart, shiftEnd, targetDate, currentTime };
-    }
-
-    // פונקציה לבדיקה אם משימה שייכת למשמרת הנוכחית
-    _isTaskInCurrentShift(task, shiftInfo) {
-        const { shiftType, shiftStart, shiftEnd } = shiftInfo;
-
-        // אם למשימה אין שעה - הצג בכל המשמרות
-        if (!task.taskHour && task.taskHour !== 0) return true;
-        if (!task.taskMinute && task.taskMinute !== 0) return true;
-
-        const taskHour = parseInt(task.taskHour) || 0;
-        const taskMinute = parseInt(task.taskMinute) || 0;
-        const taskTime = taskHour * 60 + taskMinute;
-
-        if (shiftType === 'לילה') {
-            // לילה: 23:00-24:00 או 00:00-07:00
-            return taskTime >= 23 * 60 || taskTime < 7 * 60;
-        } else {
-            // בוקר/ערב: בדיקה רגילה
-            return taskTime >= shiftStart && taskTime < shiftEnd;
-        }
-    }
-
-    async _collectDailyTasksForSummary() {
-        try {
-            // ===== קביעת מידע המשמרת הנוכחית =====
-            const shiftInfo = this._getCurrentShiftInfo();
-            const today = shiftInfo.targetDate.toISOString().split('T')[0];
-
-            let tasks = [];
-
-            if (typeof dailyTasksManager !== 'undefined' &&
-                dailyTasksManager.dailyTasks) {
-                tasks = dailyTasksManager.dailyTasks;
-            } else {
-                const response = await fetch(`/DailyTasks/GetTasks?date=${today}`);
-                const data = await response.json();
-                if (!data.error) {
-                    tasks = data.filter(task => {
-                        if (task.isDeleted) return false;
-                        const createdDate = new Date(task.createdAt);
-                        const selectedDate = new Date(today);
-                        createdDate.setHours(0, 0, 0, 0);
-                        selectedDate.setHours(0, 0, 0, 0);
-                        return createdDate <= selectedDate;
-                    }).map(task => ({
-                        ...task,
-                        completed: task.completionDates &&
-                            task.completionDates.includes(today)
-                    }));
-                }
-            }
-
-            if (tasks.length === 0) return null;
-
-            // ===== סינון משימות לפי שעות המשמרת =====
-            const shiftTasks = tasks.filter(task =>
-                this._isTaskInCurrentShift(task, shiftInfo)
-            );
-
-            // אם אין משימות למשמרת הנוכחית, החזר null
-            if (shiftTasks.length === 0) return null;
-
-            const completed = shiftTasks.filter(t =>
-                t.completionDates && t.completionDates.includes(today)
-            ).length;
-            const skipped = shiftTasks.filter(t =>
-                t.skipReasons && t.skipReasons[today]
-            ).length;
-
-            return {
-                date: today,
-                shiftType: shiftInfo.shiftType,  // ← הוסף סוג משמרת
-                tasks: shiftTasks.map(task => ({
-                    title: task.title,
-                    priority: task.priority,
-                    isCompleted: task.completionDates &&
-                        task.completionDates.includes(today),
-                    isSkipped: !!(task.skipReasons && task.skipReasons[today]),
-                    skipReason: task.skipReasons ? task.skipReasons[today] : null,
-                    completedBy: task.completedByEmployees ?
-                        task.completedByEmployees[today] : null,
-                    completionTime: task.completionTimes ?
-                        task.completionTimes[today] : null,
-                    taskHour: task.taskHour || '',
-                    taskMinute: task.taskMinute || ''
-                })),
-                stats: {
-                    total: shiftTasks.length,
-                    completed,
-                    skipped,
-                    pending: shiftTasks.length - completed - skipped
-                }
-            };
-        } catch (error) {
-            console.error('Error collecting daily tasks:', error);
-            return null;
         }
     }
 
@@ -3584,32 +2333,6 @@ ${base64Data}`;
             console.error('Error converting Excel to CSV:', error);
             return { success: false, error: error.message };
         }
-    }
-
-    _tagTableDataWithSource(tableData, source) {
-        if (!tableData || tableData.length === 0) return tableData;
-
-        const headers = tableData[0];
-
-        // בדוק אם כבר יש עמודת מקור
-        if (headers.includes('מקור')) {
-            // עדכן את הערכים הקיימים
-            return tableData.map((row, idx) => {
-                if (idx === 0) return row; // כותרות - השאר כמו שהן
-                const newRow = [...row];
-                const sourceIdx = headers.indexOf('מקור');
-                newRow[sourceIdx] = source;
-                return newRow;
-            });
-        }
-
-        // הוסף עמודת מקור
-        return tableData.map((row, idx) => {
-            if (idx === 0) {
-                return [...row, 'מקור']; // הוסף כותרת
-            }
-            return [...row, source]; // הוסף ערך
-        });
     }
 
     // Ask user if they want to send shift summary via email
@@ -4018,16 +2741,12 @@ ${base64Data}`;
 
         // Add alert items section
         let alertItemsHtml = '';
-        const validAlertItems = (messageData.alertItems || []).filter(item =>
-            (item.Text && item.Text.trim() !== '') || item.ImagePath
-        );
-
-        if (validAlertItems.length > 0) {
+        if (messageData.alertItems && messageData.alertItems.length > 0) {
             alertItemsHtml = `
 <h3 style="margin-top:30px; border-top:1px solid #ddd; padding-top:15px;">🔔 התראות</h3>
 <div style="margin-top:15px;">`;
 
-            for (const item of validAlertItems) {
+            for (const item of messageData.alertItems) {
                 alertItemsHtml += `
     <div style="margin-bottom:20px; padding:15px; background:#f8f9fa; border:1px solid #ddd; border-radius:5px;">
         <p style="margin-bottom:10px;">${item.Text || ''}</p>`;
@@ -4036,22 +2755,19 @@ ${base64Data}`;
                     try {
                         // Convert image to base64
                         const base64Image = await this.convertImageToBase64ForEmail(item.ImagePath);
+
                         if (base64Image) {
                             alertItemsHtml += `
-                <div style="text-align:center; margin-top:10px;">
-                    <img src="${base64Image}" alt="תמונת התראה" 
-                         style="max-width:100%; max-height:300px; border:1px solid #ddd; 
-                                border-radius:5px; box-shadow:0 2px 5px rgba(0,0,0,0.1);" />
-                </div>
-                <div style="height:15px; line-height:15px;">&nbsp;</div>`; // ← שורה ריקה אחרי תמונה
+                <div style="text-align:center;">
+                    <img src="${base64Image}" alt="תמונת התראה" style="max-width:100%; max-height:300px; border:1px solid #ddd; border-radius:5px; box-shadow:0 2px 5px rgba(0,0,0,0.1);" />
+                </div>`;
                         }
                     } catch (error) {
                         console.error(`Error processing alert image ${item.ImagePath}:`, error);
                     }
                 }
 
-                alertItemsHtml += `</div>
-                <div style="height:20px; line-height:20px;">&nbsp;</div>`; // ← מרווח בין פריטים
+                alertItemsHtml += `</div>`;
             }
 
             alertItemsHtml += `</div>`;
@@ -4150,32 +2866,29 @@ ${this.formatContentWithTables(messageData.openAlerts)}
 
     ${alertItemsHtml}
 
-    ${messageData.specialActions && messageData.specialActions.trim() !== '' ? `
+    ${messageData.specialActions ? `
     <h3>✅ פעולות מיוחדות</h3>
     <pre>
-    ${this.formatContentWithTables(messageData.specialActions)}
+${this.formatContentWithTables(messageData.specialActions)}
     </pre>
-    ` : ''}
+    ` : '<h3>✅ פעולות מיוחדות</h3><p class="section-empty">לא בוצעו פעולות מיוחדות</p>'}
 
     ${messageData.generalInfo ? `
     <h3>ℹ️ מידע כללי</h3>
     <pre>
 ${this.formatContentWithTables(messageData.generalInfo)}
     </pre>
-    ` : ''}
+    ` : '<h3>ℹ️ מידע כללי</h3><p class="section-empty">אין מידע כללי נוסף</p>'}
 
     ${messageData.openItems ? `
     <h3>📝 דברים פתוחים ממשמרות קודמות</h3>
     <pre>
 ${this.formatContentWithTables(messageData.openItems)}
     </pre>
-    ` : ''}
+    ` : '<h3>📝 דברים פתוחים ממשמרות קודמות</h3><p class="section-empty">אין פריטים פתוחים ממשמרות קודמות</p>'}
 
-                
     ${imagesHtml}
     ${attachmentsHtml}
-${messageData.dailyTasksSummary ?
-                this._buildDailyTasksEmailSection(messageData.dailyTasksSummary) : ''}
 
     <br><br>
     <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; width:50%">
@@ -4234,134 +2947,6 @@ ${messageData.dailyTasksSummary ?
         }
     }
 
-    _buildDailyTasksEmailSection(tasksSummary) {
-        if (!tasksSummary || !tasksSummary.tasks ||
-            tasksSummary.tasks.length === 0) return '';
-
-        const { tasks, stats, date } = tasksSummary;
-        const percentage = stats.total > 0 ?
-            Math.round((stats.completed / stats.total) * 100) : 0;
-        const formattedDate = date ? date.split('-').reverse().join('/') : '';
-
-        let rows = '';
-        tasks.forEach(task => {
-            const status = task.isCompleted ? '✓ בוצע' :
-                task.isSkipped ? '✗ לא בוצע' : '⏳ ממתין';
-            const statusColor = task.isCompleted ? '#2e7d32' :
-                task.isSkipped ? '#dc2626' : '#6b7280';
-            const bgColor = task.isCompleted ? '#f0fdf4' :
-                task.isSkipped ? '#fef2f2' : '#f9fafb';
-
-            rows += `
-            <tr style="background:${bgColor};">
-                <td style="border:1px solid #e5e7eb; padding:7px 10px; 
-                           color:${statusColor}; font-weight:bold; 
-                           white-space:nowrap;">
-                    ${status}
-                </td>
-                <td style="border:1px solid #e5e7eb; padding:7px 10px;
-                           text-decoration:${task.isCompleted ? 'line-through' : 'none'};
-                           color:${task.isCompleted ? '#6b7280' : '#1f2937'};">
-                    ${this.escapeHtml(task.title)}
-                </td>
-                <td style="border:1px solid #e5e7eb; padding:7px 10px; 
-                           text-align:center; white-space:nowrap;">
-                    ${task.taskHour && task.taskMinute ?
-                    `${task.taskHour}:${task.taskMinute}` : '-'}
-                </td>
-                <td style="border:1px solid #e5e7eb; padding:7px 10px;
-                           white-space:nowrap;">
-                    ${task.completedBy ?
-                    `${this.escapeHtml(task.completedBy)}
-                         ${task.completionTime ?
-                        `<span style="color:#9ca3af;">(${task.completionTime})</span>`
-                        : ''}`
-                    : (task.isSkipped && task.skipReason ?
-                        `<span style="color:#dc2626; font-size:0.85em;">
-                                ${this.escapeHtml(task.skipReason.substring(0, 30))}
-                                ${task.skipReason.length > 30 ? '...' : ''}
-                            </span>`
-                        : '-')}
-                </td>
-            </tr>
-        `;
-        });
-
-        return `
-         <h3 style="
-            margin-top:30px;
-            border-top:1px solid #ddd;
-            padding-top:15px;
-            color:#1a1a2e;
-            background-color:#ffffff;
-        ">
-            ✅ צ'קליסט משימות יומיות - ${formattedDate}
-        </h3>
-        <div style="
-            display:flex; 
-            gap:15px; 
-            margin-bottom:15px;
-            flex-wrap:wrap;
-        ">
-            <span style="
-                padding:4px 12px; 
-                background:#e8f5e9; 
-                color:#2e7d32;
-                border-radius:12px; 
-                font-weight:bold;
-            ">✓ בוצעו: ${stats.completed}</span>
-            <span style="
-                padding:4px 12px; 
-                background:#fef2f2; 
-                color:#dc2626;
-                border-radius:12px; 
-                font-weight:bold;
-            ">✗ לא בוצעו: ${stats.skipped}</span>
-            <span style="
-                padding:4px 12px; 
-                background:#f3f4f6; 
-                color:#6b7280;
-                border-radius:12px; 
-                font-weight:bold;
-            ">⏳ ממתינות: ${stats.pending}</span>
-            <span style="
-                padding:4px 12px; 
-                background:#ede9fe; 
-                color:#667eea;
-                border-radius:12px; 
-                font-weight:bold;
-            ">📊 השלמה: ${percentage}%</span>
-        </div>
-        <table style="
-            border-collapse:collapse; 
-            width:100%; 
-            margin-bottom:20px;
-            font-size:0.9rem;
-        ">
-            <thead>
-                <tr style="background:#667eea; color:#ffffff;">
-                    <th style="border:1px solid #5a6fd6; padding:8px 10px; text-align:right; 
-                            background-color:#667eea; color:#ffffff;">
-                        סטטוס
-                    </th>
-                    <th style="border:1px solid #5a6fd6; padding:8px 10px; text-align:right;">
-                        שם משימה
-                    </th>
-                    <th style="border:1px solid #5a6fd6; padding:8px 10px; text-align:center;">
-                        שעת ביצוע
-                    </th>
-                    <th style="border:1px solid #5a6fd6; padding:8px 10px; text-align:right;">
-                        בוצע ע"י / סיבה
-                    </th>
-                </tr>
-            </thead>
-            <tbody>
-                ${rows}
-            </tbody>
-        </table>
-    `;
-    }
-
     getImageMimeType(extension) {
         switch (extension) {
             case 'jpg':
@@ -4381,17 +2966,9 @@ ${messageData.dailyTasksSummary ?
     // פונקציה חדשה להמרת תמונה ל-base64
     async convertImageToBase64(imagePath) {
         try {
-            // המר נתיב יחסי לנתיב מוחלט
-            let fullPath;
-            if (Path.isPathRooted(imagePath)) {
-                fullPath = imagePath;
-            } else {
-                fullPath = Path.join('R:\\USERS\\TASHTIT\\NOC\\Portal\\files', imagePath);
-            }
-
             // בדוק אם הקובץ קיים
-            if (!await this.fileExists(fullPath)) {
-                throw new Error(`File not found: ${fullPath}`);
+            if (!await this.fileExists(imagePath)) {
+                throw new Error(`File not found: ${imagePath}`);
             }
 
             // קרא את הקובץ כ-ArrayBuffer
@@ -4710,15 +3287,8 @@ ${data.base64Data}`;
     normalizeFilePath(path) {
         if (!path) return path;
 
-        // Check if it's an absolute path (starts with drive letter or slash)
-        const isAbsolutePath = /^([a-z]:|\\|\/)/i.test(path);
-
-        if (isAbsolutePath) {
-            return path;
-        } else {
-            // Join with base path
-            return 'R:\\USERS\\TASHTIT\\NOC\\Portal\\files\\' + path;
-        }
+        // Keep relative paths unchanged; server-side endpoints will resolve them from the portal/files root.
+        return path;
     }
 
     // Duplicate message
@@ -4762,32 +3332,12 @@ ${data.base64Data}`;
 
             // טיפול בשדות ספציפיים לפי קטגוריה
             if (message.category === 'בקשות וביצוע') {
-                document.getElementById('messageContent').value = message.content || '';
                 this.loadJobsData(message.jobs);
 
-                // ← וודא שהמיכל קיים לפני הצגת קבצים
-                if (message.attachments && message.attachments.length > 0) {
-                    // וודא שה-preview קיים
-                    const preview = document.getElementById('shiftAttachmentsPreview');
-                    if (preview) {
-                        // צור מיכל אם לא קיים
-                        let container = document.getElementById('shiftAttachmentsContainer');
-                        if (!container) {
-                            container = this.createShiftAttachmentsContainer();
-                        } else {
-                            container.innerHTML = ''; // נקה תוכן קיים
-                        }
-                        this.showExistingShiftAttachments(message.attachments);
-                    }
-                }
-
-                // טיפול במיילים - קוד קיים
-                if (message.attachedEmails && message.attachedEmails.length > 0) {
-                    this.showExistingEmails(message.attachedEmails);
-                } else if (message.attachedEmail) {
+                // טיפול במייל מצורף
+                if (message.attachedEmail) {
                     this.showExistingEmails([message.attachedEmail]);
                 }
-                this.updateTimeClearButton();
             } else if (message.category === 'בקשות') {
                 document.getElementById('messageContent').value = message.content || '';
 
@@ -4798,161 +3348,21 @@ ${data.base64Data}`;
             } else if (message.category === 'כללי' || message.category === 'דחוף') {
                 document.getElementById('messageContent').value = message.content || '';
             } else if (message.category === 'סיכומי משמרת') {
+                document.getElementById('incidentsInput').value = message.incidents || '';
+                document.getElementById('openAlertsInput').value = message.openAlerts || '';
+                document.getElementById('specialActionsInput').value = message.specialActions || '';
+                document.getElementById('generalInfoInput').value = message.generalInfo || '';
+                document.getElementById('openItemsInput').value = message.openItems || '';
 
-                // ===== כותרת אוטומטית לשכפול סיכום משמרת =====
-                // מחליפה את הכותרת "(עותק)" בכותרת אוטומטית לפי המשמרת הנוכחית
-                this.buildShiftSummaryTitle().then(autoTitle => {
-                    const titleInput = document.getElementById('messageTitle');
-                    if (titleInput && autoTitle) {
-                        titleInput.value = autoTitle;
-                    }
-                });
-
-                const textFields = [
-                    'incidents',
-                    'openAlerts',
-                    'specialActions',
-                    'generalInfo',
-                    'openItems'
-                ];
-
-                textFields.forEach(field => {
-                    const fieldId = field + 'Input';
-                    const textarea = document.getElementById(fieldId);
-                    if (!textarea || !message[field]) return;
-
-                    // בדוק אם התוכן מכיל טבלאות HTML
-                    if (message[field].includes('<table')) {
-                        const tableRegex = /<table[\s\S]*?<\/table>/gi;
-                        let processedValue = message[field];
-                        let match;
-                        let index = 0;
-
-                        // החלף כל טבלה בפלייסהולדר
-                        while ((match = tableRegex.exec(message[field])) !== null) {
-                            const tableHtml = match[0];
-                            const tableId = `table_${Date.now()}_${index++}`;
-                            const placeholder = `[טבלה: ${tableId}]`;
-
-                            // שמור את ה-HTML בדאטה-אטריביוט
-                            textarea.dataset[tableId] = tableHtml;
-
-                            processedValue = processedValue.replace(tableHtml, placeholder);
-                        }
-
-                        textarea.value = processedValue;
-                    } else {
-                        textarea.value = message[field];
-                    }
-
-                    // עדכן תצוגה מקדימה של טבלאות
-                    const previewContainer = document.getElementById(`${fieldId}Preview`);
-                    if (previewContainer) {
-                        this.updateTablePreview(textarea, previewContainer);
-                    }
-                });
-
-                // טיפול ב-alertItems (התראות עם תמונות)
-                const alertsContainer = document.getElementById('alertItemsContainer');
-                if (alertsContainer) {
-                    alertsContainer.innerHTML = '';
-
-                    if (message.alertItems && Array.isArray(message.alertItems)
-                        && message.alertItems.length > 0) {
-
-                        message.alertItems.forEach(item => {
-                            const alertItem = document.createElement('div');
-                            alertItem.className = 'alert-item';
-                            alertItem.innerHTML = `
-                    <div class="alert-text-container">
-                        <textarea class="alert-text form-textarea"
-                            >${item.Text || ''}</textarea>
-                    </div>
-                    <div class="alert-image-container">
-                        <div class="alert-image-upload"
-                            ${item.ImagePath ? 'style="display:none;"' : ''}>
-                            <i class="fas fa-image"></i>
-                            <span>הוסף תמונה</span>
-                            <input type="file"
-                                   class="alert-image-input"
-                                   accept="image/*">
-                        </div>
-                        <div class="alert-image-preview"
-                            ${item.ImagePath ? '' : 'style="display:none;"'}>
-                            <img src="${item.ImagePath
-                                    ? `/Messages/GetImageFile?filePath=${encodeURIComponent(item.ImagePath)}`
-                                    : ''}"
-                                 alt="תצוגה מקדימה">
-                            <button type="button" class="remove-alert-image">
-                                <i class="fas fa-times"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <button type="button" class="remove-alert-item">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                `;
-
-                            // שמור נתיב תמונה קיים
-                            if (item.ImagePath) {
-                                alertItem.dataset.imagePath = item.ImagePath;
-                            }
-
-                            alertsContainer.appendChild(alertItem);
-                            this.setupAlertItemEventListeners(alertItem);
-                        });
-
-                    } else {
-                        // אם אין התראות - הוסף שורה ריקה אחת
-                        this.addAlertItem();
-                    }
-                }
-
-                // טיפול בקבצים מצורפים
-                if (message.attachments && message.attachments.length > 0) {
-                    const preview = document.getElementById('shiftAttachmentsPreview');
-                    if (preview) {
-                        let container = document.getElementById('shiftAttachmentsContainer');
-                        if (!container) {
-                            container = this.createShiftAttachmentsContainer();
-                        } else {
-                            container.innerHTML = '';
-                        }
-                        this.showExistingShiftAttachments(message.attachments);
-                    }
-                }
-
-                // טיפול במיילים מצורפים
+                // טיפול במייל מצורף
                 if (message.attachedEmails && message.attachedEmails.length > 0) {
                     this.showExistingEmails(message.attachedEmails);
                 } else if (message.attachedEmail) {
                     this.showExistingEmails([message.attachedEmail]);
                 }
-
-                // הצג שדה openAlerts אם יש תוכן
-                const openAlertsInput = document.getElementById('openAlertsInput');
-                if (openAlertsInput) {
-                    openAlertsInput.style.display =
-                        openAlertsInput.value ? 'block' : 'none';
-                }
             } else if (message.category === 'רשימות' || message.category === 'דוחות UC4') {
                 if (message.csvFilePath) {
                     this.showExistingCsvFile(message.csvFilePath);
-                }
-
-                // ← הצג גם נתוני Control-M אם קיימים
-                if (message.category === 'דוחות UC4' &&
-                    message.controlMTableData &&
-                    message.controlMTableData.length > 0) {
-
-                    // הזרק את הנתונים לשדה הנסתר
-                    this._injectControlMDataToForm(message.controlMTableData);
-
-                    // הצג תצוגה מקדימה
-                    this._displayControlMTableInModal(
-                        message.controlMTableData,
-                        message.controlMTableData.length - 1
-                    );
                 }
             }
 
@@ -4964,8 +3374,16 @@ ${data.base64Data}`;
             document.getElementById('messageAuthor').value = '';
             // טיפול במחבר
             this.loadEmployees().then(() => {
-                // ← תיקון: אל תמלא את שם המחבר המקורי - השתמש ביוזר הנוכחי
-                this._applyCurrentUserAsReadonly('messageAuthor');
+                const authorSelect = document.getElementById('messageAuthor');
+                if (authorSelect) {
+                    const authorExists = this.employees.some(emp => emp.name === message.author);
+                    if (authorExists) {
+                        authorSelect.value = '';
+                    } else {
+                        authorSelect.value = 'other';
+                        this.handleCustomAuthorInput(message.author);
+                    }
+                }
             });
 
             // שינוי כותרת המודל
@@ -5024,200 +3442,28 @@ ${data.base64Data}`;
         }
     }
 
-    // ===== פונקציה חדשה: בניית כותרת אוטומטית לסיכום משמרת =====
-    async buildShiftSummaryTitle() {
-        try {
-            const now = new Date();
-
-            const currentHour = now.getHours();
-            const currentMinute = now.getMinutes();
-            const currentTime = currentHour * 60 + currentMinute;
-            const dayOfWeek = now.getDay(); // 0=ראשון, 6=שבת
-
-            // ===== קביעת סוג המשמרת =====
-            // אנחנו לוקחים מרווח ביטחון של שעה אחרי המשמרת
-            // משמרת לילה: 23:00 עד 07:00 (כולל שעות מוקדמות של הבוקר)
-            // משמרת בוקר: 07:00 עד 15:00
-            // משמרת ערב/צהריים: 15:00 עד 23:00
-
-
-            // קביעת סוג המשמרת
-            let shiftType;
-            let isNightShift = false;
-
-            if (currentTime < 8 * 60) {
-                shiftType = 'לילה';
-                isNightShift = true;
-            } else if (currentTime >= 8 * 60 && currentTime < 16 * 60) {
-                shiftType = 'בוקר';
-            } else {
-                shiftType = 'ערב';
-            }
-
-
-            // ===== קביעת היום =====
-            // משמרת לילה - שייכת ליום הקודם
-            let titleDate = new Date(now);
-
-            if (isNightShift && currentTime < 8 * 60) {
-                // אחרי חצות ולפני 8 בבוקר - הלילה התחיל אתמול
-                titleDate.setDate(titleDate.getDate() - 1);
-            }
-            // לפני חצות (23:00-24:00) - הלילה מתחיל היום, titleDate = now (נכון)
-
-            let titleDayOfWeek = titleDate.getDay();
-
-            // shiftSearchDate זהה ל-titleDate (שניהם היום שהלילה התחיל)
-            let shiftSearchDate = new Date(titleDate);
-
-            const shiftLabel = shiftType;
-
-            // שם היום בעברית
-            const hebrewDays = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'מוצ"ש'];
-            var dayName = hebrewDays[titleDayOfWeek];
-
-            if (titleDayOfWeek != 6) {
-                dayName = "יום " + dayName;
-            }
-
-            // פורמט תאריך dd/mm/yy
-            const dd = String(titleDate.getDate()).padStart(2, '0');
-            const mm = String(titleDate.getMonth() + 1).padStart(2, '0');
-            const yy = String(titleDate.getFullYear()).slice(-2);
-            const dateStr = `${dd}/${mm}/${yy}`;
-
-            // שליפת שמות עובדים
-            let employeeNames = '';
-            try {
-                employeeNames = await this.getEmployeesOnCurrentShift(shiftType, shiftSearchDate);
-            } catch (e) {
-                console.warn('Could not fetch employees from shifts table:', e);
-            }
-
-            // בניית הכותרת
-            let title = `סיכום משמרת ${shiftLabel} ${dayName} - ${dateStr}`;
-            if (employeeNames) {
-                title += ` - ${employeeNames}`;
-            }
-
-            return title;
-        } catch (error) {
-            console.error('Error building shift summary title:', error);
-            return '';
-        }
-    }
-
-    // ===== פונקציה עזר: שליפת עובדים מטבלת המשמרות =====
-    async getEmployeesOnCurrentShift(shiftType, targetDate) {
-        try {
-            const response = await fetch('/Shifts/GetShiftsTable');
-            if (!response.ok) return '';
-
-            const data = await response.json();
-            if (!data || !data.rows || !data.headers) return '';
-
-            // ===== מציאת עמודת התאריך המתאים =====
-            const dd = String(targetDate.getDate()).padStart(2, '0');
-            const mm = String(targetDate.getMonth() + 1).padStart(2, '0');
-            const yy = String(targetDate.getFullYear()).slice(-2);
-            const targetDateStr = `${dd}.${mm}.${yy}`;
-
-            // חיפוש עמודה לפי תאריך
-            let colIndex = -1;
-            for (let i = 0; i < data.headers.length; i++) {
-                const header = (data.headers[i] || '').trim();
-                if (header === targetDateStr || header.startsWith(targetDateStr)) {
-                    colIndex = i;
-                    break;
-                }
-            }
-
-            // אם לא נמצא תאריך מדויק - נסה לפי יום בשבוע
-            if (colIndex === -1) {
-                const hebrewDays = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
-                const targetDayHebrew = hebrewDays[targetDate.getDay()];
-
-                for (let i = 0; i < data.dayHeaders.length; i++) {
-                    if ((data.dayHeaders[i] || '').trim() === targetDayHebrew) {
-                        colIndex = i;
-                        break;
-                    }
-                }
-            }
-
-            if (colIndex === -1) return '';
-
-            // ===== מיפוי שם משמרת לשם בטבלה =====
-            const shiftNameMap = {
-                'בוקר': 'בוקר',
-                'ערב': 'צהריים',
-                'לילה': 'לילה',
-            };
-            const tableShiftName = shiftNameMap[shiftType] || shiftType;
-
-            // ===== שליפת עובדים מהמשמרת המתאימה =====
-            const employees = new Set();
-
-            for (const shiftGroup of data.rows) {
-                // בדוק אם זו המשמרת הנכונה
-                const groupName = (shiftGroup.shiftName || '').trim();
-                if (groupName !== tableShiftName) continue;
-
-                // עבור על כל שורות המשמרת
-                for (const row of shiftGroup.rows) {
-                    // row[0] = שם שורה (ריק בד"כ), row[1..n] = ערכי עמודות
-                    // colIndex הוא אינדקס ב-headers (0-based), בטבלה זה row[colIndex+1]
-                    const cellValue = (row[colIndex + 1] || '').trim();
-                    if (cellValue && cellValue !== '' && cellValue !== '-') {
-                        employees.add(cellValue);
-                    }
-                }
-            }
-
-            return Array.from(employees).join(' , ');
-        } catch (error) {
-            console.error('Error getting employees from shifts table:', error);
-            return '';
-        }
-    }
-
+    // Modal functions
     openAddMessageModal() {
         this.isModalOpen = true;
         document.getElementById('addMessageForm').reset();
         document.getElementById('messageId').value = '';
 
+        // איפוס הקבצים המצורפים
         this.resetAttachments();
+
+        // הצג/הסתר שדות לפי קטגוריה
         this.updateFormFieldsByCategory('כללי');
         this.updateEmailFieldLabel('כללי');
 
         document.getElementById('messageDueDate').value = '';
         document.getElementById('messageDueDateHidden').value = '';
         document.getElementById('messageDueDateClear').style.display = 'none';
-
         document.getElementById('modalTitle').textContent = 'הוסף הודעה חדשה';
         document.getElementById('submitBtn').textContent = 'הוסף הודעה';
 
-        this.loadEmployees().then(async () => {
-            // ← שינוי: הצג שם קבוע במקום select
-            this._applyCurrentUserAsReadonly('messageAuthor');
-
-            const category = this.setDefaultCategory();
-
-            // ===== כותרת אוטומטית לסיכומי משמרת =====
-            const categorySelect = document.getElementById('messageCategory');
-            if (categorySelect && categorySelect.value === 'סיכומי משמרת') {
-                await this._applyShiftSummaryAutoTitle();
-            }
-            // מאזין לשינוי קטגוריה - עדכון כותרת אוטומטית
-            categorySelect.addEventListener('change', async (e) => {
-                if (e.target.value === 'סיכומי משמרת') {
-                    const titleInput = document.getElementById('messageTitle');
-                    // הצע כותרת רק אם השדה ריק
-                    if (!titleInput.value.trim()) {
-                        await this._applyShiftSummaryAutoTitle();
-                    }
-                }
-            }, { once: true }); // once:true כדי לא לצבור מאזינים
+        this.loadEmployees().then(() => {
+            this.setDefaultAuthor();
+            this.setDefaultCategory();
         });
 
         // איפוס תצוגות מקדימות של טבלאות
@@ -5230,22 +3476,6 @@ ${data.base64Data}`;
         document.body.style.overflow = 'hidden';
     }
 
-    // ===== פונקציה עזר פרטית: החלת כותרת אוטומטית =====
-    async _applyShiftSummaryAutoTitle() {
-        const titleInput = document.getElementById('messageTitle');
-        if (!titleInput) return;
-
-        // הצג placeholder בזמן הטעינה
-        titleInput.placeholder = 'טוען כותרת אוטומטית...';
-
-        const autoTitle = await this.buildShiftSummaryTitle();
-
-        if (autoTitle) {
-            titleInput.value = autoTitle;
-        }
-        titleInput.placeholder = 'כותרת ההודעה';
-    }
-
     // Update form fields based on category
     updateFormFieldsByCategory(category) {
         // הסתר את כל השדות הספציפיים
@@ -5256,662 +3486,71 @@ ${data.base64Data}`;
         document.getElementById('shiftSummaryFields').style.display = 'none';
         document.getElementById('shiftAttachmentsField').style.display = 'none';
 
-        setTimeout(() => this.setupShiftSummaryFormatting(), 100);
-
-        const listDisplayOptions = document.getElementById('listDisplayOptionsField');
-        if (listDisplayOptions) listDisplayOptions.style.display = 'none';
-
-        // ← הסר כפתור Control-M אם קיים (כשעוברים לקטגוריה אחרת)
-        const existingControlMBtn = document.getElementById('controlMFetchBtn');
-        if (existingControlMBtn) existingControlMBtn.remove();
-
-        const existingControlMPreview = document.getElementById('controlMTablePreview');
-        if (existingControlMPreview) existingControlMPreview.remove();
-
+        // הצג שדות רלוונטיים
         switch (category) {
             case 'בקשות וביצוע':
                 document.getElementById('jobsTableField').style.display = 'block';
                 document.getElementById('emailUploadField').style.display = 'block';
-                document.getElementById('shiftAttachmentsField').style.display = 'block';
+                // שמור את המיקום המקורי של שדה המייל
+                if (document.getElementById('emailUploadField').parentNode !== document.getElementById('addMessageForm').querySelector('.form-body')) {
+                    document.getElementById('addMessageForm').querySelector('.form-body').insertBefore(
+                        document.getElementById('emailUploadField'),
+                        document.getElementById('messageAuthor').parentNode
+                    );
+                }
                 this.updateExcelUploadVisibility();
                 break;
-
             case 'בקשות':
                 document.getElementById('contentField').style.display = 'block';
                 document.getElementById('emailUploadField').style.display = 'block';
+                // שמור את המיקום המקורי של שדה המייל
+                if (document.getElementById('emailUploadField').parentNode !== document.getElementById('addMessageForm').querySelector('.form-body')) {
+                    document.getElementById('addMessageForm').querySelector('.form-body').insertBefore(
+                        document.getElementById('emailUploadField'),
+                        document.getElementById('messageAuthor').parentNode
+                    );
+                }
                 break;
-
             case 'רשימות':
                 document.getElementById('csvUploadField').style.display = 'block';
-                const listOpts = document.getElementById('listDisplayOptionsField');
-                if (listOpts) listOpts.style.display = 'block';
                 break;
-
             case 'דוחות UC4':
                 document.getElementById('csvUploadField').style.display = 'block';
-                // ← הוסף את הכפתור Control-M
-                this._showControlMButton();
-                // ← הגדר כותרת ברירת מחדל
-                this._setUC4DefaultTitle();
                 break;
-
             case 'סיכומי משמרת':
                 document.getElementById('shiftSummaryFields').style.display = 'block';
                 document.getElementById('shiftAttachmentsField').style.display = 'block';
-                document.getElementById('emailUploadField').style.display = 'block';
 
-                this._showDailyTasksCheckbox();
-                setTimeout(() => this.setupShiftSummaryFormatting(), 50);
+                // הסתר את שדה openAlertsInput אם הוא ריק
                 const openAlertsInput = document.getElementById('openAlertsInput');
                 if (openAlertsInput) {
                     openAlertsInput.style.display = openAlertsInput.value ? 'block' : 'none';
                 }
 
+                // הזז את שדה המייל מתחת לשדה הקבצים המצורפים
+                document.getElementById('emailUploadField').style.display = 'block';
+
+                // העבר את שדה המייל מתחת לשדה הקבצים המצורפים
                 const shiftAttachmentsField = document.getElementById('shiftAttachmentsField');
                 if (shiftAttachmentsField && document.getElementById('emailUploadField')) {
+                    // בדוק אם צריך להזיז את האלמנט
                     if (shiftAttachmentsField.nextSibling !== document.getElementById('emailUploadField')) {
-                        document.querySelector('#emailUploadField .form-label').textContent =
-                            'צרף מייל לסיכום המשמרת';
+                        // הוסף כותרת מותאמת לשדה המייל בסיכומי משמרת
+                        document.querySelector('#emailUploadField .form-label').textContent = 'צרף מייל לסיכום המשמרת';
+
+                        // הזז את שדה המייל אחרי שדה הקבצים המצורפים
                         shiftAttachmentsField.after(document.getElementById('emailUploadField'));
                     }
                 }
                 break;
-
             case 'אישורי כניסה':
+                // אין שדות נוספים - הכל מנוהל במודל הייעודי
                 break;
-
             case 'כללי':
             case 'דחוף':
-            default:
                 document.getElementById('contentField').style.display = 'block';
                 break;
         }
-    }
-
-    _showDailyTasksCheckbox() {
-        // הסר קיים אם יש
-        const existing = document.getElementById('dailyTasksCheckboxField');
-        if (existing) existing.remove();
-
-        const shiftFields = document.getElementById('shiftSummaryFields');
-        if (!shiftFields) return;
-
-        const wrapper = document.createElement('div');
-        wrapper.id = 'dailyTasksCheckboxField';
-        wrapper.className = 'form-group';
-        wrapper.style.cssText = `
-        margin-top: 12px;
-        padding: 12px 16px;
-        background: linear-gradient(135deg, #f0f4ff, #faf5ff);
-        border: 1.5px solid #c3d0f7;
-        border-radius: 10px;
-    `;
-
-        wrapper.innerHTML = `
-        <label class="form-label" style="
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            cursor: pointer;
-            margin-bottom: 0;
-        ">
-            <input type="checkbox" 
-                   id="includeDailyTasksCheckbox"
-                    checked
-                   style="width:18px; height:18px; cursor:pointer; accent-color:#667eea;">
-            <span style="font-weight:600; color:#333;">
-                <i class="fas fa-tasks" style="color:#667eea; margin-left:4px;"></i>
-                צרף צ'קליסט משימות יומיות לסיכום
-            </span>
-        </label>
-        <div id="dailyTasksPreview" style="display:none; margin-top:12px;">
-            <div style="
-                font-size:0.82rem; 
-                color:#888; 
-                margin-bottom:8px;
-                display:flex;
-                align-items:center;
-                gap:6px;
-            ">
-                <i class="fas fa-info-circle"></i>
-                תצוגה מקדימה של המשימות שיצורפו:
-            </div>
-            <div id="dailyTasksPreviewContent" style="
-                max-height: 200px;
-                overflow-y: auto;
-                border: 1px solid #e2e8f0;
-                border-radius: 8px;
-                background: white;
-                padding: 10px;
-            "></div>
-        </div>
-    `;
-
-        // הוסף לפני shiftSummaryFields
-        shiftFields.parentNode.insertBefore(wrapper, shiftFields.nextSibling);
-
-        // מאזין לצ'קבוקס
-        const checkbox = wrapper.querySelector('#includeDailyTasksCheckbox');
-        checkbox.addEventListener('change', (e) => {
-            if (e.target.checked) {
-                this._loadDailyTasksPreview();
-            } else {
-                document.getElementById('dailyTasksPreview').style.display = 'none';
-            }
-        });
-
-        // ← הוסף שורה זו - טעינה אוטומטית כי checked=true:
-        setTimeout(() => this._loadDailyTasksPreview(), 100);
-    }
-
-    async _loadDailyTasksPreview() {
-        const preview = document.getElementById('dailyTasksPreview');
-        const content = document.getElementById('dailyTasksPreviewContent');
-        if (!preview || !content) return;
-
-        preview.style.display = 'block';
-        content.innerHTML = `
-        <div style="text-align:center; padding:15px; color:#888;">
-            <i class="fas fa-spinner fa-spin"></i> טוען משימות...
-        </div>`;
-
-        try {
-            // ===== קביעת מידע המשמרת =====
-            const shiftInfo = this._getCurrentShiftInfo();
-            const today = shiftInfo.targetDate.toISOString().split('T')[0];
-            const formattedDate = today.split('-').reverse().join('/');
-
-            let tasks = [];
-
-            if (typeof dailyTasksManager !== 'undefined' &&
-                dailyTasksManager.dailyTasks) {
-                tasks = dailyTasksManager.dailyTasks;
-            } else {
-                const response = await fetch(`/DailyTasks/GetTasks?date=${today}`);
-                const data = await response.json();
-                if (!data.error) {
-                    tasks = data.filter(task => {
-                        if (task.isDeleted) return false;
-                        const createdDate = new Date(task.createdAt);
-                        const selectedDate = new Date(today);
-                        createdDate.setHours(0, 0, 0, 0);
-                        selectedDate.setHours(0, 0, 0, 0);
-                        return createdDate <= selectedDate;
-                    }).map(task => ({
-                        ...task,
-                        completed: task.completionDates &&
-                            task.completionDates.includes(today)
-                    }));
-                }
-            }
-
-            // ===== סינון לפי משמרת =====
-            const shiftTasks = tasks.filter(task =>
-                this._isTaskInCurrentShift(task, shiftInfo)
-            );
-
-            if (shiftTasks.length === 0) {
-                content.innerHTML = `
-                <div style="text-align:center; padding:15px;
-                            color:#888; font-style:italic;">
-                    <i class="fas fa-clipboard-list"></i>
-                    אין משימות למשמרת ${shiftInfo.shiftType} 
-                    (${formattedDate})
-                </div>`;
-                return;
-            }
-
-            const completed = shiftTasks.filter(t =>
-                t.completionDates && t.completionDates.includes(today)
-            ).length;
-            const skipped = shiftTasks.filter(t =>
-                t.skipReasons && t.skipReasons[today]
-            ).length;
-            const pending = shiftTasks.length - completed - skipped;
-
-            // ===== כותרת עם שם המשמרת =====
-            let html = `
-            <div style="
-                font-size:0.8rem;
-                color:#667eea;
-                margin-bottom:8px;
-                font-weight:600;
-                display:flex;
-                align-items:center;
-                gap:6px;
-            ">
-                <i class="fas fa-calendar-day"></i>
-                משמרת ${shiftInfo.shiftType} - ${formattedDate}
-            </div>
-            <div style="display:flex; gap:12px; margin-bottom:10px;
-                        flex-wrap:wrap;">
-                <span style="padding:3px 10px; background:#e8f5e9;
-                             color:#2e7d32; border-radius:10px;
-                             font-size:0.82rem; font-weight:600;">
-                    ✓ בוצעו: ${completed}
-                </span>
-                <span style="padding:3px 10px; background:#fff3e0;
-                             color:#e65100; border-radius:10px;
-                             font-size:0.82rem; font-weight:600;">
-                    ✗ לא בוצעו: ${skipped}
-                </span>
-                <span style="padding:3px 10px; background:#f3f4f6;
-                             color:#6b7280; border-radius:10px;
-                             font-size:0.82rem; font-weight:600;">
-                    ⏳ ממתינות: ${pending}
-                </span>
-            </div>`;
-
-            shiftTasks.forEach(task => {
-                const isCompleted = task.completionDates &&
-                    task.completionDates.includes(today);
-                const isSkipped = task.skipReasons && task.skipReasons[today];
-                const skipReason = isSkipped ? task.skipReasons[today] : '';
-
-                const priorityColors = {
-                    high: '#ef4444', medium: '#f59e0b', low: '#10b981'
-                };
-                const priorityColor = priorityColors[task.priority] || '#6b7280';
-
-                let statusIcon = '⏳';
-                let statusColor = '#6b7280';
-                let bgColor = '#f9fafb';
-
-                if (isCompleted) {
-                    statusIcon = '✓';
-                    statusColor = '#2e7d32';
-                    bgColor = '#f0fdf4';
-                } else if (isSkipped) {
-                    statusIcon = '✗';
-                    statusColor = '#dc2626';
-                    bgColor = '#fef2f2';
-                }
-
-                html += `
-                <div style="
-                    display:flex; align-items:center; gap:8px;
-                    padding:6px 10px; margin-bottom:4px;
-                    background:${bgColor}; border-radius:6px;
-                    border-right:3px solid ${priorityColor};
-                    font-size:0.85rem;
-                ">
-                    <span style="color:${statusColor}; font-weight:bold;
-                                 min-width:16px; text-align:center;">
-                        ${statusIcon}
-                    </span>
-                    <span style="
-                        flex:1;
-                        color:${isCompleted ? '#6b7280' : '#1f2937'};
-                        text-decoration:${isCompleted ? 'line-through' : 'none'};
-                    ">
-                        ${this.escapeHtml(task.title)}
-                    </span>
-                    ${task.taskHour && task.taskMinute ? `
-                        <span style="font-size:0.75rem; color:#9ca3af;
-                                     white-space:nowrap;">
-                            🕐 ${task.taskHour}:${task.taskMinute}
-                        </span>` : ''}
-                    ${isSkipped ? `
-                        <span style="font-size:0.75rem; color:#dc2626;
-                                     max-width:100px; overflow:hidden;
-                                     text-overflow:ellipsis; white-space:nowrap;"
-                              title="${this.escapeHtml(skipReason)}">
-                            ${this.escapeHtml(
-                    (skipReason || '').substring(0, 20)
-                )}${(skipReason || '').length > 20 ? '...' : ''}
-                        </span>` : ''}
-                    ${task.completedByEmployees &&
-                        task.completedByEmployees[today] ? `
-                        <span style="font-size:0.75rem; color:#2e7d32;
-                                     white-space:nowrap;">
-                            👤 ${this.escapeHtml(
-                            task.completedByEmployees[today]
-                        )}
-                        </span>` : ''}
-                </div>`;
-            });
-
-            content.innerHTML = html;
-
-        } catch (error) {
-            console.error('Error loading daily tasks preview:', error);
-            content.innerHTML = `
-            <div style="text-align:center; padding:15px; color:#dc2626;">
-                <i class="fas fa-exclamation-circle"></i>
-                שגיאה בטעינת המשימות
-            </div>`;
-        }
-    }
-
-    _setUC4DefaultTitle() {
-        const titleInput = document.getElementById('messageTitle');
-        if (!titleInput) return;
-
-        // הגדר כותרת ברירת מחדל רק אם השדה ריק
-        // (כדי לא לדרוס כותרת קיימת בעת עריכה)
-        if (titleInput.value.trim() !== '') return;
-
-        this._fetchAndShowControlMReport(); // אם הכותרת ריקה - תטען אוטומטית דוח ControlM
-
-        const today = new Date();
-        const dd = String(today.getDate()).padStart(2, '0');
-        const mm = String(today.getMonth() + 1).padStart(2, '0');
-        const yyyy = today.getFullYear();
-        const formattedDate = `${dd}/${mm}/${yyyy}`;
-
-        titleInput.value =
-            `דוח ג'ובים שנכשלו - דוח סטטוס ממערכות Control-M ו-UC4 - ` +
-            `ג'ובים שלא סיימו תקין נכון ל- ${formattedDate}`;
-    }
-
-    _showControlMButton() {
-        // הסר כפתור קיים אם יש
-        this._addControlMStyles();
-        const existing = document.getElementById('controlMFetchBtn');
-        if (existing) existing.remove();
-
-        const csvUploadField = document.getElementById('csvUploadField');
-        if (!csvUploadField) return;
-
-        const btnWrapper = document.createElement('div');
-        btnWrapper.id = 'controlMFetchBtn';
-        btnWrapper.className = 'control-m-fetch-wrapper';
-        btnWrapper.innerHTML = `
-        <button type="button" 
-                class="btn-fetch-controlm" 
-                onclick="messagesManager._fetchAndShowControlMReport()">
-            <i class="fas fa-download"></i>
-            ייבא דוח Control-M אוטומטי
-        </button>
-        <small class="control-m-hint">
-            <i class="fas fa-info-circle"></i>
-            לחץ לייבוא דוח ג'ובים שנכשלו מ-Control-M
-        </small>
-    `;
-
-        // הוסף לפני שדה ה-CSV
-        csvUploadField.insertBefore(btnWrapper, csvUploadField.firstChild);
-    }
-
-    async _fetchAndShowControlMReport() {
-        try {
-            const overlay = document.getElementById('shiftsLoadingOverlay')
-                || this.createLoadingOverlay();
-            overlay.classList.add('show');
-
-            NotificationManager.show('טוען דוח Control-M...', 'info');
-
-            const reportData = await this.loadUC4DailyReport();
-
-            overlay.classList.remove('show');
-
-            if (!reportData) {
-                NotificationManager.show('שגיאה בטעינת דוח Control-M - אין תגובה מהשרת', 'error');
-                return;
-            }
-
-            // *** תיקון: הצג את הודעת השגיאה האמיתית מהשרת ***
-            if (!reportData.success) {
-                const errorMsg = reportData.error || 'שגיאה לא ידועה';
-                NotificationManager.show(errorMsg, 'error');
-            }
-
-            const { data } = reportData;
-
-            // *** תיקון: data ריק זה לא שגיאה - זה אומר אין כשלונות ***
-            if (!data || data.length === 0) {
-                // הצג טבלה ריקה במודל
-                const emptyTableData = [['תיקייה', "שם ג'וב", 'זמן התחלה',
-                    "זמן ריצה (שנ')", 'זמן סיום', 'Host', 'Run ID', 'משתמש',
-                    'אנשי קשר', 'מקור']];
-
-                this._displayControlMTableInModal(emptyTableData, 0);
-                this._pendingControlMTableData = emptyTableData;
-                return;
-            }
-
-            // המר לפורמט tableData
-            const tableData = this._convertUC4ReportToTableData(data);
-
-            // הצג את הטבלה בתוך המודל
-            this._displayControlMTableInModal(tableData, data.length);
-
-            // שמור את הנתונים לשימוש בשמירה
-            this._pendingControlMTableData = tableData;
-
-            NotificationManager.show(
-                `דוח Control-M נטען! נמצאו ${data.length} ג'ובים שנכשלו`,
-                'success'
-            );
-
-        } catch (error) {
-            console.error('Error fetching Control-M report:', error);
-            NotificationManager.show(`שגיאה בטעינת דוח Control-M: ${error.message}`, 'error');
-            const overlay = document.getElementById('shiftsLoadingOverlay');
-            if (overlay) overlay.classList.remove('show');
-        }
-    }
-
-    _displayControlMTableInModal(tableData, jobCount) {
-        // הסר תצוגה קיימת אם יש
-        const existing = document.getElementById('controlMTablePreview');
-        if (existing) existing.remove();
-
-        const csvUploadField = document.getElementById('csvUploadField');
-        if (!csvUploadField) return;
-
-        const previewDiv = document.createElement('div');
-        previewDiv.id = 'controlMTablePreview';
-        previewDiv.className = 'control-m-table-preview';
-
-        // *** טיפול במקרה של אין ג'ובים ***
-        if (!tableData || tableData.length <= 1 || jobCount === 0) {
-            previewDiv.innerHTML = `
-            <div class="control-m-preview-header">
-                <i class="fas fa-check-circle" style="color:#4caf50;"></i>
-                <span>דוח Control-M - לא נמצאו ג'ובים שנכשלו</span>
-                <button type="button" 
-                        class="btn-clear-controlm"
-                        onclick="messagesManager._clearControlMData()"
-                        title="נקה">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div style="padding:20px; text-align:center; color:#f59e0b; font-size:1rem;">
-                <i class="fas fa-exclamation-circle" style="font-size:2rem; margin-bottom:10px; display:block;"></i>
-                לא נמצאו כשלונות
-            </div>
-        `;
-            csvUploadField.insertBefore(
-                previewDiv,
-                document.getElementById('controlMFetchBtn')?.nextSibling || csvUploadField.firstChild
-            );
-
-            // הסתר את אזור העלאת ה-CSV
-            const csvDropZone = document.getElementById('csvDropZone');
-            if (csvDropZone) csvDropZone.style.display = 'none';
-
-            // שמור נתונים ריקים
-            this._pendingControlMTableData = tableData || [[]];
-            this._injectControlMDataToForm(this._pendingControlMTableData);
-            return;
-        }
-
-        let tableHtml = `
-        <div class="control-m-preview-header">
-            <i class="fas fa-table"></i>
-            <span>דוח Control-M - ${jobCount} ג'ובים שנכשלו</span>
-            <button type="button" 
-                    class="btn-clear-controlm"
-                    onclick="messagesManager._clearControlMData()"
-                    title="נקה נתונים">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-        <div class="control-m-table-wrapper">
-            <table class="control-m-preview-table">
-                <thead><tr>`;
-
-        // כותרות
-        if (tableData[0]) {
-            tableData[0].forEach(header => {
-                tableHtml += `<th>${this.escapeHtml(header || '')}</th>`;
-            });
-        }
-        tableHtml += '</tr></thead><tbody>';
-
-        // נתונים (עד 10 שורות בתצוגה מקדימה)
-        const maxRows = Math.min(tableData.length, 11);
-        for (let i = 1; i < maxRows; i++) {
-            tableHtml += '<tr>';
-            tableData[i].forEach(cell => {
-                tableHtml += `<td>${this.escapeHtml(cell || '')}</td>`;
-            });
-            tableHtml += '</tr>';
-        }
-
-        if (tableData.length > 11) {
-            tableHtml += `
-            <tr class="more-rows-indicator">
-                <td colspan="${tableData[0].length}">
-                    <i class="fas fa-ellipsis-h"></i>
-                    ועוד ${tableData.length - 11} שורות נוספות...
-                </td>
-            </tr>`;
-        }
-
-        tableHtml += '</tbody></table></div>';
-        previewDiv.innerHTML = tableHtml;
-
-        // הוסף אחרי הכפתור
-        const btnWrapper = document.getElementById('controlMFetchBtn');
-        if (btnWrapper) {
-            btnWrapper.after(previewDiv);
-        } else {
-            csvUploadField.appendChild(previewDiv);
-        }
-
-        // הסתר את אזור העלאת ה-CSV הרגיל
-        const csvDropZone = document.getElementById('csvDropZone');
-        if (csvDropZone) csvDropZone.style.display = 'none';
-
-        // שמור את הנתונים בשדה נסתר
-        this._injectControlMDataToForm(this._pendingControlMTableData);
-    }
-
-    _injectControlMDataToForm(tableData) {
-        // שמור את הנתונים כ-hidden input לשימוש בשמירה
-        let hiddenInput = document.getElementById('controlMTableDataHidden');
-        if (!hiddenInput) {
-            hiddenInput = document.createElement('input');
-            hiddenInput.type = 'hidden';
-            hiddenInput.id = 'controlMTableDataHidden';
-            document.getElementById('addMessageForm').appendChild(hiddenInput);
-        }
-        hiddenInput.value = JSON.stringify(tableData);
-    }
-
-    _clearControlMData() {
-        // הסר תצוגת הטבלה
-        const preview = document.getElementById('controlMTablePreview');
-        if (preview) preview.remove();
-
-        // הסר נתונים נסתרים
-        const hidden = document.getElementById('controlMTableDataHidden');
-        if (hidden) hidden.remove();
-
-        // הצג מחדש את אזור העלאת ה-CSV
-        const csvDropZone = document.getElementById('csvDropZone');
-        if (csvDropZone) csvDropZone.style.display = 'block';
-
-        // נקה נתונים זמניים
-        this._pendingControlMTableData = null;
-
-        NotificationManager.show('נתוני Control-M נוקו', 'info');
-    }
-
-    toggleListDateFields(showDateFields) {
-        // showDateFields = true כאשר "הצג תמיד" לא מסומן
-        const dateFields = document.getElementById('listDateRangeFields');
-        if (dateFields) {
-            dateFields.style.display = showDateFields ? 'block' : 'none';
-        }
-
-        // אם מציגים שדות תאריך - הגדר תאריך סיום אוטומטי
-        if (showDateFields) {
-            const startDateValue = document.getElementById('messageDueDateHidden')?.value;
-            const endDateHidden = document.getElementById('listEndDateHidden');
-            const endDateDisplay = document.getElementById('listEndDate');
-            const endDateClear = document.getElementById('listEndDateClear');
-
-            // אם יש תאריך התחלה ואין תאריך סיום - הגדר אוטומטית
-            if (startDateValue && endDateHidden && !endDateHidden.value) {
-                endDateHidden.value = startDateValue;
-                if (endDateDisplay) {
-                    endDateDisplay.value = this.formatDateForDisplay(startDateValue);
-                }
-                if (endDateClear) {
-                    endDateClear.style.display = 'inline-block';
-                }
-            }
-        }
-    }
-
-    handleDueDateChange(value) {
-        if (value) {
-            const formattedDate = FlatpickrHelper.formatDateToDisplay(value);
-            document.getElementById('messageDueDate').value = formattedDate;
-            document.getElementById('messageDueDateClear').style.display = 'inline-block';
-
-            // עדכון אוטומטי של תאריך סיום לרשימות
-            const category = document.getElementById('messageCategory')?.value;
-            if (category === 'רשימות') {
-                const alwaysShow = document.getElementById('listAlwaysShow')?.checked;
-                // אם "הצג תמיד" לא מסומן - עדכן תאריך סיום אוטומטית
-                if (!alwaysShow) {
-                    const endDateHidden = document.getElementById('listEndDateHidden');
-                    const endDateDisplay = document.getElementById('listEndDate');
-                    const endDateClear = document.getElementById('listEndDateClear');
-
-                    // עדכן תאריך סיום רק אם ריק
-                    if (endDateHidden && !endDateHidden.value) {
-                        endDateHidden.value = value;
-                        if (endDateDisplay) endDateDisplay.value = formattedDate;
-                        if (endDateClear) endDateClear.style.display = 'inline-block';
-                    }
-                }
-            }
-        } else {
-            document.getElementById('messageDueDate').value = '';
-            document.getElementById('messageDueDateClear').style.display = 'none';
-        }
-    }
-
-    // פתיחת datepicker לתאריך סיום
-    openListEndDatePicker() {
-        if (this.listEndDatePicker) {
-            this.listEndDatePicker.open();
-        }
-    }
-
-    // טיפול בשינוי תאריך סיום
-    handleListEndDateChange(value) {
-        if (value) {
-            const formatted = FlatpickrHelper.formatDateToDisplay(value);
-            document.getElementById('listEndDate').value = formatted;
-            document.getElementById('listEndDateClear').style.display = 'inline-block';
-        } else {
-            document.getElementById('listEndDate').value = '';
-            document.getElementById('listEndDateClear').style.display = 'none';
-        }
-    }
-
-    // ניקוי תאריך סיום
-    clearListEndDate() {
-        if (this.listEndDatePicker) this.listEndDatePicker.clear();
-        document.getElementById('listEndDateHidden').value = '';
-        document.getElementById('listEndDate').value = '';
-        document.getElementById('listEndDateClear').style.display = 'none';
     }
 
     // הוסף פונקציה חדשה לעדכון כותרת שדה המייל לפי קטגוריה
@@ -7877,7 +5516,7 @@ ${data.base64Data}`;
 
                 // אם עדיין אין מידע על השלמה, השתמש במשתמש הנוכחי
                 if (!completedBy) {
-                    completedBy = this.getCurrentUserName();
+                    completedBy = this.getCurrentUser();
                     completedDate = new Date().toISOString();
                 }
             }
@@ -7899,7 +5538,7 @@ ${data.base64Data}`;
 
                 // אם עדיין אין מידע על ריצה, השתמש במשתמש הנוכחי
                 if (!runningBy) {
-                    runningBy = this.getCurrentUserName();
+                    runningBy = this.getCurrentUser();
                     runningDate = new Date().toISOString();
                 }
             }
@@ -8282,10 +5921,6 @@ ${data.base64Data}`;
             document.getElementById('messageContent').value = message.content || '';
             this.loadJobsData(message.jobs);
 
-            if (message.attachments && message.attachments.length > 0) {
-                this.showExistingShiftAttachments(message.attachments);
-            }
-
             // טיפול במייל מצורף
             if (message.attachedEmails && message.attachedEmails.length > 0) {
                 // טיפול במערך מיילים
@@ -8413,45 +6048,6 @@ ${data.base64Data}`;
                     }
                 }
             });
-            setTimeout(() => {
-                this.setupShiftSummaryFormatting();
-
-                // עדכן editors עם התוכן שנטען
-                const fields = ['incidents', 'specialActions', 'generalInfo', 'openItems'];
-                fields.forEach(field => {
-                    const textarea = document.getElementById(field + 'Input');
-                    const editor = document.getElementById(field + 'Input_editor');
-                    if (!textarea || !editor) return;
-
-                    const content = textarea.value;
-                    if (!content) return;
-
-                    if (/<[^>]+>/.test(content)) {
-                        editor.innerHTML = content;
-                    } else {
-                        editor.innerHTML = content
-                            .split('\n')
-                            .map(line => line
-                                ? `<div>${this.escapeHtml(line)}</div>`
-                                : '<div><br></div>')
-                            .join('');
-                    }
-                });
-            }, 100);
-
-            // הצג צ'קבוקס משימות יומיות
-            setTimeout(() => {
-                this._showDailyTasksCheckbox();
-
-                // אם יש נתוני משימות קיימים, סמן את הצ'קבוקס
-                if (message.dailyTasksSummary) {
-                    const checkbox = document.getElementById('includeDailyTasksCheckbox');
-                    if (checkbox) {
-                        checkbox.checked = true;
-                        this._loadDailyTasksPreview();
-                    }
-                }
-            }, 100);
         } else if (message.category === 'רשימות' || message.category === 'דוחות UC4') {
             if (message.csvFilePath) {
                 this.showExistingCsvFile(message.csvFilePath);
@@ -8462,31 +6058,6 @@ ${data.base64Data}`;
                 tableDataInput.id = 'existingTableData';
                 tableDataInput.value = JSON.stringify(message.tableData || []);
                 document.getElementById('addMessageForm').appendChild(tableDataInput);
-            }
-            // הוסף: טעינת הגדרות תצוגה לרשימות
-            if (message.category === 'רשימות') {
-                const alwaysShowCheckbox = document.getElementById('listAlwaysShow');
-                const alwaysShow = message.alwaysShow !== false; // ברירת מחדל: true
-
-                if (alwaysShowCheckbox) {
-                    alwaysShowCheckbox.checked = alwaysShow;
-                }
-
-                // הצג/הסתר שדות תאריך
-                this.toggleListDateFields(!alwaysShow);
-
-                // טען תאריך סיום אם קיים
-                if (!alwaysShow && message.endDate) {
-                    const endDateHidden = document.getElementById('listEndDateHidden');
-                    const endDateDisplay = document.getElementById('listEndDate');
-                    const endDateClear = document.getElementById('listEndDateClear');
-
-                    if (endDateHidden) endDateHidden.value = message.endDate;
-                    if (endDateDisplay) {
-                        endDateDisplay.value = this.formatDateForDisplay(message.endDate);
-                    }
-                    if (endDateClear) endDateClear.style.display = 'inline-block';
-                }
             }
         }
 
@@ -8504,8 +6075,16 @@ ${data.base64Data}`;
         document.getElementById('submitBtn').textContent = 'עדכן הודעה';
 
         this.loadEmployees().then(() => {
-            // ← תיקון: אל תמלא את שם המחבר המקורי - השתמש ביוזר הנוכחי
-            this._applyCurrentUserAsReadonly('messageAuthor');
+            const authorSelect = document.getElementById('messageAuthor');
+            if (authorSelect) {
+                const authorExists = this.employees.some(emp => emp.name === message.author);
+                if (authorExists) {
+                    authorSelect.value = message.author;
+                } else {
+                    authorSelect.value = 'other';
+                    this.handleCustomAuthorInput(message.author);
+                }
+            }
         });
 
         document.getElementById('addMessageModal').style.display = 'block';
@@ -8971,8 +6550,28 @@ ${data.base64Data}`;
 
         // מלא את רשימת העובדים
         this.loadEmployees().then(() => {
-            // ← תיקון: אל תמלא את שם המחבר המקורי - השתמש ביוזר הנוכחי
-            this._applyCurrentUserAsReadonly('messageAuthor');
+            const select = document.getElementById('runningActivityEmployeeName');
+            select.innerHTML = '<option value="">בחר עובד...</option>';
+
+            // הוסף אפשרויות עובדים
+            this.employees.forEach(employee => {
+                const option = document.createElement('option');
+                option.value = employee.name;
+                option.textContent = employee.name;
+                select.appendChild(option);
+            });
+
+            // הגדר עובד ברירת מחדל
+            const lastEmployee = this.getLastSelectedAuthor();
+            if (lastEmployee) {
+                const optionExists = Array.from(select.options).some(
+                    option => option.value === lastEmployee
+                );
+
+                if (optionExists) {
+                    select.value = lastEmployee;
+                }
+            }
         });
 
         // הצג את המודל
@@ -9012,11 +6611,123 @@ ${data.base64Data}`;
     }
 
     showEmployeeSelectionModalForRunning(messageId, jobIndex) {
-        const currentUser = this.getCurrentUserName();
-        if (currentUser) {
-            this.updateJobRunningStatus(messageId, jobIndex, true, currentUser);
-        } else {
-            this._showRunningEmployeeSelectionDialog(messageId, jobIndex);
+        // Create modal if it doesn't exist
+        let modal = document.getElementById('runningEmployeeSelectionModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'runningEmployeeSelectionModal';
+            modal.className = 'employee-job-running-modal employee-job-completed-modal';
+
+            modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="modal-title">
+                        <i class="fas fa-user-check"></i>
+                        סימון משימה כהתחילה ריצה
+                    </h3>
+                    <button class="close-btn" onclick="messagesManager.closeRunningEmployeeSelectionModal()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="job-title-display">
+                    <i class="fas fa-tasks"></i>
+                    <span id="runningJobTitle"></span>
+                </div>
+                    <input type="hidden" id="runningMessageId">
+                    <input type="hidden" id="runningJobIndex">
+                <form id="runningEmployeeSelectionForm">
+                    <div class="form-group">
+                        <label class="form-label" for="runningActivityEmployeeName">
+                            <i class="fas fa-user"></i>
+                            שם העובד שמסמן התחלת ריצה
+                        </label>
+                        <select id="runningActivityEmployeeName"
+                                class="form-select"
+                                required>
+                            <option value="">בחר עובד...</option>
+                        </select>
+                        <small class="form-help">
+                            <i class="fas fa-info-circle"></i>
+                            נא לבחור את העובד שמסמן התחלת ריצה
+                        </small>
+                    </div>
+                    <div class="modal-footer">
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-primary">אישור</button>
+                            <button type="button" class="btn btn-secondary" onclick="messagesManager.closeRunningEmployeeSelectionModal()">ביטול</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        `;
+            document.body.appendChild(modal);
+        }
+
+        const message = this.allMessages.find(m => m.id === messageId);
+        if (!message || !message.jobs || !message.jobs[jobIndex]) {
+            NotificationManager.show('משימה לא נמצאה', 'error');
+            return;
+        }
+
+        const job = message.jobs[jobIndex];
+
+        // Set values in the modal
+        document.getElementById('runningMessageId').value = messageId;
+        document.getElementById('runningJobIndex').value = jobIndex;
+        document.getElementById('runningJobTitle').textContent = job.JobName || 'משימה';
+
+        // Populate employee dropdown
+        this.loadEmployees().then(() => {
+            const select = document.getElementById('runningActivityEmployeeName');
+            select.innerHTML = '<option value="">בחר עובד...</option>';
+
+            // Add employee options
+            this.employees.forEach(employee => {
+                const option = document.createElement('option');
+                option.value = employee.name;
+                option.textContent = employee.name;
+                select.appendChild(option);
+            });
+
+            // Set default employee
+            const lastEmployee = this.getLastSelectedAuthor();
+            if (lastEmployee) {
+                const optionExists = Array.from(select.options).some(
+                    option => option.value === lastEmployee
+                );
+
+                if (optionExists) {
+                    select.value = lastEmployee;
+                }
+            }
+        });
+
+        // Add event listener to form
+        const form = document.getElementById('runningEmployeeSelectionForm');
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            const employeeName = document.getElementById('runningActivityEmployeeName').value.trim();
+            if (employeeName) {
+                // Save selected employee
+                this.saveLastSelectedAuthor(employeeName);
+
+                // Close modal
+                modal.style.display = 'none';
+
+                // Update job running status
+                await this.updateJobRunningStatus(messageId, jobIndex, true, employeeName);
+            } else {
+                NotificationManager.show('נא לבחור עובד', 'warning');
+            }
+        };
+
+        // Show the modal
+        modal.style.display = 'block';
+        // סמן שיש שינויים לא שמורים
+        const messageFind = this.allMessages.find(m => m.id === messageId);
+        if (messageFind) {
+            messageFind._hasUnsavedChanges = true;
+            this.updateSaveChangesButton(messageId);
         }
     }
 
@@ -9094,7 +6805,7 @@ ${data.base64Data}`;
             message.jobs[jobIndex].IsRunning = isRunning;
 
             if (isRunning) {
-                message.jobs[jobIndex].RunningBy = runningBy || this.getCurrentUserName();
+                message.jobs[jobIndex].RunningBy = runningBy || this.getCurrentUser();
                 message.jobs[jobIndex].RunningDate = new Date().toISOString();
                 // אם מסמנים כבריצה, וודא שלא מסומן גם כבוצע
                 message.jobs[jobIndex].IsCompleted = false;
@@ -9166,20 +6877,82 @@ ${data.base64Data}`;
 
     handleJobCompletionInEditForm(selectElement, job) {
         const row = selectElement.closest('tr');
-        const currentUser = this.getCurrentUserName();
 
-        if (currentUser) {
-            // ← שנה: השתמש ישירות ביוזר המחובר
-            row.dataset.completedBy = currentUser;
-            row.dataset.completedDate = new Date().toISOString();
-            row.classList.add('completed-job-row');
-            row.classList.remove('running-job-row');
-            delete row.dataset.runningBy;
-            delete row.dataset.runningDate;
-            NotificationManager.show(`משימה סומנה כבוצעה ע"י ${currentUser}`, 'success');
-        } else {
-            // fallback לדיאלוג הקיים
-            this._showCompletionDialog(selectElement, job, row);
+        // שמור הפניה לאלמנט הבחירה ולשורה לשימוש מאוחר יותר
+        this._tempEditFormStatusSelect = selectElement;
+        this._tempEditFormRow = row;
+
+        // קבל את שם המשימה
+        const jobName = job.JobName || row.querySelector('.job-name').value || 'משימה חדשה';
+
+        // הגדר ערכים במודל
+        document.getElementById('completionMessageId').value = 'edit-form';
+        document.getElementById('completionJobIndex').value = '-1'; // ערך מיוחד לטופס עריכה
+        document.getElementById('completionJobTitle').textContent = jobName;
+
+        // נקה בחירה קודמת
+        const select = document.getElementById('completionActivityEmployeeName');
+        if (select) select.value = '';
+
+        // מלא את רשימת העובדים
+        this.loadEmployees().then(() => {
+            const select = document.getElementById('completionActivityEmployeeName');
+            select.innerHTML = '<option value="">בחר עובד...</option>';
+
+            // הוסף אפשרויות עובדים
+            this.employees.forEach(employee => {
+                const option = document.createElement('option');
+                option.value = employee.name;
+                option.textContent = employee.name;
+                select.appendChild(option);
+            });
+
+            // הגדר עובד ברירת מחדל
+            const lastEmployee = this.getLastSelectedAuthor();
+            if (lastEmployee) {
+                const optionExists = Array.from(select.options).some(
+                    option => option.value === lastEmployee
+                );
+
+                if (optionExists) {
+                    select.value = lastEmployee;
+                }
+            }
+        });
+
+        // הצג את המודל
+        document.getElementById('employeeSelectionModal').style.display = 'block';
+
+        // הוסף מאזין אירועים ישיר לכפתור השליחה של הטופס
+        const submitBtn = document.querySelector('#employeeSelectionForm button[type="submit"]');
+        if (submitBtn) {
+            submitBtn.onclick = (e) => {
+                e.preventDefault();
+                const employeeName = document.getElementById('completionActivityEmployeeName').value.trim();
+                if (employeeName) {
+                    // עדכן את תפריט הבחירה
+                    selectElement.value = 'completed';
+
+                    // עדכן נתוני שורה
+                    row.dataset.completedBy = employeeName;
+                    row.dataset.completedDate = new Date().toISOString();
+                    row.classList.add('completed-job-row');
+                    row.classList.remove('running-job-row');
+                    delete row.dataset.runningBy;
+                    delete row.dataset.runningDate;
+
+                    // שמור עובד שנבחר
+                    this.saveLastSelectedAuthor(employeeName);
+
+                    // סגור מודל
+                    document.getElementById('employeeSelectionModal').style.display = 'none';
+
+                    // הצג הודעה
+                    NotificationManager.show(`משימה סומנה כבוצעה ע"י ${employeeName}`, 'success');
+                } else {
+                    NotificationManager.show('נא לבחור עובד', 'warning');
+                }
+            };
         }
     }
 
@@ -9218,8 +6991,28 @@ ${data.base64Data}`;
 
         // Populate employee dropdown
         this.loadEmployees().then(() => {
-            // ← תיקון: אל תמלא את שם המחבר המקורי - השתמש ביוזר הנוכחי
-            this._applyCurrentUserAsReadonly('messageAuthor');
+            const select = document.getElementById('editCompletionEmployeeName');
+            select.innerHTML = '<option value="">בחר עובד...</option>';
+
+            // Add employee options
+            this.employees.forEach(employee => {
+                const option = document.createElement('option');
+                option.value = employee.name;
+                option.textContent = employee.name;
+                select.appendChild(option);
+            });
+
+            // Set default employee
+            const lastEmployee = this.getLastSelectedAuthor();
+            if (lastEmployee) {
+                const optionExists = Array.from(select.options).some(
+                    option => option.value === lastEmployee
+                );
+
+                if (optionExists) {
+                    select.value = lastEmployee;
+                }
+            }
         });
 
         // Set up confirm button
@@ -9244,55 +7037,6 @@ ${data.base64Data}`;
 
         // Show modal
         modal.style.display = 'block';
-    }
-
-    // ← הוסף פונקציה חדשה לאחר _applyCurrentUserAsAuthor():
-    _applyCurrentUserAsReadonly(selectId) {
-        const userName = this.getCurrentUserName();
-        if (!userName) {
-            // אם אין יוזר מחובר - הצג select רגיל
-            this._applyCurrentUserAsAuthor();
-            return;
-        }
-
-        const select = document.getElementById(selectId);
-        if (!select) return;
-
-        // הסתר את ה-select
-        select.style.display = 'none';
-        select.value = userName;
-
-        // הסר div קיים אם יש
-        const existingDiv = select.parentNode.querySelector('.readonly-user-display');
-        if (existingDiv) existingDiv.remove();
-
-        // צור תצוגת טקסט קבועה
-        const readonlyDiv = document.createElement('div');
-        readonlyDiv.className = 'readonly-user-display form-input';
-        readonlyDiv.style.cssText = `
-        background: #f8f9ff;
-        border: 1.5px solid #c3d0f7;
-        color: #333;
-        padding: 10px 12px;
-        border-radius: 8px;
-        font-weight: 600;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        cursor: default;
-        user-select: none;
-    `;
-        readonlyDiv.innerHTML = `
-        <i class="fas fa-user" style="color:#667eea;"></i>
-        <span>${userName}</span>
-        <span style="margin-right:auto; font-size:0.78rem; 
-                     color:#888; font-weight:normal;">
-            (משתמש מחובר)
-        </span>
-    `;
-        readonlyDiv.dataset.value = userName;
-
-        select.parentNode.insertBefore(readonlyDiv, select);
     }
 
     // Close the edit form employee selection modal
@@ -9320,12 +7064,6 @@ ${data.base64Data}`;
         document.body.style.overflow = 'auto';
         document.getElementById('addMessageForm').reset();
         document.getElementById('messageId').value = '';
-
-        document.querySelectorAll('.readonly-user-display').forEach(div => {
-            const select = div.parentNode.querySelector('select');
-            if (select) select.style.display = '';
-            div.remove();
-        });
 
         // נקה את טבלת הג'ובים
         const tbody = document.getElementById('jobsTableBody');
@@ -9368,48 +7106,8 @@ ${data.base64Data}`;
         document.getElementById('modalTitle').textContent = 'הוסף הודעה חדשה';
         document.getElementById('submitBtn').textContent = 'הוסף הודעה';
 
-        const controlMPreview = document.getElementById('controlMTablePreview');
-        if (controlMPreview) controlMPreview.remove();
-
-        const controlMBtn = document.getElementById('controlMFetchBtn');
-        if (controlMBtn) controlMBtn.remove();
-
-        const controlMHidden = document.getElementById('controlMTableDataHidden');
-        if (controlMHidden) controlMHidden.remove();
-
-        this._pendingControlMTableData = null;
-
         // איפוס הקבצים המצורפים
         this.resetAttachments();
-
-        // איפוס rich editors
-        const fields = ['incidents', 'specialActions', 'generalInfo', 'openItems'];
-        fields.forEach(field => {
-            const editor = document.getElementById(field + 'Input_editor');
-            if (editor) {
-                editor.innerHTML = '';
-                // אפשר setup מחדש בפתיחה הבאה
-                const textarea = document.getElementById(field + 'Input');
-                if (textarea) {
-                    textarea.dataset.formattingSetup = '';
-                    textarea.value = '';
-                }
-            }
-
-            // הסר wrapper אם קיים
-            const wrapper = document.querySelector(
-                `#${field}Input`
-            )?.closest('.rich-editor-wrapper');
-            if (wrapper) {
-                const textarea = document.getElementById(field + 'Input');
-                wrapper.parentNode.insertBefore(textarea, wrapper);
-                textarea.style.display = '';
-                wrapper.remove();
-            }
-        });
-        // הסר צ'קבוקס משימות יומיות
-        const dailyTasksField = document.getElementById('dailyTasksCheckboxField');
-        if (dailyTasksField) dailyTasksField.remove();
     }
 
     // פונקציה חדשה לאיפוס הקבצים המצורפים
@@ -9531,22 +7229,6 @@ ${data.base64Data}`;
 
         // איפוס מערכים פנימיים
         this.attachedEmails = [];
-
-        // איפוס הגדרות תצוגה לרשימות
-        const listAlwaysShow = document.getElementById('listAlwaysShow');
-        if (listAlwaysShow) listAlwaysShow.checked = true;
-
-        const listDateRangeFields = document.getElementById('listDateRangeFields');
-        if (listDateRangeFields) listDateRangeFields.style.display = 'none';
-
-        const listEndDateHidden = document.getElementById('listEndDateHidden');
-        if (listEndDateHidden) listEndDateHidden.value = '';
-
-        const listEndDate = document.getElementById('listEndDate');
-        if (listEndDate) listEndDate.value = '';
-
-        const listEndDateClear = document.getElementById('listEndDateClear');
-        if (listEndDateClear) listEndDateClear.style.display = 'none';
     }
 
     // פונקציה לחלץ ולהציג שם קובץ יפה
@@ -9771,85 +7453,6 @@ ${data.base64Data}`;
 
         html += '</div>';
 
-        // ← הוסף כאן טיפול בקבצים מצורפים
-        if (message.attachments && message.attachments.length > 0) {
-            const images = [];
-            const otherFiles = [];
-
-            message.attachments.forEach(path => {
-                const fileName = this.getFileDisplayName(path);
-                const fileExt = fileName.split('.').pop().toLowerCase();
-                if (['jpg', 'jpeg', 'png', 'gif', 'bmp'].includes(fileExt)) {
-                    images.push({ path, fileName });
-                } else {
-                    otherFiles.push({ path, fileName, fileExt });
-                }
-            });
-
-            if (otherFiles.length > 0 || images.length > 0) {
-                html += '<div class="summary-section-full attachments-section">';
-                html += '<h4><i class="fas fa-paperclip"></i> קבצים מצורפים</h4>';
-
-                // קבצים שאינם תמונות
-                if (otherFiles.length > 0) {
-                    html += '<div class="attachments-list">';
-                    otherFiles.forEach(file => {
-                        let iconClass = 'fa-file';
-                        if (file.fileExt === 'pdf') iconClass = 'fa-file-pdf';
-                        else if (['doc', 'docx'].includes(file.fileExt)) iconClass = 'fa-file-word';
-                        else if (['xls', 'xlsx'].includes(file.fileExt)) iconClass = 'fa-file-excel';
-
-                        const encodedPath = encodeURIComponent(file.path);
-                        html += `
-                    <div class="attachment-item">
-                        <i class="fas ${iconClass}"></i>
-                        <a class="preview-filename" href="#" 
-                           onclick="messagesManager.openAttachmentInModal(
-                               '${encodedPath}', '${file.fileName}'); return false;">
-                            ${file.fileName}
-                        </a>
-                    </div>`;
-                    });
-                    html += '</div>';
-                }
-
-                // תמונות
-                if (images.length > 0) {
-                    html += '<div class="images-gallery">';
-                    images.forEach(image => {
-                        const encodedPath = encodeURIComponent(image.path);
-                        html += `
-                    <div class="attachment-image-container">
-                        <img src="/Messages/GetImageFile?filePath=${encodedPath}" 
-                             alt="${image.fileName}" 
-                             onclick="messagesManager.openImageInFullscreen(
-                                 '${encodedPath}', '${image.fileName}')">
-                        <div class="image-actions">
-                            <button class="image-action-btn" 
-                                    onclick="messagesManager.downloadAttachment(
-                                        '${encodedPath}'); return false;" 
-                                    title="הורד תמונה">
-                                <i class="fas fa-download"></i>
-                            </button>
-                            <button class="image-action-btn" 
-                                    onclick="messagesManager.openImageInFullscreen(
-                                        '${encodedPath}', '${image.fileName}'); return false;" 
-                                    title="הגדל תמונה">
-                                <i class="fas fa-search-plus"></i>
-                            </button>
-                        </div>
-                        <div class="image-caption">${image.fileName}</div>
-                    </div>`;
-                    });
-                    html += '</div>';
-                }
-
-                html += '</div>';
-            }
-        }
-
-        html += '</div>';
-
         // כפתורי פעולה - הוספת כפתור שליחת מייל
         if (message.jobs && message.jobs.length > 0) {
             html += `<div class="print-actions">
@@ -9863,6 +7466,7 @@ ${data.base64Data}`;
         }
 
         html += `</div>`;
+
         return html;
     }
 
@@ -9948,187 +7552,6 @@ ${data.base64Data}`;
 </body>
 </html>
 `;
-    }
-
-    // פונקציה חדשה - טעינת דוח UC4 אוטומטי
-    async loadUC4DailyReport() {
-        try {
-            const response = await fetch('/Messages/GetUC4DailyReport');
-            const result = await response.json();
-
-            return result;
-        } catch (error) {
-            console.error('Error loading UC4 daily report:', error);
-            NotificationManager.show('שגיאה בטעינת דוח UC4', 'error');
-            const overlay = document.getElementById('shiftsLoadingOverlay');
-            if (overlay) overlay.classList.remove('show');
-            return null;
-        }
-    }
-
-    // פונקציה להצגת טבלת הדוח
-    showUC4ReportTable(reportData) {
-        const { data, reportFile, contactFile, generatedAt } = reportData;
-
-        let tableHtml = `
-        <div class="uc4-report-container">
-            <div class="uc4-report-header">
-                <h3><i class="fas fa-table"></i> דוח ג'ובים שנכשלו</h3>
-                <div class="uc4-report-meta">
-                    <span><i class="fas fa-clock"></i> נוצר: ${generatedAt}</span>
-                </div>
-            </div>
-            <div class="uc4-report-summary">
-                <span class="summary-badge">סה"כ: <strong>${data.length}</strong></span>
-            </div>
-            <div class="uc4-table-wrapper">
-                <table class="uc4-report-table">
-                    <thead>
-                        <tr>
-                            <th>תיקייה</th>
-                            <th>שם ג'וב</th>
-                            <th>זמן התחלה</th>
-                            <th>זמן ריצה (שנ')</th>
-                            <th>זמן סיום</th>
-                            <th>Host</th>
-                            <th>Run ID</th>
-                            <th>משתמש</th>
-                        </tr>
-                    </thead>
-                    <tbody>`;
-
-        if (data.length === 0) {
-            tableHtml += `
-            <tr>
-                <td colspan="8" style="text-align:center; padding:20px; color:#666;">
-                    <i class="fas fa-check-circle" style="color:#4caf50; font-size:1.5rem;"></i>
-                    <br>לא נמצאו ג'ובים שנכשלו
-                </td>
-            </tr>`;
-        } else {
-            data.forEach(job => {
-                // תמיכה בשני פורמטים
-                const folder = job.folder || job.jobParent || '-';
-                const jobName = job.jobName || '-';
-                const startTime = job.startTime || job.lastFailureTime || '-';
-                const runTime = job.runTime || '-';
-                const endTime = job.endTime || '-';
-                const host = job.host || '-';
-                const runId = job.runId || '-';
-                const runAsUser = job.runAsUser || '-';
-
-                // אנשי קשר (פורמט ישן)
-                const contactNames = job.contacts
-                    ? job.contacts.map(c => c.userName || '').filter(n => n).join(', ') || '-'
-                    : '-';
-
-                tableHtml += `
-                <tr>
-                    <td>${folder}</td>
-                    <td><strong>${jobName}</strong></td>
-                    <td>${startTime}</td>
-                    <td style="text-align:center">${runTime}</td>
-                    <td>${endTime}</td>
-                    <td>${host}</td>
-                    <td>${runId}</td>
-                    <td>${runAsUser}</td>
-                </tr>`;
-            });
-        }
-
-        tableHtml += `
-                    </tbody>
-                </table>
-            </div>
-            <div class="uc4-report-actions">
-                <button class="btn-send-email" onclick="messagesManager.sendUC4ReportEmail()">
-                    <i class="fas fa-envelope"></i> שלח דוח במייל
-                </button>
-            </div>
-        </div>`;
-
-        this._currentUC4ReportData = reportData;
-        return tableHtml;
-    }
-
-    // שליחת דוח UC4 במייל
-    async sendUC4ReportEmail() {
-        if (!this._currentUC4ReportData) {
-            NotificationManager.show('אין נתוני דוח לשליחה', 'error');
-            return;
-        }
-
-        const { data, generatedAt } = this._currentUC4ReportData;
-
-        // בנה HTML למייל
-        const emailHtml = this._buildUC4ReportEmailHtml(data, generatedAt);
-
-        // אסוף כל המיילים הייחודיים
-        const allEmails = new Set();
-        allEmails.add('NOC@MENORAMIVT.CO.IL');
-
-        data.forEach(job => {
-            job.contacts.forEach(contact => {
-                if (contact.email && contact.email.includes('@')) {
-                    allEmails.add(contact.email);
-                }
-            });
-        });
-
-        const subject = `דוח ג'ובים שנכשלו - ${new Date().toLocaleDateString('he-IL')}`;
-        const toAddresses = Array.from(allEmails).join(';');
-
-        await this.openEmailInOutlook(subject, emailHtml, toAddresses);
-    }
-
-    // בניית HTML למייל
-    _buildUC4ReportEmailHtml(data, generatedAt) {
-        let rows = '';
-
-        data.forEach(job => {
-            const contactNames = job.contacts.map(c => c.userName || '').filter(n => n).join(', ') || '-';
-            const contactEmails = job.contacts.map(c => c.email || '').filter(e => e).join('; ') || '-';
-
-            rows += `
-            <tr>
-                <td style="border:1px solid #ddd; padding:8px;">${job.folder || '-'}</td>
-                <td style="border:1px solid #ddd; padding:8px;"><strong>${job.jobName}</strong></td>
-                <td style="border:1px solid #ddd; padding:8px; text-align:center; 
-                    color:${job.failureCount >= 5 ? '#d32f2f' : job.failureCount >= 3 ? '#f57c00' : '#388e3c'};">
-                    <strong>${job.failureCount}</strong>
-                </td>
-                <td style="border:1px solid #ddd; padding:8px;">${job.lastFailureTime}</td>
-                <td style="border:1px solid #ddd; padding:8px;">${contactNames}</td>
-                <td style="border:1px solid #ddd; padding:8px;">${contactEmails}</td>
-            </tr>`;
-        });
-
-        return `<!DOCTYPE html>
-<html dir="rtl" lang="he">
-<head><meta charset="UTF-8"></head>
-<body style="font-family:Arial,sans-serif; direction:rtl;">
-    <h2 style="color:#333; border-bottom:2px solid #667eea; padding-bottom:10px;">
-        דוח ג'ובים שנכשלו
-    </h2>
-    <p>נוצר: ${generatedAt} | סה"כ ג'ובים: ${data.length}</p>
-    <table style="border-collapse:collapse; width:100%; margin-top:15px;">
-        <thead>
-            <tr style="background:#667eea; color:white;">
-                <th style="border:1px solid #ddd; padding:10px;">תיקייה</th>
-                <th style="border:1px solid #ddd; padding:10px;">שם ג'וב</th>
-                <th style="border:1px solid #ddd; padding:10px;">כשלונות</th>
-                <th style="border:1px solid #ddd; padding:10px;">כשלון אחרון</th>
-                <th style="border:1px solid #ddd; padding:10px;">אנשי קשר</th>
-                <th style="border:1px solid #ddd; padding:10px;">מיילים</th>
-            </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-    </table>
-    <p style="color:gray; margin-top:20px; font-size:0.9em;">
-        הודעה זו נוצרה אוטומטית ממערכת NOC Portal
-    </p>
-</body>
-</html>`;
     }
 
     // שליחת טבלת ג'ובים במייל עם HTML מלא
@@ -10970,13 +8393,79 @@ ${data.base64Data}`;
 
     // Show employee selection modal
     showEmployeeSelectionModal(messageId, jobIndex, isCompleted) {
-        // ← שנה: השתמש ביוזר המחובר ישירות
-        const currentUser = this.getCurrentUserName();
-        if (currentUser) {
-            this.updateJobCompletionStatus(messageId, jobIndex, true, currentUser);
-        } else {
-            // fallback - הצג דיאלוג רק אם אין יוזר מחובר
-            this._showEmployeeSelectionDialog(messageId, jobIndex, isCompleted);
+        // קבלת ההודעה והמשימה
+        const message = this.allMessages.find(m => m.id === messageId);
+        if (!message || !message.jobs || !message.jobs[jobIndex]) {
+            NotificationManager.show('משימה לא נמצאה', 'error');
+            return;
+        }
+
+        const job = message.jobs[jobIndex];
+
+        // הגדרת ערכי הטופס
+        document.getElementById('completionMessageId').value = messageId;
+        document.getElementById('completionJobIndex').value = jobIndex;
+        document.getElementById('completionJobTitle').textContent = job.JobName || 'משימה';
+
+        // מילוי רשימת העובדים
+        this.loadEmployees().then(() => {
+            const select = document.getElementById('completionActivityEmployeeName');
+            select.innerHTML = '<option value="">בחר עובד...</option>';
+
+            // הוספת אפשרויות עובדים
+            this.employees.forEach(employee => {
+                const option = document.createElement('option');
+                option.value = employee.name;
+                option.textContent = employee.name;
+                select.appendChild(option);
+            });
+
+            // הגדרת עובד ברירת מחדל
+            const lastEmployee = this.getLastSelectedAuthor();
+            if (lastEmployee) {
+                const optionExists = Array.from(select.options).some(
+                    option => option.value === lastEmployee
+                );
+
+                if (optionExists) {
+                    select.value = lastEmployee;
+                }
+            }
+
+            // הוספת מאזין אירועים לכפתור השליחה
+            const submitBtn = document.querySelector('#employeeSelectionForm button[type="submit"]');
+            if (submitBtn) {
+                // הסרת מאזינים קודמים למניעת כפילויות
+                const newSubmitBtn = submitBtn.cloneNode(true);
+                submitBtn.parentNode.replaceChild(newSubmitBtn, submitBtn);
+
+                newSubmitBtn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    const employeeName = document.getElementById('completionActivityEmployeeName').value.trim();
+                    if (employeeName) {
+                        // שמירת העובד שנבחר
+                        this.saveLastSelectedAuthor(employeeName);
+
+                        // סגירת המודל
+                        document.getElementById('employeeSelectionModal').style.display = 'none';
+
+                        // עדכון סטטוס המשימה
+                        await this.updateJobCompletionStatus(messageId, jobIndex, true, employeeName);
+                    } else {
+                        NotificationManager.show('נא לבחור עובד', 'warning');
+                    }
+                });
+            }
+        });
+
+        // הצגת המודל
+        document.getElementById('employeeSelectionModal').style.display = 'block';
+
+        // סמן שיש שינויים לא שמורים
+        const messageFind = this.allMessages.find(m => m.id === messageId);
+        if (messageFind) {
+            messageFind._hasUnsavedChanges = true;
+            this.updateSaveChangesButton(messageId);
         }
     }
 
@@ -11055,7 +8544,7 @@ ${data.base64Data}`;
                 message.jobs[jobIndex].IsCompleted = isCompleted;
 
                 if (isCompleted) {
-                    message.jobs[jobIndex].CompletedBy = completedBy || this.getCurrentUserName();
+                    message.jobs[jobIndex].CompletedBy = completedBy || this.getCurrentUser();
                     message.jobs[jobIndex].CompletedDate = new Date().toISOString();
                     // אם מסמנים כבוצע, וודא שלא מסומן גם כבריצה
                     message.jobs[jobIndex].IsRunning = false;
@@ -11126,6 +8615,10 @@ ${data.base64Data}`;
         }
     }
 
+    // Get last selected employee from localStorage
+    getCurrentUser() {
+        return localStorage.getItem('lastSelectedEmployee') || '';
+    }
 
     updatePopupJobsDisplay(messageId) {
         const message = this.allMessages.find(m => m.id === messageId);
@@ -11283,85 +8776,68 @@ ${data.base64Data}`;
     createFullUc4ReportContent(message) {
         let html = '<div class="report-content-full">';
 
-        // ===== טבלת UC4 =====
         if (message.tableData && message.tableData.length > 0) {
-            html += `<h4 style="color:#1565C0; border-right:4px solid #2196F3; 
-                            padding-right:10px; margin-top:0;">
-                    🔵 דוח UC4
-                 </h4>`;
-            html += this._buildTableHtml(message.tableData);
-        }
+            html += '<div class="csv-table-container">';
+            html += '<table class="csv-table">';
 
-        // ===== טבלת Control-M =====
-        if (message.controlMTableData && message.controlMTableData.length > 0) {
-            html += `<h4 style="color:#E65100; border-right:4px solid #FF6F00; 
-                            padding-right:10px; margin-top:25px;">
-                    🟠 דוח Control-M
-                 </h4>`;
-            html += this._buildTableHtml(message.controlMTableData);
-        }
+            // כותרות - שורה ראשונה
+            if (message.tableData[0]) {
+                html += '<thead><tr>';
+                message.tableData[0].forEach(header => {
+                    html += `<th>${this.escapeHtml(header || '')}</th>`;
+                });
+                html += '</tr></thead>';
+            }
 
-        // כפתורי פעולה
-        html += `<div class="report-actions print-actions" style="margin-top:15px;">
-        <button class="btn-download-pdf btn-download-csv" 
-                onclick="messagesManager.downloadCsv('${message.id}')">
-            <i class="fas fa-download"></i> הורד קובץ CSV
-        </button>
-        <button class="btn-send-uc4-email btn-send-email" 
-                onclick="messagesManager.prepareUC4JobsEmail('${message.id}')">
-            <i class="fas fa-envelope"></i> הכן מייל דוחות
-        </button>
-    </div>`;
+            // נתונים
+            html += '<tbody>';
+            for (let i = 1; i < message.tableData.length; i++) {
+                html += '<tr>';
+                message.tableData[i].forEach(cell => {
+                    html += `<td>${this.escapeHtml(cell || '')}</td>`;
+                });
+                html += '</tr>';
+            }
+            html += '</tbody>';
+
+            html += '</table>';
+            html += '</div>';
+
+            // סטטיסטיקה
+            html += '<div class="csv-stats">';
+            html += `<div class="stat-item">`;
+            html += `<i class="fas fa-table"></i>`;
+            html += `<span class="stat-label">סה"כ שורות:</span>`;
+            html += `<span class="stat-value">${message.tableData.length - 1}</span>`;
+            html += `</div>`;
+            html += '</div>';
+
+            // כפתורי פעולה - הוספת כפתור שליחת מייל
+            if (message.category === 'דוחות UC4') {
+                html += `<div class="report-actions print-actions">
+                <button class="btn-download-pdf btn-download-csv" onclick="messagesManager.downloadCsv('${message.id}')">
+                    <i class="fas fa-download"></i> הורד קובץ CSV
+                </button>
+                <button class="btn-send-uc4-email btn-send-email" onclick="messagesManager.prepareUC4JobsEmail('${message.id}')">
+                    <i class="fas fa-envelope"></i> הכן מייל דוחות UC4
+                </button>
+            </div>`;
+            } else {
+                // כפתור הורדה רגיל לקטגוריות אחרות
+                html += '<div class="download-csv-section">';
+                html += `<button class="btn-download-csv" onclick="messagesManager.downloadCsv('${message.id}')">`;
+                html += '<i class="fas fa-download"></i> הורד קובץ CSV';
+                html += '</button>';
+                html += '</div>';
+            }
+        } else {
+            html += '<div class="no-data-message">';
+            html += '<i class="fas fa-table"></i>';
+            html += '<p>אין נתונים להצגה</p>';
+            html += '</div>';
+        }
 
         html += '</div>';
-        return html;
-    }
-
-    _buildTableHtml(tableData) {
-        if (!tableData || tableData.length === 0) return '';
-
-        let html = '<div class="csv-table-container">';
-        html += '<table class="csv-table">';
-
-        // כותרות
-        if (tableData[0]) {
-            html += '<thead><tr>';
-            tableData[0].forEach(header => {
-                // הסתר עמודת מקור מהתצוגה
-                if (header !== 'מקור') {
-                    html += `<th>${this.escapeHtml(header || '')}</th>`;
-                }
-            });
-            html += '</tr></thead>';
-        }
-
-        // נתונים
-        const sourceIdx = tableData[0]
-            ? tableData[0].indexOf('מקור')
-            : -1;
-
-        html += '<tbody>';
-        for (let i = 1; i < tableData.length; i++) {
-            html += '<tr>';
-            tableData[i].forEach((cell, idx) => {
-                // הסתר עמודת מקור מהתצוגה
-                if (idx !== sourceIdx) {
-                    html += `<td>${this.escapeHtml(cell || '')}</td>`;
-                }
-            });
-            html += '</tr>';
-        }
-        html += '</tbody></table></div>';
-
-        // סטטיסטיקה
-        html += `<div class="csv-stats">
-        <div class="stat-item">
-            <i class="fas fa-table"></i>
-            <span class="stat-label">סה"כ שורות:</span>
-            <span class="stat-value">${tableData.length - 1}</span>
-        </div>
-    </div>`;
-
         return html;
     }
 
@@ -11628,885 +9104,6 @@ ${data.base64Data}`;
         return result;
     }
 
-    // הוסף פונקציה חדשה ליצירת toolbar עיצוב
-    createFormattingToolbar(textareaId) {
-        const toolbar = document.createElement('div');
-        toolbar.className = 'formatting-toolbar';
-        toolbar.setAttribute('data-for', textareaId);
-
-        const buttons = [
-            {
-                tag: 'bold',
-                icon: 'fas fa-bold',
-                title: 'מודגש',
-                action: 'bold',
-                shortcut: 'Ctrl+B'
-            },
-            {
-                tag: 'italic',
-                icon: 'fas fa-italic',
-                title: 'נטוי',
-                action: 'italic',
-                shortcut: 'Ctrl+I'
-            },
-            {
-                tag: 'underline',
-                icon: 'fas fa-underline',
-                title: 'קו תחתון',
-                action: 'underline',
-                shortcut: 'Ctrl+U'
-            },
-            { type: 'separator' },
-            {
-                tag: 'color',
-                icon: 'fas fa-palette',
-                title: 'צבע טקסט',
-                colors: [
-                    { value: '#e74c3c', label: 'אדום' },
-                    { value: '#e67e22', label: 'כתום' },
-                    { value: '#f1c40f', label: 'צהוב' },
-                    { value: '#2ecc71', label: 'ירוק' },
-                    { value: '#3498db', label: 'כחול' },
-                    { value: '#9b59b6', label: 'סגול' },
-                    { value: '#1abc9c', label: 'טורקיז' },
-                    { value: '#e91e63', label: 'ורוד' },
-                    { value: '#000000', label: 'שחור' },
-                    { value: '#ffffff', label: 'לבן' }
-                ]
-            },
-            {
-                tag: 'highlight',
-                icon: 'fas fa-highlighter',
-                title: 'סימון רקע',
-                colors: [
-                    { value: '#ffeb3b', label: 'צהוב' },
-                    { value: '#a5d6a7', label: 'ירוק' },
-                    { value: '#ef9a9a', label: 'אדום' },
-                    { value: '#90caf9', label: 'כחול' },
-                    { value: '#ce93d8', label: 'סגול' },
-                    { value: '#ffcc80', label: 'כתום' },
-                    { value: 'transparent', label: 'ללא' }
-                ]
-            },
-            { type: 'separator' },
-            {
-                tag: 'size',
-                icon: 'fas fa-text-height',
-                title: 'גודל טקסט',
-                sizes: [
-                    { value: '0.8em', label: 'קטן' },
-                    { value: '1em', label: 'רגיל' },
-                    { value: '1.2em', label: 'בינוני' },
-                    { value: '1.5em', label: 'גדול' },
-                    { value: '2em', label: 'גדול מאוד' }
-                ]
-            },
-            { type: 'separator' },
-            {
-                tag: 'clear',
-                icon: 'fas fa-eraser',
-                title: 'נקה עיצוב',
-                action: 'removeFormat'
-            }
-        ];
-
-        buttons.forEach(btn => {
-            if (btn.type === 'separator') {
-                const sep = document.createElement('div');
-                sep.className = 'toolbar-separator';
-                toolbar.appendChild(sep);
-                return;
-            }
-
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'toolbar-btn';
-            button.title = btn.title + (btn.shortcut ? ` (${btn.shortcut})` : '');
-            button.innerHTML = `<i class="${btn.icon}"></i>`;
-
-            if (btn.colors) {
-                // כפתור עם בחירת צבע
-                button.classList.add('has-dropdown');
-
-                const dropdown = document.createElement('div');
-                dropdown.className = 'color-dropdown';
-
-                btn.colors.forEach(color => {
-                    const colorBtn = document.createElement('button');
-                    colorBtn.type = 'button';
-                    colorBtn.className = 'color-option';
-                    colorBtn.title = color.label;
-                    colorBtn.style.backgroundColor = color.value === 'transparent'
-                        ? 'white'
-                        : color.value;
-
-                    if (color.value === 'transparent') {
-                        colorBtn.innerHTML = '<i class="fas fa-times" style="font-size:10px;color:#999;"></i>';
-                    }
-
-                    if (color.value === '#ffffff') {
-                        colorBtn.style.border = '1px solid #ddd';
-                    }
-
-                    colorBtn.addEventListener('mousedown', (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-
-                        const textarea = document.getElementById(textareaId);
-                        if (!textarea) return;
-
-                        if (btn.tag === 'color') {
-                            this.applyColorToSelection(textarea, color.value, 'color');
-                        } else {
-                            this.applyColorToSelection(textarea, color.value, 'background');
-                        }
-
-                        dropdown.classList.remove('show');
-                    });
-
-                    dropdown.appendChild(colorBtn);
-                });
-
-                button.appendChild(dropdown);
-
-                button.addEventListener('mousedown', (e) => {
-                    e.preventDefault();
-                    // סגור dropdowns אחרים
-                    document.querySelectorAll('.color-dropdown.show').forEach(d => {
-                        if (d !== dropdown) d.classList.remove('show');
-                    });
-                    dropdown.classList.toggle('show');
-                });
-
-                // סגור dropdown בלחיצה מחוץ
-                document.addEventListener('mousedown', (e) => {
-                    if (!button.contains(e.target)) {
-                        dropdown.classList.remove('show');
-                    }
-                });
-
-            } else if (btn.sizes) {
-                // כפתור גודל טקסט
-                button.classList.add('has-dropdown');
-
-                const dropdown = document.createElement('div');
-                dropdown.className = 'size-dropdown';
-
-                btn.sizes.forEach(size => {
-                    const sizeBtn = document.createElement('button');
-                    sizeBtn.type = 'button';
-                    sizeBtn.className = 'size-option';
-                    sizeBtn.textContent = size.label;
-                    sizeBtn.style.fontSize = size.value;
-
-                    sizeBtn.addEventListener('mousedown', (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-
-                        const textarea = document.getElementById(textareaId);
-                        if (!textarea) return;
-
-                        this.applyStyleToSelection(textarea, 'font-size', size.value);
-                        dropdown.classList.remove('show');
-                    });
-
-                    dropdown.appendChild(sizeBtn);
-                });
-
-                button.appendChild(dropdown);
-
-                button.addEventListener('mousedown', (e) => {
-                    e.preventDefault();
-                    document.querySelectorAll('.size-dropdown.show').forEach(d => {
-                        if (d !== dropdown) d.classList.remove('show');
-                    });
-                    dropdown.classList.toggle('show');
-                });
-
-            } else if (btn.action) {
-                button.addEventListener('mousedown', (e) => {
-                    e.preventDefault();
-                    const textarea = document.getElementById(textareaId);
-                    if (!textarea) return;
-
-                    if (btn.action === 'removeFormat') {
-                        this.removeFormatFromSelection(textarea);
-                    } else {
-                        this.applyFormatToSelection(textarea, btn.action);
-                    }
-                });
-            }
-
-            toolbar.appendChild(button);
-        });
-
-        return toolbar;
-    }
-
-    // פונקציה להחלת עיצוב על הטקסט הנבחר
-    applyFormatToSelection(textarea, format) {
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-
-        if (start === end) {
-            NotificationManager.show('יש לסמן טקסט תחילה', 'info');
-            return;
-        }
-
-        const selectedText = textarea.value.substring(start, end);
-        const beforeText = textarea.value.substring(0, start);
-        const afterText = textarea.value.substring(end);
-
-        let formattedText;
-        const tagMap = {
-            'bold': 'b',
-            'italic': 'i',
-            'underline': 'u'
-        };
-
-        const tag = tagMap[format];
-        if (!tag) return;
-
-        // בדוק אם הטקסט כבר מעוצב
-        const openTag = `<${tag}>`;
-        const closeTag = `</${tag}>`;
-
-        if (selectedText.startsWith(openTag) && selectedText.endsWith(closeTag)) {
-            // הסר עיצוב קיים
-            formattedText = selectedText.slice(openTag.length, -closeTag.length);
-        } else {
-            // הוסף עיצוב
-            formattedText = `${openTag}${selectedText}${closeTag}`;
-        }
-
-        textarea.value = beforeText + formattedText + afterText;
-
-        // שחזר את הסימון
-        textarea.selectionStart = start;
-        textarea.selectionEnd = start + formattedText.length;
-        textarea.focus();
-
-        // עדכן תצוגה מקדימה
-        this.updateFormattingPreview(textarea);
-    }
-
-    // פונקציה להחלת צבע על הטקסט הנבחר
-    applyColorToSelection(textarea, colorValue, type) {
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-
-        if (start === end) {
-            NotificationManager.show('יש לסמן טקסט תחילה', 'info');
-            return;
-        }
-
-        const selectedText = textarea.value.substring(start, end);
-        const beforeText = textarea.value.substring(0, start);
-        const afterText = textarea.value.substring(end);
-
-        let formattedText;
-
-        if (colorValue === 'transparent' || colorValue === '') {
-            // הסר צבע - הסר span עם style
-            formattedText = selectedText.replace(
-                /<span[^>]*style="[^"]*(?:color|background)[^"]*"[^>]*>(.*?)<\/span>/gi,
-                '$1'
-            );
-        } else {
-            const styleAttr = type === 'color'
-                ? `color: ${colorValue}`
-                : `background-color: ${colorValue}`;
-
-            formattedText = `<span style="${styleAttr}">${selectedText}</span>`;
-        }
-
-        textarea.value = beforeText + formattedText + afterText;
-
-        textarea.selectionStart = start;
-        textarea.selectionEnd = start + formattedText.length;
-        textarea.focus();
-
-        this.updateFormattingPreview(textarea);
-    }
-
-    // פונקציה להחלת גודל טקסט
-    applyStyleToSelection(textarea, property, value) {
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-
-        if (start === end) {
-            NotificationManager.show('יש לסמן טקסט תחילה', 'info');
-            return;
-        }
-
-        const selectedText = textarea.value.substring(start, end);
-        const beforeText = textarea.value.substring(0, start);
-        const afterText = textarea.value.substring(end);
-
-        const formattedText = `<span style="${property}: ${value}">${selectedText}</span>`;
-
-        textarea.value = beforeText + formattedText + afterText;
-
-        textarea.selectionStart = start;
-        textarea.selectionEnd = start + formattedText.length;
-        textarea.focus();
-
-        this.updateFormattingPreview(textarea);
-    }
-
-    // הסרת כל העיצוב מהטקסט הנבחר
-    removeFormatFromSelection(textarea) {
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-
-        if (start === end) {
-            NotificationManager.show('יש לסמן טקסט תחילה', 'info');
-            return;
-        }
-
-        const selectedText = textarea.value.substring(start, end);
-        const beforeText = textarea.value.substring(0, start);
-        const afterText = textarea.value.substring(end);
-
-        // הסר כל תגיות HTML
-        const cleanText = selectedText.replace(/<[^>]+>/g, '');
-
-        textarea.value = beforeText + cleanText + afterText;
-
-        textarea.selectionStart = start;
-        textarea.selectionEnd = start + cleanText.length;
-        textarea.focus();
-
-        this.updateFormattingPreview(textarea);
-    }
-
-    // עדכון תצוגה מקדימה של עיצוב
-    updateFormattingPreview(textarea) {
-        const previewId = textarea.id + 'FormatPreview';
-        let preview = document.getElementById(previewId);
-
-        if (!preview) {
-            preview = document.createElement('div');
-            preview.id = previewId;
-            preview.className = 'formatting-preview';
-            textarea.parentNode.insertBefore(preview, textarea.nextSibling);
-        }
-
-        const content = textarea.value;
-
-        // בדוק אם יש תגיות HTML
-        if (/<[^>]+>/.test(content)) {
-            preview.style.display = 'block';
-            preview.innerHTML = `
-            <div class="preview-label">
-                <i class="fas fa-eye"></i> תצוגה מקדימה:
-            </div>
-            <div class="preview-content" dir="rtl">
-                ${this.formatContentWithTables(content)}
-            </div>
-        `;
-        } else {
-            preview.style.display = 'none';
-        }
-    }
-
-    // ===== FORMATTING SYSTEM =====
-
-    setupShiftSummaryFormatting() {
-        const fields = [
-            'incidentsInput',
-            'specialActionsInput',
-            'generalInfoInput',
-            'openItemsInput'
-        ];
-
-        fields.forEach(fieldId => {
-            const textarea = document.getElementById(fieldId);
-            if (!textarea || textarea.dataset.formattingSetup) return;
-            textarea.dataset.formattingSetup = 'true';
-
-            // עטוף את ה-textarea במיכל
-            const wrapper = document.createElement('div');
-            wrapper.className = 'rich-editor-wrapper';
-            textarea.parentNode.insertBefore(wrapper, textarea);
-
-            // צור toolbar
-            const toolbar = this.createFormattingToolbar(fieldId);
-            wrapper.appendChild(toolbar);
-
-            // צור contenteditable div שיחליף את ה-textarea
-            const editor = document.createElement('div');
-            editor.className = 'rich-editor';
-            editor.contentEditable = 'true';
-            editor.dir = 'rtl';
-            editor.id = fieldId + '_editor';
-            editor.setAttribute('data-placeholder', textarea.placeholder || '');
-
-            // העבר תוכן קיים מה-textarea ל-editor
-            if (textarea.value) {
-                if (/<[^>]+>/.test(textarea.value)) {
-                    editor.innerHTML = textarea.value;
-                } else {
-                    // ─── נקה &nbsp; בעת טעינה ──────────────────────────────
-                    const cleanValue = textarea.value
-                        .replace(/&nbsp;/gi, ' ')
-                        .replace(/\u00A0/g, ' ');
-
-                    editor.innerHTML = cleanValue
-                        .split('\n')
-                        .map(line => line
-                            ? `<div>${this.escapeHtml(line)}</div>`
-                            : '<div><br></div>')
-                        .join('');
-                }
-            }
-
-            wrapper.appendChild(editor);
-
-            // הסתר את ה-textarea המקורי
-            textarea.style.display = 'none';
-            wrapper.appendChild(textarea);
-
-            // סנכרן editor → textarea בכל שינוי
-            editor.addEventListener('input', () => {
-                this._syncEditorToTextarea(editor, textarea);
-            });
-
-            // הוסף מאזין paste לניקוי עיצוב:
-            editor.addEventListener('paste', (e) => {
-                e.preventDefault();
-
-                // קבל טקסט פשוט בלבד
-                const text = (e.clipboardData || window.clipboardData).getData('text/plain');
-
-                // ─── נקה &nbsp; מטקסט שמודבק ──────────────────────────────
-                const cleanText = text
-                    .replace(/\u00A0/g, ' ')   // Unicode non-breaking space
-                    .replace(/&nbsp;/gi, ' '); // HTML entity
-
-                const selection = window.getSelection();
-                if (!selection.rangeCount) return;
-
-                selection.deleteFromDocument();
-                const range = selection.getRangeAt(0);
-                const textNode = document.createTextNode(cleanText);
-                range.insertNode(textNode);
-
-                // הזז את הסמן לסוף הטקסט שהוכנס
-                range.setStartAfter(textNode);
-                range.setEndAfter(textNode);
-                selection.removeAllRanges();
-                selection.addRange(range);
-
-                // סנכרן עם textarea
-                this._syncEditorToTextarea(editor, textarea);
-            });
-
-            // keyboard shortcuts
-            editor.addEventListener('keydown', (e) => {
-                if (e.ctrlKey || e.metaKey) {
-                    switch (e.key.toLowerCase()) {
-                        case 'b':
-                            e.preventDefault();
-                            document.execCommand('bold', false, null);
-                            this._syncEditorToTextarea(editor, textarea);
-                            break;
-                        case 'i':
-                            e.preventDefault();
-                            document.execCommand('italic', false, null);
-                            this._syncEditorToTextarea(editor, textarea);
-                            break;
-                        case 'u':
-                            e.preventDefault();
-                            document.execCommand('underline', false, null);
-                            this._syncEditorToTextarea(editor, textarea);
-                            break;
-                    }
-                }
-            });
-
-            // שמור reference ל-editor ב-toolbar
-            toolbar._editor = editor;
-            toolbar._textarea = textarea;
-        });
-    }
-
-    _syncEditorToTextarea(editor, textarea) {
-        let html = editor.innerHTML;
-
-        // ─── שלב 1: נרמל שורות ריקות שנוצרות ע"י הדפדפן ───────────
-        // <div><br></div> → שורה חדשה
-        html = html.replace(/<div>\s*<br\s*\/?>\s*<\/div>/gi, '\n');
-
-        // <br> בודד → שורה חדשה
-        html = html.replace(/<br\s*\/?>/gi, '\n');
-
-        // ─── שלב 2: הסר divs ───────────────────────────────────────
-        html = html.replace(/<div>/gi, '\n');
-        html = html.replace(/<\/div>/gi, '');
-
-        // ─── שלב 3: נקה &nbsp; שנוצר אוטומטית ─────────────────────
-        // החלף &nbsp; ברווח רגיל
-        html = html.replace(/&nbsp;/gi, ' ');
-
-        // ─── שלב 4: נקה spans ריקים שנוצרים ע"י הדפדפן ────────────
-        html = html.replace(/<span[^>]*>\s*<\/span>/gi, '');
-
-        // ─── שלב 5: נקה שורה ריקה ראשונה ──────────────────────────
-        html = html.replace(/^(\n)/, '');
-
-        // ─── שלב 6: נקה שורות ריקות מיותרות בסוף ──────────────────
-        html = html.replace(/\n+$/, '');
-
-        // ─── שלב 7: צמצם יותר מ-2 שורות ריקות רצופות ──────────────
-        html = html.replace(/\n{3,}/g, '\n\n');
-
-        textarea.value = html;
-    }
-
-    createFormattingToolbar(fieldId) {
-        const toolbar = document.createElement('div');
-        toolbar.className = 'formatting-toolbar';
-
-        const groups = [
-            // קבוצה 1: עיצוב בסיסי
-            [
-                { icon: 'fas fa-bold', title: 'מודגש (Ctrl+B)', cmd: 'bold' },
-                { icon: 'fas fa-italic', title: 'נטוי (Ctrl+I)', cmd: 'italic' },
-                { icon: 'fas fa-underline', title: 'קו תחתון (Ctrl+U)', cmd: 'underline' },
-            ],
-            // קבוצה 2: צבעים
-            [
-                {
-                    icon: 'fas fa-font',
-                    title: 'צבע טקסט',
-                    type: 'colorPicker',
-                    cmd: 'foreColor',
-                    colors: [
-                        '#e74c3c', '#e67e22', '#f1c40f',
-                        '#2ecc71', '#3498db', '#9b59b6',
-                        '#1abc9c', '#e91e63', '#000000'
-                    ]
-                },
-                {
-                    icon: 'fas fa-highlighter',
-                    title: 'סימון רקע',
-                    type: 'colorPicker',
-                    cmd: 'hiliteColor',
-                    colors: [
-                        '#ffeb3b', '#a5d6a7', '#ef9a9a',
-                        '#90caf9', '#ce93d8', '#ffcc80',
-                        'transparent'
-                    ]
-                }
-            ],
-            // קבוצה 3: גודל
-            [
-                {
-                    icon: 'fas fa-text-height',
-                    title: 'גודל טקסט',
-                    type: 'sizePicker',
-                    sizes: [
-                        { label: 'קטן', value: '1' },
-                        { label: 'רגיל', value: '3' },
-                        { label: 'בינוני', value: '4' },
-                        { label: 'גדול', value: '5' },
-                        { label: 'גדול מאוד', value: '6' }
-                    ]
-                }
-            ],
-            // קבוצה 4: ניקוי
-            [
-                { icon: 'fas fa-eraser', title: 'נקה עיצוב', cmd: 'removeFormat' }
-            ]
-        ];
-
-        groups.forEach((group, gi) => {
-            group.forEach(btn => {
-                const el = this._createToolbarButton(btn, toolbar);
-                toolbar.appendChild(el);
-            });
-
-            // מפריד בין קבוצות (לא אחרי האחרונה)
-            if (gi < groups.length - 1) {
-                const sep = document.createElement('span');
-                sep.className = 'toolbar-sep';
-                toolbar.appendChild(sep);
-            }
-        });
-
-        return toolbar;
-    }
-
-    _createToolbarButton(btn, toolbar) {
-        const wrap = document.createElement('div');
-        wrap.className = 'toolbar-btn-wrap';
-
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'toolbar-btn';
-        button.title = btn.title;
-        button.innerHTML = `<i class="${btn.icon}"></i>`;
-
-        if (btn.type === 'colorPicker') {
-            // ===== כפתור צבע =====
-            const dropdown = document.createElement('div');
-            dropdown.className = 'color-dropdown';
-
-            btn.colors.forEach(color => {
-                const swatch = document.createElement('button');
-                swatch.type = 'button';
-                swatch.className = 'color-swatch';
-                swatch.title = color === 'transparent' ? 'ללא צבע' : color;
-
-                if (color === 'transparent') {
-                    swatch.className += ' swatch-clear';
-                    swatch.innerHTML = '<i class="fas fa-times"></i>';
-                } else {
-                    swatch.style.backgroundColor = color;
-                    if (color === '#ffffff' || color === '#f1c40f') {
-                        swatch.style.border = '1px solid #ccc';
-                    }
-                }
-
-                // ← mousedown ולא click - כדי לא לאבד selection
-                swatch.addEventListener('mousedown', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-
-                    const editor = toolbar._editor;
-                    if (!editor) return;
-
-                    editor.focus();
-
-                    if (color === 'transparent') {
-                        document.execCommand(btn.cmd, false,
-                            btn.cmd === 'hiliteColor' ? 'transparent' : 'inherit');
-                    } else {
-                        document.execCommand(btn.cmd, false, color);
-                    }
-
-                    this._syncEditorToTextarea(editor, toolbar._textarea);
-                    this._closeAllDropdowns();
-                });
-
-                dropdown.appendChild(swatch);
-            });
-
-            wrap.appendChild(button);
-            wrap.appendChild(dropdown);
-
-            // פתח/סגור dropdown
-            button.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-
-                const isOpen = dropdown.classList.contains('open');
-                this._closeAllDropdowns();
-
-                if (!isOpen) {
-                    dropdown.classList.add('open');
-                    button.classList.add('active');
-                }
-            });
-
-        } else if (btn.type === 'sizePicker') {
-            // ===== כפתור גודל =====
-            const dropdown = document.createElement('div');
-            dropdown.className = 'size-dropdown';
-
-            btn.sizes.forEach(size => {
-                const item = document.createElement('button');
-                item.type = 'button';
-                item.className = 'size-item';
-                item.textContent = size.label;
-
-                item.addEventListener('mousedown', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-
-                    const editor = toolbar._editor;
-                    if (!editor) return;
-
-                    editor.focus();
-                    document.execCommand('fontSize', false, size.value);
-                    this._syncEditorToTextarea(editor, toolbar._textarea);
-                    this._closeAllDropdowns();
-                });
-
-                dropdown.appendChild(item);
-            });
-
-            wrap.appendChild(button);
-            wrap.appendChild(dropdown);
-
-            button.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-
-                const isOpen = dropdown.classList.contains('open');
-                this._closeAllDropdowns();
-
-                if (!isOpen) {
-                    dropdown.classList.add('open');
-                    button.classList.add('active');
-                }
-            });
-
-        } else {
-            // ===== כפתור פשוט =====
-            button.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-
-                const editor = toolbar._editor;
-                if (!editor) return;
-
-                editor.focus();
-                document.execCommand(btn.cmd, false, null);
-                this._syncEditorToTextarea(editor, toolbar._textarea);
-            });
-
-            wrap.appendChild(button);
-        }
-
-        return wrap;
-    }
-
-    _closeAllDropdowns() {
-        document.querySelectorAll('.color-dropdown.open, .size-dropdown.open')
-            .forEach(d => {
-                d.classList.remove('open');
-                // הסר active מהכפתור
-                const btn = d.previousElementSibling;
-                if (btn) btn.classList.remove('active');
-            });
-    }
-
-    _buildDailyTasksSummaryHtml(tasksSummary) {
-        if (!tasksSummary || !tasksSummary.tasks ||
-            tasksSummary.tasks.length === 0) return '';
-
-        const { tasks, stats, date } = tasksSummary;
-        const percentage = stats.total > 0 ?
-            Math.round((stats.completed / stats.total) * 100) : 0;
-        const formattedDate = date ? date.split('-').reverse().join('/') : '';
-
-        const priorityClass = (priority) => {
-            const map = { high: 'priority-high', medium: 'priority-medium', low: 'priority-low' };
-            return map[priority] || 'priority-default';
-        };
-
-        const uid = Date.now();
-
-        let html = `
-<div class="summary-section-full daily-tasks-summary-wrapper"
-     style="margin-top:12px; padding:10px 14px;
-            background:linear-gradient(135deg,#f8f9ff,#fff);
-            border-radius:10px; border-right:4px solid #667eea;line-height: 0.4;">
-
-    <!-- כותרת לחיצה -->
-    <div style="display:flex; align-items:center; justify-content:space-between;
-                margin-bottom:8px; cursor:pointer; user-select:none;line-height: 0.4;"
-         onclick="
-            var body = document.getElementById('dtBody_${uid}');
-            var arrow = document.getElementById('dtArrow_${uid}');
-            if (body.style.display === 'none') {
-                body.style.display = 'block';
-                arrow.style.transform = 'rotate(0deg)';
-            } else {
-                body.style.display = 'none';
-                arrow.style.transform = 'rotate(-90deg)';
-            }
-         ">
-        <h4 style="margin:0; color:#320F5B; font-size:0.9rem;
-                    display:flex; align-items:center; gap:6px;">
-            <i class="fas fa-tasks" style="color:#667eea;"></i>
-            צ'קליסט משימות - ${formattedDate}
-            <span style="font-size:0.8rem; color:#667eea; font-weight:normal;">
-                (${stats.completed}/${stats.total} | ${percentage}%)
-            </span>
-        </h4>
-        <i id="dtArrow_${uid}" class="fas fa-chevron-down"
-           style="color:#667eea; transition:transform 0.2s; font-size:0.85rem;"></i>
-    </div>
-
-    <!-- גוף מתקפל -->
-    <div id="dtBody_${uid}" style="display:block;">
-
-        <!-- סטטיסטיקה קומפקטית -->
-        <div style="display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
-            <span style="padding:2px 8px; background:#e8f5e9; color:#2e7d32;
-                         border-radius:10px; font-size:0.78rem; font-weight:600;">
-                ✓ בוצעו: ${stats.completed}
-            </span>
-            <span style="padding:2px 8px; background:#fef2f2; color:#dc2626;
-                         border-radius:10px; font-size:0.78rem; font-weight:600;">
-                ✗ לא בוצעו: ${stats.skipped}
-            </span>
-            <span style="padding:2px 8px; background:#f3f4f6; color:#6b7280;
-                         border-radius:10px; font-size:0.78rem; font-weight:600;">
-                ⏳ ממתינות: ${stats.pending}
-            </span>
-        </div>
-
-        <!-- רשימת משימות קומפקטית -->
-        <div style="display:flex; flex-direction:column; gap:3px;">
-    `;
-
-        tasks.forEach(task => {
-            const rowBg = task.isCompleted ? '#f0fdf4' :
-                task.isSkipped ? '#fef2f2' : '#f9fafb';
-            const priorityColors = {
-                high: '#ef4444', medium: '#f59e0b', low: '#10b981'
-            };
-            const borderColor = priorityColors[task.priority] || '#6b7280';
-            const statusIcon = task.isCompleted ? '✓' :
-                task.isSkipped ? '✗' : '⏳';
-            const statusColor = task.isCompleted ? '#2e7d32' :
-                task.isSkipped ? '#dc2626' : '#6b7280';
-            const titleStyle = task.isCompleted ?
-                'text-decoration:line-through; color:#6b7280;' : 'color:#1f2937;';
-
-            html += `
-        <div style="display:flex; align-items:center; gap:6px; padding:4px 8px;
-                    background:${rowBg}; border-radius:5px;
-                    border-right:3px solid ${borderColor}; font-size:0.82rem;">
-            <span style="color:${statusColor}; font-weight:bold;
-                         min-width:14px; text-align:center;">${statusIcon}</span>
-            <span style="flex:1; ${titleStyle}">
-                ${this.escapeHtml(task.title)}
-            </span>
-            ${task.taskHour && task.taskMinute ? `
-                <span style="font-size:0.72rem; color:#9ca3af; white-space:nowrap;">
-                    ${task.taskHour}:${task.taskMinute}
-                </span>` : ''}
-            ${task.completedBy ? `
-                <span style="font-size:0.72rem; color:#2e7d32; white-space:nowrap;
-                             background:#e8f5e9; padding:1px 5px; border-radius:8px;">
-                    👤 ${this.escapeHtml(task.completedBy)}
-                </span>` : ''}
-            ${task.isSkipped && task.skipReason ? `
-                <span style="font-size:0.72rem; color:#dc2626; white-space:nowrap;
-                             max-width:100px; overflow:hidden; text-overflow:ellipsis;"
-                      title="${this.escapeHtml(task.skipReason)}">
-                    ${this.escapeHtml(task.skipReason.substring(0, 20))}${task.skipReason.length > 20 ? '...' : ''}
-                </span>` : ''}
-        </div>
-    `;
-        });
-
-        html += `
-        </div>
-        <!-- /tasks list -->
-    </div>
-    <!-- /dtBody -->
-</div>
-<!-- /daily-tasks-summary-wrapper -->
-    `;
-
-        return html;
-    }
-
     createFullShiftSummaryContent(message) {
         let html = '<div class="shift-summary-full">';
 
@@ -12523,32 +9120,19 @@ ${data.base64Data}`;
             html += '<h4><i class="fas fa-bell"></i> התראות</h4>';
 
             message.alertItems.forEach(item => {
-                html += '<div class="alert-item-display" style="display:block; width:100%;">';
+                html += '<div class="alert-item-display">';
+                html += `<div class="alert-text-display">${item.Text || ''}</div>`;
 
-                // טקסט - תמיד מעל
-                html += `<div class="alert-text-display" 
-                  style="display:block; width:100%; margin-bottom:10px;">
-                 ${item.Text || ''}
-             </div>`;
-
-                // תמונה - מתחת לטקסט
                 if (item.ImagePath) {
                     const encodedPath = encodeURIComponent(item.ImagePath);
-                    html += `<div class="alert-image-display" 
-                      style="display:block; width:100%; margin-top:8px;">
-                    <img src="/Messages/GetImageFile?filePath=${encodedPath}" 
-                         alt="תמונת התראה" 
-                         style="display:block; max-width:100%; height:auto;"
+                    html += `<div class="alert-image-display">
+                    <img src="/Messages/GetImageFile?filePath=${encodedPath}" alt="תמונת התראה" 
                          onclick="messagesManager.openImageInFullscreen('${encodedPath}', 'תמונת התראה')">
                     <div class="image-actions">
-                        <button class="image-action-btn" 
-                                onclick="messagesManager.downloadAttachment('${encodedPath}'); return false;" 
-                                title="הורד תמונה">
+                        <button class="image-action-btn" onclick="messagesManager.downloadAttachment('${encodedPath}'); return false;" title="הורד תמונה">
                             <i class="fas fa-download"></i>
                         </button>
-                        <button class="image-action-btn" 
-                                onclick="messagesManager.openImageInFullscreen('${encodedPath}', 'תמונת התראה'); return false;" 
-                                title="הגדל תמונה">
+                        <button class="image-action-btn" onclick="messagesManager.openImageInFullscreen('${encodedPath}', 'תמונת התראה'); return false;" title="הגדל תמונה">
                             <i class="fas fa-search-plus"></i>
                         </button>
                     </div>
@@ -12587,9 +9171,6 @@ ${data.base64Data}`;
             html += '</div>';
         }
 
-        if (message.dailyTasksSummary) {
-            html += this._buildDailyTasksSummaryHtml(message.dailyTasksSummary);
-        }
         // הוספת קבצים מצורפים
         if (message.attachments && message.attachments.length > 0) {
             html += '<div class="summary-section-full attachments-section">';
@@ -13339,77 +9920,25 @@ ${data.base64Data}`;
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
 
-        // *** פונקציית עזר לקבלת תאריך יעד אפקטיבי של הודעה ***
-        const getEffectiveDueDate = (message) => {
-            // אם יש dueDate רגיל - השתמש בו
-            if (message.dueDate) {
-                return message.dueDate;
-            }
-
-            // אישורי כניסה - השתמש בתאריך מ-entryPermitData
-            if (message.category === 'אישורי כניסה' && message.entryPermitData) {
-                const permitDate = message.entryPermitData.date ||
-                    message.entryPermitData.Date;
-                if (permitDate) {
-                    return permitDate; // כבר בפורמט DD/MM/YYYY
-                }
-            }
-
-            return null;
-        };
-
         switch (this.currentTimeFilter) {
             case 'today':
                 // Show messages without due date OR with today's due date (only after 7:30 AM) OR with yesterday's due date if before 7:30 AM
                 return messages.filter(message => {
-                    const effectiveDueDate = getEffectiveDueDate(message);
+                    if (!message.dueDate) return true;
 
-                    // קטגוריית רשימות - לוגיקה מיוחדת
-                    if (message.category === 'רשימות') {
-                        // אם alwaysShow=true או לא הוגדר - הצג תמיד
-                        if (message.alwaysShow === true ||
-                            message.alwaysShow === undefined ||
-                            message.alwaysShow === null) {
-                            return true;
-                        }
-
-                        // יש תאריך התחלה (dueDate) וסיום (endDate)
-                        const startDate = this.parseDueDate(message.dueDate);
-                        const endDate = this.parseDueDate(message.endDate);
-                        const todayDate = new Date();
-                        todayDate.setHours(0, 0, 0, 0);
-
-                        if (startDate && endDate) {
-                            startDate.setHours(0, 0, 0, 0);
-                            endDate.setHours(0, 0, 0, 0);
-                            return todayDate >= startDate && todayDate <= endDate;
-                        }
-
-                        // יש רק תאריך התחלה - הצג רק באותו יום
-                        if (startDate) {
-                            startDate.setHours(0, 0, 0, 0);
-                            return startDate.getTime() === todayDate.getTime();
-                        }
-
-                        return true;
-                    }
-
-                    // כל שאר הקטגוריות - לוגיקה קיימת
-                    if (!effectiveDueDate) return true;
-
-                    let dueDate = this.parseDueDate(effectiveDueDate);
+                    let dueDate = this.parseDueDate(message.dueDate);
                     if (!dueDate) return true;
 
                     dueDate.setHours(0, 0, 0, 0);
 
                     // If it's today's due date, show only after 7:30 AM
                     if (dueDate.getTime() === today.getTime()) {
-                        return !isBeforeSevenThirty;
+                        return !isBeforeSevenThirty; // Show today's tasks only after 7:30 AM
                     }
 
                     // If it's yesterday's due date, show only before 7:30 AM
                     if (dueDate.getTime() === yesterday.getTime()) {
-                        return isBeforeSevenThirty;
+                        return isBeforeSevenThirty; // Show yesterday's tasks only before 7:30 AM
                     }
 
                     return false;
@@ -13418,11 +9947,9 @@ ${data.base64Data}`;
             case 'future':
                 // Show only messages with future due dates
                 return messages.filter(message => {
-                    const effectiveDueDate = getEffectiveDueDate(message);
+                    if (!message.dueDate) return false;
 
-                    if (!effectiveDueDate) return false;
-
-                    let dueDate = this.parseDueDate(effectiveDueDate);
+                    let dueDate = this.parseDueDate(message.dueDate);
                     if (!dueDate) return false;
 
                     dueDate.setHours(0, 0, 0, 0);
@@ -13433,11 +9960,9 @@ ${data.base64Data}`;
                 // Show only messages with past due dates
                 // For yesterday's tasks, if before 7:30 AM, don't show in history yet
                 return messages.filter(message => {
-                    const effectiveDueDate = getEffectiveDueDate(message);
+                    if (!message.dueDate) return false;
 
-                    if (!effectiveDueDate) return false;
-
-                    let dueDate = this.parseDueDate(effectiveDueDate);
+                    let dueDate = this.parseDueDate(message.dueDate);
                     if (!dueDate) return false;
 
                     dueDate.setHours(0, 0, 0, 0);
@@ -13641,9 +10166,8 @@ ${data.base64Data}`;
     // Helper methods
     getPriorityClass(priority) {
         switch (priority) {
-            case 'דחוף': return 'urgent';
+            case 'דחוף': return 'urgent priority-high';
             case 'חשוב': return 'info';
-            case 'גבוה': return 'priority-high';
             default: return '';
         }
     }
@@ -13783,13 +10307,6 @@ ${data.base64Data}`;
             "#messageDueDateHidden",
             (selectedDates, dateStr) => {
                 this.handleDueDateChange(dateStr);
-            }
-        );
-
-        this.listEndDatePicker = FlatpickrHelper.initHebrewDatePicker(
-            "#listEndDateHidden",
-            (selectedDates, dateStr) => {
-                this.handleListEndDateChange(dateStr);
             }
         );
     }
@@ -14448,8 +10965,6 @@ ${data.base64Data}`;
             modal = document.createElement('div');
             modal.id = 'entryPermitModal';
             modal.className = 'modal-overlay';
-            modal.style.zIndex = '999';
-
 
             modal.innerHTML = `
             <div class="modal-content entry-permit-modal">
@@ -14597,12 +11112,8 @@ ${data.base64Data}`;
                     <button class="btn btn-secondary" id="entryPermitHistoryBtn">
                         <i class="fas fa-history"></i> היסטוריית בקשות
                     </button>
-                    <button class="btn btn-info" id="permanentAccessBtn"
-                            onclick="messagesManager.openPermanentAccessModal()">
-                        <i class="fas fa-id-card"></i> מורשים קבועים
-                    </button>
                     <button class="btn btn-primary" id="entryPermitSubmitBtn">
-                        <i class="fas fa-envelope"></i> שלח מייל אישור כניסה
+                        <i class="fas fa-envelope"></i> צור מייל אישור כניסה
                     </button>
                     <button class="btn btn-secondary" id="entryPermitCancelBtn">
                         <i class="fas fa-times"></i> ביטול
@@ -14701,12 +11212,6 @@ ${data.base64Data}`;
                 });
             }
 
-            setTimeout(() => {
-                const currentUser = this.getCurrentUserName();
-                if (currentUser) {
-                    this._applyCurrentUserAsReadonly('permitAuthor');
-                }
-            }, 100);
 
             this._initEntryPermitDatePicker();
             this._initPermitTimeSelects();
@@ -14728,10 +11233,10 @@ ${data.base64Data}`;
             if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-save"></i> שמור שינויים ושלח מייל';
         } else if (isDuplicate) {
             if (titleEl) titleEl.innerHTML = '<i class="fas fa-copy"></i> שכפול אישור כניסה';
-            if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-envelope"></i> שלח מייל אישור כניסה';
+            if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-envelope"></i> צור מייל אישור כניסה';
         } else {
             if (titleEl) titleEl.innerHTML = '<i class="fas fa-id-badge"></i> אישור כניסה';
-            if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-envelope"></i> שלח מייל אישור כניסה';
+            if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-envelope"></i> צור מייל אישור כניסה';
         }
 
         // איפוס הטופס
@@ -14777,17 +11282,12 @@ ${data.base64Data}`;
         container.appendChild(newRow);
         this._updateRemoveButtons(container);
 
-        // מאזינים לשדה הרכב
+        // ← תיקון: הוסף מאזינים לשדה הרכב החדש
         const carInput = newRow.querySelector('.permit-car-input');
         if (carInput) this._attachCarInputListeners(carInput);
 
-        // מאזין השלמה אוטומטית לשם
         const nameInput = newRow.querySelector('.permit-name-input');
-        if (nameInput) {
-            this._addAutocompleteStyles();
-            this._attachNameAutocomplete(nameInput, newRow);
-            nameInput.focus();
-        }
+        if (nameInput) nameInput.focus();
     }
 
     // פתיחת מודל היסטוריית אישורי כניסה
@@ -14850,7 +11350,6 @@ ${data.base64Data}`;
             document.body.appendChild(modal);
             this._addEntryPermitHistoryStyles();
             this._addEntryPermitStyles();
-            this._addAutocompleteStyles();
         }
 
         // שמור את הרשימה לשימוש בחיפוש
@@ -14914,10 +11413,10 @@ ${data.base64Data}`;
 
         if (permits.length === 0) {
             container.innerHTML = `
-        <div class="history-empty">
-            <i class="fas fa-inbox"></i>
-            <p>לא נמצאו אישורי כניסה</p>
-        </div>`;
+            <div class="history-empty">
+                <i class="fas fa-inbox"></i>
+                <p>לא נמצאו אישורי כניסה</p>
+            </div>`;
             return;
         }
 
@@ -14930,28 +11429,27 @@ ${data.base64Data}`;
         });
 
         let html = `
-<div class="history-summary">
-    <span><i class="fas fa-list"></i> סה"כ: ${permits.length} בקשות</span>
-    <span><i class="fas fa-users"></i> סה"כ: ${totalPersons} אנשים</span>
-</div>
-<div class="history-table-wrapper">
-    <table class="history-table">
-        <thead>
-            <tr>
-                <th>תאריך בקשה</th>
-                <th>תאריך כניסה</th>
-                <th>שעה</th>
-                <th>אתר</th>
-                <th>שם</th>
-                <th>חברה</th>
-                <th>מס' רכב</th>
-                <th>ת"ז</th>
-                <th>טלפון</th>
-                <th>מלווה</th>
-                <th>פעולות</th>
-            </tr>
-        </thead>
-        <tbody>`;
+    <div class="history-summary">
+        <span><i class="fas fa-list"></i> סה"כ: ${permits.length} בקשות</span>
+        <span><i class="fas fa-users"></i> סה"כ: ${totalPersons} אנשים</span>
+    </div>
+    <div class="history-table-wrapper">
+        <table class="history-table">
+            <thead>
+                <tr>
+                    <th>תאריך בקשה</th>
+                    <th>תאריך כניסה</th>
+                    <th>שעה</th>
+                    <th>אתר</th>
+                    <th>שם</th>
+                    <th>חברה</th>
+                    <th>מס' רכב</th>
+                    <th>ת"ז</th>
+                    <th>טלפון</th>
+                    <th>מלווה</th>
+                </tr>
+            </thead>
+            <tbody>`;
 
         permits.forEach(message => {
             const data = message.entryPermitData ||
@@ -14970,57 +11468,47 @@ ${data.base64Data}`;
             const requestDate = this.getTimeAgo(message.date);
 
             // שעה
-            const timeDisplay = data.Time || data.time || '-';
+            const timeDisplay = data.Time || '-';
 
             // מלווה
-            const escortDisplay = data.Escort || data.escort || '-';
+            const escortDisplay = data.Escort || '-';
 
             // קבל רשימת אנשים
             const persons = this._getPersonsFromData(data);
 
-            // ה-ID של ההודעה לשכפול - חשוב!
-            const msgId = message.id;
-
             if (persons.length === 0) {
+                // אין אנשים - שורה ריקה
                 html += `
-        <tr class="history-row permit-group-first permit-group-last">
-            <td rowspan="1">
-                <span class="date-badge">${requestDate}</span>
-            </td>
-            <td rowspan="1"><strong>${data.Date || data.date || '-'}</strong></td>
-            <td rowspan="1">
-                ${timeDisplay !== '-'
+            <tr class="history-row permit-group-first permit-group-last">
+                <td rowspan="1">
+                    <span class="date-badge">${requestDate}</span>
+                </td>
+                <td rowspan="1"><strong>${data.Date || '-'}</strong></td>
+                <td rowspan="1">
+                    ${timeDisplay !== '-'
                         ? `<span class="time-badge"><i class="fas fa-clock"></i> ${timeDisplay}</span>`
                         : '<span class="empty-cell">-</span>'}
-            </td>
-            <td rowspan="1">
-                <span class="site-badge site-${siteClass}">${siteDisplay}</span>
-            </td>
-            <td><span class="empty-cell">-</span></td>
-            <td rowspan="1">${data.Company || data.company || '-'}</td>
-            <td><span class="empty-cell">-</span></td>
-            <td><span class="empty-cell">-</span></td>
-            <td><span class="empty-cell">-</span></td>
-            <td rowspan="1">
-                ${escortDisplay !== '-'
+                </td>
+                <td rowspan="1">
+                    <span class="site-badge site-${siteClass}">${siteDisplay}</span>
+                </td>
+                <td><span class="empty-cell">-</span></td>
+                <td rowspan="1">${data.Company || '-'}</td>
+                <td><span class="empty-cell">-</span></td>
+                <td><span class="empty-cell">-</span></td>
+                <td><span class="empty-cell">-</span></td>
+                <td rowspan="1">
+                    ${escortDisplay !== '-'
                         ? `<span class="escort-badge"><i class="fas fa-user-friends"></i> ${escortDisplay}</span>`
                         : '<span class="empty-cell">-</span>'}
-            </td>
-            <td rowspan="1" class="shared-cell action-cell" style="vertical-align:middle; text-align:center;">
-                <button class="history-duplicate-btn"
-                        onclick="messagesManager._duplicatePermitFromHistory('${msgId}')"
-                        title="שכפל אישור כניסה זה">
-                    <i class="fas fa-copy"></i>
-                    <span>שכפל</span>
-                </button>
-            </td>
-        </tr>`;
+                </td>
+            </tr>`;
             } else {
-                const rowspan = persons.length;
-
+                // שורה לכל אדם - עם rowspan לשדות המשותפים
                 persons.forEach((person, personIndex) => {
                     const isFirst = personIndex === 0;
                     const isLast = personIndex === persons.length - 1;
+                    const rowspan = persons.length;
 
                     const rowClass = [
                         'history-row',
@@ -15090,12 +11578,12 @@ ${data.base64Data}`;
                     const phoneDisplay = person.phone || '-';
                     html += `
                 <td class="phone-cell" dir="rtl">
-                ${phoneDisplay !== '-'
+                    ${phoneDisplay !== '-'
                             ? `<a href="tel:${phoneDisplay}" class="phone-link">${phoneDisplay}</a>`
                             : '<span class="empty-cell">-</span>'}
                 </td>`;
 
-                    // מלווה + כפתור שכפול - rowspan בשורה הראשונה
+                    // מלווה - rowspan בשורה הראשונה
                     if (isFirst) {
                         html += `
                     <td rowspan="${rowspan}" class="shared-cell escort-cell">
@@ -15104,15 +11592,6 @@ ${data.base64Data}`;
                                 <i class="fas fa-user-friends"></i> ${escortDisplay}
                                </span>`
                                 : '<span class="empty-cell">-</span>'}
-                    </td>
-                    <td rowspan="${rowspan}" class="shared-cell action-cell"
-                        style="vertical-align:middle; text-align:center;">
-                        <button class="history-duplicate-btn"
-                                onclick="messagesManager._duplicatePermitFromHistory('${msgId}')"
-                                title="שכפל אישור כניסה זה">
-                            <i class="fas fa-copy"></i>
-                            <span>שכפל</span>
-                        </button>
                     </td>`;
                     }
 
@@ -15126,24 +11605,6 @@ ${data.base64Data}`;
 
         // עדכן CSS
         this._updateHistoryTableStyles();
-    }
-
-    _duplicatePermitFromHistory(messageId) {
-        // מצא את ההודעה
-        const message = this.allMessages.find(m => m.id === messageId);
-        if (!message) {
-            NotificationManager.show('אישור כניסה לא נמצא', 'error');
-            return;
-        }
-
-        // סגור את מודל ההיסטוריה
-        const historyModal = document.getElementById('entryPermitHistoryModal');
-        if (historyModal) historyModal.style.display = 'none';
-
-        // פתח מודל אישור כניסה במצב שכפול
-        this.openEntryPermitModal(message, true);
-
-        NotificationManager.show('אישור כניסה הועתק - ערוך ושמור', 'info');
     }
 
     _updateHistoryTableStyles() {
@@ -15169,8 +11630,6 @@ ${data.base64Data}`;
                 font-family: monospace; font-size: 0.85rem;
                 padding: 2px 6px; background: #f0fff4; color: #276749;
                 border-radius: 6px; border: 1px solid #c6f6d5;
-                display: flex;
-                width: max-content;
             }
         `;
             document.head.appendChild(style);
@@ -15255,277 +11714,6 @@ ${data.base64Data}`;
             overflow-y: auto;
             flex: 1;
             padding: 15px 20px;
-        }
-
-        /* ==========================================
-        DARK MODE - ENTRY PERMIT HISTORY
-        ========================================== */
-
-        [data-theme="dark"] .entry-permit-history-modal {
-            background: var(--bg-secondary);
-        }
-
-        [data-theme="dark"] .entry-permit-history-modal .modal-header {
-            background: var(--bg-secondary);
-            border-bottom-color: var(--border-color);
-        }
-
-        [data-theme="dark"] .entry-permit-history-modal .modal-header h3 {
-            color: white;
-        }
-
-        [data-theme="dark"] #entryPermitModalTitle {
-            color: white;
-        }
-
-        [data-theme="dark"] #entryPermitModal .modal-content {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-        }
-
-        [data-theme="dark"] #entryPermitModal .modal-header {
-            background: var(--bg-secondary);
-            border-bottom-color: var(--border-color);
-        }
-
-        [data-theme="dark"] #entryPermitModal .form-input,
-        [data-theme="dark"] #entryPermitModal .form-select {
-            background: var(--input-bg);
-            border-color: var(--border-color);
-            color: var(--text-primary);
-        }
-
-        [data-theme="dark"] #entryPermitModal .site-btn {
-            background: var(--input-bg);
-            border-color: var(--border-color);
-            color: var(--text-primary);
-        }
-
-        [data-theme="dark"] #entryPermitModal .site-option input:checked + .site-btn,
-        [data-theme="dark"] #entryPermitModal .site-btn.selected {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-        }
-
-        [data-theme="dark"] #entryPermitModal .person-row {
-            background: transparent;
-        }
-
-        [data-theme="dark"] #entryPermitModal .field-error {
-            background: rgba(229, 62, 62, 0.15);
-            color: #ff8080;
-        }
-
-        [data-theme="dark"] #entryPermitModal .modal-footer {
-            background: var(--bg-primary);
-            border-top-color: var(--border-color);
-        }
-
-        [data-theme="dark"] #entryPermitModal .form-label {
-            color: var(--text-heading);
-        }
-
-        [data-theme="dark"] #entryPermitModal .optional-label {
-            color: var(--text-secondary);
-        }
-
-        [data-theme="dark"] #entryPermitModal .add-entry-btn {
-            background: rgba(102, 126, 234, 0.15);
-            border-color: rgba(102, 126, 234, 0.4);
-            color: #a78bfa;
-        }
-
-        [data-theme="dark"] #entryPermitModal .remove-entry-btn {
-            background: rgba(220, 53, 69, 0.15);
-            border-color: rgba(220, 53, 69, 0.3);
-            color: #ff8080;
-        }
-
-        [data-theme="dark"] #entryPermitModal .inline-field-error {
-            background: rgba(229, 62, 62, 0.12);
-            color: #ff8080;
-        }
-
-        [data-theme="dark"] #entryPermitModal .permit-autocomplete-dropdown {
-            background: var(--bg-secondary);
-            border-color: #667eea;
-        }
-
-        [data-theme="dark"] #entryPermitModal .permit-autocomplete-item:hover,
-        [data-theme="dark"] #entryPermitModal .permit-autocomplete-item.active {
-            background: #252535;
-        }
-
-        [data-theme="dark"] #entryPermitModal .autocomplete-name {
-            color: var(--text-primary);
-        }
-
-        [data-theme="dark"] #entryPermitModal .autocomplete-sub {
-            color: var(--text-secondary);
-        }
-
-        [data-theme="dark"] .entry-permit-history-modal .modal-body {
-            background: var(--bg-secondary);
-        }
-
-        [data-theme="dark"] .entry-permit-history-modal .modal-footer {
-            background: var(--bg-primary);
-            border-top-color: var(--border-color);
-        }
-
-        /* טבלת ההיסטוריה */
-        [data-theme="dark"] .history-table {
-            color: var(--text-primary);
-        }
-
-        [data-theme="dark"] .history-table tbody tr {
-            border-bottom-color: var(--border-color);
-        }
-
-        [data-theme="dark"] .history-table tbody tr:hover {
-            background: #252535;
-        }
-
-        [data-theme="dark"] .history-table td {
-            color: var(--text-primary);
-            border-bottom-color: var(--border-color);
-        }
-
-        /* שורות קבוצה */
-        [data-theme="dark"] .permit-group-first td {
-            border-top-color: #4a4a6a !important;
-        }
-
-        [data-theme="dark"] .permit-group-last td {
-            border-bottom-color: #4a4a6a !important;
-        }
-
-        [data-theme="dark"] .person-row-alt td:not(.shared-cell) {
-            background-color: #1a1a2e;
-        }
-
-        [data-theme="dark"] .shared-cell {
-            background-color: #1e1e30 !important;
-        }
-
-        /* תגיות */
-        [data-theme="dark"] .date-badge {
-            color: var(--text-secondary);
-        }
-
-        [data-theme="dark"] .site-badge.site-rg {
-            background: rgba(41, 128, 185, 0.2);
-            color: #7ec8f8;
-            border-color: rgba(41, 128, 185, 0.3);
-        }
-
-        [data-theme="dark"] .site-badge.site-pt {
-            background: rgba(214, 137, 16, 0.2);
-            color: #ffd54f;
-            border-color: rgba(214, 137, 16, 0.3);
-        }
-
-        [data-theme="dark"] .site-badge.site-both {
-            background: rgba(100, 100, 150, 0.2);
-            color: var(--text-secondary);
-            border-color: var(--border-color);
-        }
-
-        [data-theme="dark"] .car-badge {
-            background: rgba(39, 174, 96, 0.15);
-            color: #80d080;
-            border-color: rgba(39, 174, 96, 0.3);
-        }
-
-        [data-theme="dark"] .id-badge {
-            background: rgba(39, 174, 96, 0.1);
-            color: #80d080;
-            border-color: rgba(39, 174, 96, 0.2);
-        }
-
-        [data-theme="dark"] .phone-link {
-            background: rgba(33, 150, 243, 0.15);
-            color: #7ec8f8;
-            border-color: rgba(33, 150, 243, 0.3);
-        }
-
-        [data-theme="dark"] .phone-link:hover {
-            background: rgba(33, 150, 243, 0.25);
-            color: #a8d8f8;
-        }
-
-        [data-theme="dark"] .escort-badge {
-            color: #ce93d8;
-        }
-
-        [data-theme="dark"] .escort-badge i {
-            color: #ab47bc;
-        }
-
-        [data-theme="dark"] .empty-cell {
-            color: #3d3d5c;
-        }
-
-        /* כפתור שכפול */
-        [data-theme="dark"] .history-duplicate-btn {
-            background: linear-gradient(135deg, #320F5B, #4a1a8c);
-        }
-
-        [data-theme="dark"] .history-duplicate-btn:hover {
-            box-shadow: 0 4px 12px rgba(50, 15, 91, 0.5);
-        }
-
-        /* חיפוש */
-        [data-theme="dark"] .history-search-bar .form-input {
-            background: var(--input-bg);
-            border-color: var(--border-color);
-            color: var(--text-primary);
-        }
-
-        [data-theme="dark"] .history-search-bar .form-input::placeholder {
-            color: #5a5a7a;
-        }
-
-        [data-theme="dark"] .history-search-bar .form-input:focus {
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
-        }
-
-        /* סיכום */
-        [data-theme="dark"] .history-summary {
-            color: var(--text-secondary);
-        }
-
-        [data-theme="dark"] .history-summary i {
-            color: #a78bfa;
-        }
-
-        /* ריק */
-        [data-theme="dark"] .history-empty {
-            color: var(--text-secondary);
-        }
-
-        [data-theme="dark"] .history-empty i {
-            color: #3d3d5c;
-        }
-
-        /* wrapper */
-        [data-theme="dark"] .history-table-wrapper {
-            border-color: var(--border-color);
-        }
-
-        /* person index badge */
-        [data-theme="dark"] .person-index {
-            background: linear-gradient(135deg, #320F5B, #4a1a8c);
-        }
-
-        /* footer */
-        [data-theme="dark"] .history-footer-actions .btn-success {
-            background: linear-gradient(135deg, #1D6F42, #27AE60);
-        }
-
-        [data-theme="dark"] .history-footer-actions .btn-info {
-            background: linear-gradient(135deg, #1565C0, #1976D2);
         }
 
         #entryPermitHistoryContent{
@@ -16050,20 +12238,6 @@ ${data.base64Data}`;
                 if (customInput) customInput.value = authorValue;
             }
         }
-
-        // הפעל השלמה אוטומטית על כל שדות השם שנוצרו
-        setTimeout(() => {
-            const nameInputs = document.querySelectorAll(
-                '#permitNamesContainer .permit-name-input'
-            );
-            nameInputs.forEach(nameInput => {
-                const row = nameInput.closest('.person-row');
-                if (row) {
-                    this._addAutocompleteStyles();
-                    this._attachNameAutocomplete(nameInput, row);
-                }
-            });
-        }, 50);
     }
 
     // ========== פונקציות עזר פנימיות ==========
@@ -16107,25 +12281,20 @@ ${data.base64Data}`;
         btnWrapper.id = 'entryPermitHistoryGridBtn';
         btnWrapper.className = 'entry-permit-history-grid-btn-wrapper';
         btnWrapper.innerHTML = `
-            <button class="entry-permit-new-grid-btn"
-                    onclick="messagesManager.openEntryPermitModal()">
-                <i class="fas fa-plus"></i>
-                <span>אישור כניסה חדש</span>
-            </button>
-            <button class="entry-permit-permanent-grid-btn"
-                    onclick="messagesManager.openPermanentAccessModal()">
-                <i class="fas fa-id-card"></i>
-                <span>מורשים קבועים</span>
-            </button>
-            <button class="entry-permit-history-grid-btn"
-                    onclick="messagesManager.openEntryPermitHistory()">
-                <i class="fas fa-history"></i>
-                <span>היסטוריית אישורי כניסה</span>
-                ${permitsCount > 0
+        <button class="entry-permit-new-grid-btn"
+                onclick="messagesManager.openEntryPermitModal()">
+            <i class="fas fa-plus"></i>
+            <span>אישור כניסה חדש</span>
+        </button>
+        <button class="entry-permit-history-grid-btn"
+                onclick="messagesManager.openEntryPermitHistory()">
+            <i class="fas fa-history"></i>
+            <span>היסטוריית אישורי כניסה</span>
+            ${permitsCount > 0
                 ? `<span class="permits-count-badge">${permitsCount}</span>`
                 : ''}
-            </button>
-        `;
+        </button>
+    `;
 
         // הוסף לפני הכרטיסים
         noticesGrid.insertBefore(btnWrapper, noticesGrid.firstChild);
@@ -16201,28 +12370,6 @@ ${data.base64Data}`;
 
         .entry-permit-new-grid-btn:active {
             transform: translateY(0);
-        }
-
-        .entry-permit-permanent-grid-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 20px;
-            background: linear-gradient(135deg, #3182ce, #2b6cb0);
-            color: white;
-            border: none;
-            border-radius: 9px;
-            font-size: 0.95rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.22s ease;
-            font-family: inherit;
-            box-shadow: 0 3px 10px rgba(49, 130, 206, 0.3);
-        }
-
-        .entry-permit-permanent-grid-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 18px rgba(49, 130, 206, 0.45);
         }
 
         .permits-count-badge {
@@ -16368,42 +12515,24 @@ ${data.base64Data}`;
         const minuteSel = document.getElementById('permitTimeMinute');
 
         // איפוס מחבר - הגדר ברירת מחדל
+        const authorSelect = document.getElementById('permitAuthor');
         const customContainer = document.getElementById('permitCustomAuthorContainer');
         const customInput = document.getElementById('permitCustomAuthorInput');
         const authorError = document.getElementById('authorError');
 
-        const currentUser = this.getCurrentUserName();
-        let author = currentUser || '';
-
-        if (!author) {
-            // fallback - קרא מה-select רק אם אין יוזר מחובר
-            const authorSelect = document.getElementById('permitAuthor');
-            const customAuthorInput = document.getElementById('permitCustomAuthorInput');
-            if (authorSelect) {
-                if (authorSelect.value === 'other') {
-                    author = customAuthorInput?.value.trim() || '';
-                } else {
-                    author = authorSelect.value;
-                }
+        if (authorSelect) {
+            const lastAuthor = this.getLastSelectedAuthor();
+            if (lastAuthor) {
+                const optionExists = Array.from(authorSelect.options)
+                    .some(opt => opt.value === lastAuthor);
+                authorSelect.value = optionExists ? lastAuthor : '';
+            } else {
+                authorSelect.value = '';
             }
         }
         if (customContainer) customContainer.style.display = 'none';
         if (customInput) customInput.value = '';
         if (authorError) authorError.style.display = 'none';
-
-        // הפעל השלמה אוטומטית על שדה השם הראשון
-        setTimeout(() => {
-            const firstNameInput = document.querySelector(
-                '#permitNamesContainer .permit-name-input'
-            );
-            if (firstNameInput) {
-                const row = firstNameInput.closest('.person-row');
-                if (row) {
-                    this._addAutocompleteStyles();
-                    this._attachNameAutocomplete(firstNameInput, row);
-                }
-            }
-        }, 50);
     }
 
     _clearFieldError(errorId, inputId) {
@@ -16522,13 +12651,14 @@ ${data.base64Data}`;
         }
     }
 
-    async submitEntryPermit() {
+    submitEntryPermit() {
         if (!this._validateEntryPermitForm()) {
             return;
         }
 
         const data = this._collectEntryPermitData();
 
+        // *** קבל את ה-ID של ההודעה הנערכת מהמודל ***
         const modal = document.getElementById('entryPermitModal');
         const editingMessageId = modal ? modal.dataset.editingMessageId : '';
         const isDuplicate = modal ? modal.dataset.isDuplicate === 'true' : false;
@@ -16539,346 +12669,12 @@ ${data.base64Data}`;
             this.saveLastSelectedAuthor(data.author);
         }
 
-        try {
-            // שמור את האישור כהודעה
-            const savedResult = await this._saveEntryPermitAsMessage(
-                data, isEditing ? editingMessageId : null
-            );
-
-            if (!savedResult) {
-                return; // שגיאה כבר הוצגה בפונקציה
-            }
-
-            // שלח מייל דרך השרת (לא קובץ EML)
-            await this._sendEntryPermitEmailViaServer(data);
-
-            this.closeEntryPermitModal();
-
-        } catch (error) {
-            console.error('Error in submitEntryPermit:', error);
-            NotificationManager.show('שגיאה בשמירה או שליחת המייל', 'error');
-        }
-    }
-
-    async _sendEntryPermitEmailViaServer(data) {
-        try {
-            const overlay = document.getElementById('shiftsLoadingOverlay')
-                || this.createLoadingOverlay();
-            overlay.classList.add('show');
-
-            // בנה גוף המייל
-            const body = this._buildEntryPermitEmailBody(data);
-
-            // קבע נמענים לפי האתרים שנבחרו
-            const sites = data.sites && data.sites.length > 0
-                ? data.sites
-                : [data.site];
-
-            let allToAddresses = new Set();
-            let allCcAddresses = new Set();
-
-            sites.forEach(site => {
-                const recipients = this._getEntryPermitRecipients(site);
-                recipients.to.split(';').forEach(e => {
-                    const t = e.trim();
-                    if (t) allToAddresses.add(t);
-                });
-                recipients.cc.split(';').forEach(e => {
-                    const t = e.trim();
-                    if (t) allCcAddresses.add(t);
-                });
+        // שמור את האישור כהודעה
+        this._saveEntryPermitAsMessage(data, isEditing ? editingMessageId : null)
+            .then(savedMessage => {
+                this._openEntryPermitEmail(data);
+                this.closeEntryPermitModal();
             });
-
-            // בנה כותרת
-            let siteDisplay = '';
-            if (sites.length > 1) {
-                siteDisplay = sites.map(s =>
-                    s === 'פ"ת' ? `אתר ${s}` : s
-                ).join(' ו');
-            } else {
-                const site = sites[0];
-                siteDisplay = site === 'פ"ת' ? `אתר ${site}` : site;
-            }
-
-            const isRelativeDate = data.dateLabel && (
-                data.dateLabel.startsWith('היום') ||
-                data.dateLabel.startsWith('מחר')
-            );
-
-            const subject = isRelativeDate
-                ? `אישור כניסה ל${data.dateLabel} ב${siteDisplay}`
-                : `אישור כניסה בתאריך ${data.dateLabel} ב${siteDisplay}`;
-
-            // שלח לשרת
-            const response = await fetch('/Messages/SendEntryPermitEmail', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    subject: subject,
-                    body: body,
-                    toAddresses: Array.from(allToAddresses),
-                    ccAddresses: Array.from(allCcAddresses)
-                })
-            });
-
-            overlay.classList.remove('show');
-
-            const result = await response.json();
-
-            if (result.success) {
-                this._showEmailSentPopup({
-                    subject,
-                    toAddresses: Array.from(allToAddresses),
-                    ccAddresses: Array.from(allCcAddresses),
-                    personName: data.fullName || data.names?.[0] || '',
-                    site: siteDisplay,
-                    date: data.dateLabel || data.date
-                });
-            } else {
-                this._showEmailErrorPopup(result.error || 'שגיאה בשליחת המייל');
-            }
-
-        } catch (error) {
-            console.error('Error sending entry permit email:', error);
-            const overlay = document.getElementById('shiftsLoadingOverlay');
-            if (overlay) overlay.classList.remove('show');
-            this._showEmailErrorPopup('שגיאה בשליחת המייל: ' + error.message);
-        }
-    }
-
-    // *** פונקציה חדשה: פופאפ הצלחה ***
-    _showEmailSentPopup(details) {
-        let modal = document.getElementById('emailSentSuccessModal');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'emailSentSuccessModal';
-            modal.className = 'modal-overlay';
-            modal.style.zIndex = '10010';
-            document.body.appendChild(modal);
-        }
-
-        const toList = details.toAddresses.join('<br>');
-        const ccList = details.ccAddresses.length > 0
-            ? details.ccAddresses.join('<br>')
-            : '-';
-
-        modal.innerHTML = `
-        <div class="modal-content email-sent-modal" style="
-            max-width: 480px;
-            width: 95%;
-            border-radius: 16px;
-            overflow: hidden;
-        ">
-            <!-- Header ירוק -->
-            <div style="
-                background: linear-gradient(135deg, #27AE60, #1D6F42);
-                padding: 24px 28px;
-                text-align: center;
-                color: white;
-            ">
-                <div style="
-                    width: 64px; height: 64px;
-                    background: rgba(255,255,255,0.2);
-                    border-radius: 50%;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    margin: 0 auto 14px;
-                    font-size: 2rem;
-                ">✓</div>
-                <h3 style="margin:0; font-size:1.3rem; font-weight:700;">
-                    המייל נשלח בהצלחה!
-                </h3>
-                <p style="margin:6px 0 0; opacity:0.85; font-size:0.9rem;">
-                    אישור כניסה ל${this.escapeHtml(details.personName)}
-                </p>
-            </div>
-
-            <!-- Body -->
-            <div style="padding: 22px 28px; background: white;">
-                <div style="
-                    background: #f8f9ff;
-                    border: 1px solid #e2e8f0;
-                    border-radius: 10px;
-                    padding: 16px;
-                    margin-bottom: 16px;
-                ">
-                    <div style="margin-bottom:10px;">
-                        <div style="font-size:0.78rem; color:#888; margin-bottom:3px;">
-                            <i class="fas fa-envelope"></i> נושא
-                        </div>
-                        <div style="font-weight:600; color:#333; font-size:0.9rem;">
-                            ${this.escapeHtml(details.subject)}
-                        </div>
-                    </div>
-
-                    <div style="margin-bottom:10px;">
-                        <div style="font-size:0.78rem; color:#888; margin-bottom:3px;">
-                            <i class="fas fa-map-marker-alt"></i> אתר
-                        </div>
-                        <div style="font-weight:600; color:#333; font-size:0.9rem;">
-                            ${this.escapeHtml(details.site)}
-                        </div>
-                    </div>
-
-                    <div style="margin-bottom:10px;">
-                        <div style="font-size:0.78rem; color:#888; margin-bottom:3px;">
-                            <i class="fas fa-calendar"></i> תאריך
-                        </div>
-                        <div style="font-weight:600; color:#333; font-size:0.9rem;">
-                            ${this.escapeHtml(details.date)}
-                        </div>
-                    </div>
-
-                    <div style="margin-bottom:10px;">
-                        <div style="font-size:0.78rem; color:#888; margin-bottom:3px;">
-                            <i class="fas fa-paper-plane"></i> נשלח אל
-                        </div>
-                        <div style="color:#333; font-size:0.85rem; line-height:1.6;">
-                            ${toList}
-                        </div>
-                    </div>
-
-                    ${details.ccAddresses.length > 0 ? `
-                    <div>
-                        <div style="font-size:0.78rem; color:#888; margin-bottom:3px;">
-                            <i class="fas fa-copy"></i> עותק
-                        </div>
-                        <div style="color:#666; font-size:0.82rem; line-height:1.6;">
-                            ${ccList}
-                        </div>
-                    </div>` : ''}
-                </div>
-
-                <div style="
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                    padding: 10px 14px;
-                    background: #f0fff4;
-                    border: 1px solid #c6f6d5;
-                    border-radius: 8px;
-                    font-size: 0.82rem;
-                    color: #276749;
-                ">
-                    <i class="fas fa-check-circle"></i>
-                    המייל נשלח ונשמר במערכת
-                </div>
-            </div>
-
-            <!-- Footer -->
-            <div style="
-                padding: 16px 28px;
-                background: #f8f9fa;
-                border-top: 1px solid #e2e8f0;
-                display: flex;
-                justify-content: flex-end;
-            ">
-                <button onclick="document.getElementById('emailSentSuccessModal').style.display='none'"
-                        style="
-                    padding: 10px 28px;
-                    background: linear-gradient(135deg, #27AE60, #1D6F42);
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    font-size: 0.95rem;
-                    font-weight: 600;
-                    cursor: pointer;
-                    font-family: inherit;
-                    transition: all 0.2s;
-                ">
-                    <i class="fas fa-check"></i> סגור
-                </button>
-            </div>
-        </div>
-    `;
-
-        modal.style.display = 'flex';
-
-        // סגירה אוטומטית אחרי 8 שניות
-        setTimeout(() => {
-            if (modal.style.display === 'flex') {
-                modal.style.display = 'none';
-            }
-        }, 8000);
-    }
-
-    // *** פונקציה חדשה: פופאפ שגיאה ***
-    _showEmailErrorPopup(errorMessage) {
-        let modal = document.getElementById('emailErrorModal');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'emailErrorModal';
-            modal.className = 'modal-overlay';
-            modal.style.zIndex = '10010';
-            document.body.appendChild(modal);
-        }
-
-        modal.innerHTML = `
-        <div class="modal-content" style="
-            max-width: 420px;
-            width: 95%;
-            border-radius: 16px;
-            overflow: hidden;
-        ">
-            <div style="
-                background: linear-gradient(135deg, #e53e3e, #c53030);
-                padding: 24px 28px;
-                text-align: center;
-                color: white;
-            ">
-                <div style="
-                    width: 64px; height: 64px;
-                    background: rgba(255,255,255,0.2);
-                    border-radius: 50%;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    margin: 0 auto 14px;
-                    font-size: 2rem;
-                ">✗</div>
-                <h3 style="margin:0; font-size:1.2rem;">שגיאה בשליחת המייל</h3>
-            </div>
-            <div style="padding: 22px 28px; background: white;">
-                <div style="
-                    padding: 14px;
-                    background: #fff5f5;
-                    border: 1px solid #feb2b2;
-                    border-radius: 8px;
-                    color: #c53030;
-                    font-size: 0.9rem;
-                    line-height: 1.5;
-                ">
-                    <i class="fas fa-exclamation-circle"></i>
-                    ${this.escapeHtml(errorMessage)}
-                </div>
-            </div>
-            <div style="
-                padding: 16px 28px;
-                background: #f8f9fa;
-                border-top: 1px solid #e2e8f0;
-                display: flex;
-                justify-content: flex-end;
-            ">
-                <button onclick="document.getElementById('emailErrorModal').style.display='none'"
-                        style="
-                    padding: 10px 24px;
-                    background: linear-gradient(135deg, #e53e3e, #c53030);
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    font-size: 0.9rem;
-                    font-weight: 600;
-                    cursor: pointer;
-                    font-family: inherit;
-                ">
-                    סגור
-                </button>
-            </div>
-        </div>
-    `;
-
-        modal.style.display = 'flex';
     }
 
     // ========== ולידציה מורחבת ==========
@@ -16921,28 +12717,28 @@ ${data.base64Data}`;
         }
 
         // ===== מחבר =====
-        // const authorSelect = document.getElementById('permitAuthor');
-        // const customAuthorInput = document.getElementById('permitCustomAuthorInput');
-        // const authorError = document.getElementById('authorError');
+        const authorSelect = document.getElementById('permitAuthor');
+        const customAuthorInput = document.getElementById('permitCustomAuthorInput');
+        const authorError = document.getElementById('authorError');
 
-        // if (authorSelect) {
-        //     if (!authorSelect.value || authorSelect.value === '') {
-        //         if (authorError) authorError.style.display = 'flex';
-        //         authorSelect.classList.add('input-error');
-        //         isValid = false;
-        //     } else if (authorSelect.value === 'other') {
-        //         const customVal = customAuthorInput?.value.trim() || '';
-        //         if (!customVal) {
-        //             if (authorError) {
-        //                 authorError.style.display = 'flex';
-        //                 authorError.innerHTML =
-        //                     '<i class="fas fa-exclamation-circle"></i> יש להזין שם מחבר';
-        //             }
-        //             if (customAuthorInput) customAuthorInput.classList.add('input-error');
-        //             isValid = false;
-        //         }
-        //     }
-        // }
+        if (authorSelect) {
+            if (!authorSelect.value || authorSelect.value === '') {
+                if (authorError) authorError.style.display = 'flex';
+                authorSelect.classList.add('input-error');
+                isValid = false;
+            } else if (authorSelect.value === 'other') {
+                const customVal = customAuthorInput?.value.trim() || '';
+                if (!customVal) {
+                    if (authorError) {
+                        authorError.style.display = 'flex';
+                        authorError.innerHTML =
+                            '<i class="fas fa-exclamation-circle"></i> יש להזין שם מחבר';
+                    }
+                    if (customAuthorInput) customAuthorInput.classList.add('input-error');
+                    isValid = false;
+                }
+            }
+        }
 
         // גלול לשגיאה הראשונה
         if (!isValid) {
@@ -17152,3407 +12948,39 @@ ${data.base64Data}`;
         return `
     <div class="multi-entry-row person-row" data-index="${index}">
         <div class="person-inline-fields">
-            <div class="name-input-wrapper">
-                <input type="text"
-                       class="form-input permit-name-input"
-                       placeholder="שם פרטי ושם משפחה"
-                       maxlength="100"
-                       autocomplete="off"
-                       value="${this.escapeHtml(name)}">
-            </div>
+            <input type="text" 
+                   class="form-input permit-name-input" 
+                   placeholder="שם פרטי ושם משפחה" 
+                   maxlength="100"
+                   value="${this.escapeHtml(name)}">
 
-            <input type="text"
-                   class="form-input permit-car-input"
+            <input type="text" 
+                   class="form-input permit-car-input" 
                    placeholder="מס' רכב (רשות)"
-                   maxlength="8"
+                   maxlength="8" 
                    dir="rtl"
                    value="${this.escapeHtml(carNumber)}">
 
-            <input type="text"
-                   class="form-input permit-id-input"
-                   placeholder="ת.ז. (רשות)"
-                   maxlength="9"
+            <input type="text" 
+                   class="form-input permit-id-input" 
+                   placeholder="ת.ז. (רשות)" 
+                   maxlength="9" 
                    dir="rtl"
                    value="${this.escapeHtml(idNumber)}">
 
-            <input type="tel"
-                   class="form-input permit-phone-input"
-                   placeholder="טלפון (רשות)"
-                   maxlength="11"
+            <input type="tel" 
+                   class="form-input permit-phone-input" 
+                   placeholder="טלפון (רשות)" 
+                   maxlength="11" 
                    dir="rtl"
                    value="${this.escapeHtml(phone)}">
         </div>
-        <button type="button" class="remove-entry-btn"
-                onclick="messagesManager._removeEntryRow(this)"
+        <button type="button" class="remove-entry-btn" 
+                onclick="messagesManager._removeEntryRow(this)" 
                 style="display:none;" title="הסר">
             <i class="fas fa-times"></i>
         </button>
     </div>`;
-    }
-
-    // ========== השלמה אוטומטית לאישורי כניסה ==========
-
-    /**
-     * בניית אינדקס חיפוש מכל אישורי הכניסה הקיימים
-     * מחזיר מפה: שם (lowercase) → רשימת נתוני אנשים
-     */
-    _buildPermitAutocompleteIndex() {
-        const index = new Map(); // key: שם lowercase, value: [{ person, permitData, messageDate }]
-
-        this.allMessages
-            .filter(m => m.category === 'אישורי כניסה')
-            .forEach(message => {
-                const data = message.entryPermitData ||
-                    this._extractPermitDataFromMessage(message);
-                if (!data) return;
-
-                const persons = this._getPersonsFromData(data);
-                persons.forEach(person => {
-                    if (!person.name || !person.name.trim()) return;
-
-                    const key = person.name.trim().toLowerCase();
-
-                    if (!index.has(key)) {
-                        index.set(key, []);
-                    }
-
-                    index.get(key).push({
-                        person: { ...person },
-                        permitData: {
-                            company: data.company || data.Company || '',
-                            escort: data.escort || data.Escort || '',
-                            sites: data.sites || data.Sites || [],
-                        },
-                        messageDate: message.date || ''
-                    });
-                });
-            });
-
-        return index;
-    }
-
-    // ==========================================
-    // PERMANENT ACCESS - IMPORT/EXPORT/PRINT
-    // ==========================================
-
-    // פתיחת מודל ייבוא מאקסל
-    openImportPermanentExcelModal() {
-        let modal = document.getElementById('importPermanentExcelModal');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'importPermanentExcelModal';
-            modal.className = 'modal-overlay';
-            modal.style.zIndex = '10004';
-
-            modal.innerHTML = `
-            <div class="import-permanent-modal-box">
-                <div class="import-permanent-modal-header">
-                    <h3>
-                        <i class="fas fa-file-excel"></i>
-                        ייבוא מורשי כניסה מאקסל
-                    </h3>
-                    <button class="import-permanent-modal-close"
-                            onclick="messagesManager.closeImportPermanentExcelModal()">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-
-                <div class="import-permanent-modal-body">
-
-                    <!-- הוראות פורמט -->
-                    <div class="import-format-instructions">
-                        <h4>
-                            <i class="fas fa-info-circle"></i>
-                            מבנה קובץ האקסל הנדרש
-                        </h4>
-                        <p style="margin:0 0 8px 0; font-size:0.88rem; color:#555;">
-                            הקובץ חייב להכיל את העמודות הבאות (שורה ראשונה = כותרות):
-                        </p>
-                        <div class="import-format-columns">
-                            <span class="import-col-badge required">שם מלא</span>
-                            <span class="import-col-badge required">חברה</span>
-                            <span class="import-col-badge required">אתרים מורשים</span>
-                            <span class="import-col-badge">מס' רכב</span>
-                            <span class="import-col-badge">ת"ז</span>
-                            <span class="import-col-badge">טלפון</span>
-                            <span class="import-col-badge">הערות</span>
-                        </div>
-                        <p style="margin:8px 0 0 0; font-size:0.8rem; color:#888;">
-                            <i class="fas fa-asterisk" style="color:#e53e3e; font-size:0.7rem;"></i>
-                            שדות חובה | אתרים מורשים: ר"ג / פ"ת / ר"ג,פ"ת
-                        </p>
-                    </div>
-
-                    <!-- אזור גרירה -->
-                    <div class="import-permanent-drop-zone" id="importPermanentDropZone">
-                        <i class="fas fa-file-excel"></i>
-                        <div class="drop-title">גרור קובץ אקסל לכאן</div>
-                        <div class="drop-subtitle">או לחץ לבחירת קובץ</div>
-                        <button type="button" class="btn-choose-excel-file"
-                                onclick="document.getElementById('importPermanentFileInput').click()">
-                            <i class="fas fa-folder-open"></i>
-                            בחר קובץ
-                        </button>
-                        <div class="drop-hint">תומך בקבצי XLS, XLSX, CSV</div>
-                        <input type="file"
-                               id="importPermanentFileInput"
-                               accept=".xls,.xlsx,.csv"
-                               style="display:none;">
-                    </div>
-
-                    <!-- תצוגה מקדימה -->
-                    <div class="import-preview-section" id="importPermanentPreview"
-                         style="display:none;">
-                        <div class="import-preview-header">
-                            <h4>
-                                <i class="fas fa-table"></i>
-                                תצוגה מקדימה
-                            </h4>
-                            <span class="import-preview-count" id="importPermanentCount">
-                                <i class="fas fa-users"></i>
-                                <span id="importPermanentCountText">0 רשומות</span>
-                            </span>
-                        </div>
-                        <div class="import-preview-table-wrapper">
-                            <table class="import-preview-table">
-                                <thead>
-                                    <tr>
-                                        <th>#</th>
-                                        <th>שם מלא</th>
-                                        <th>חברה</th>
-                                        <th>אתרים</th>
-                                        <th>מס' רכב</th>
-                                        <th>ת"ז</th>
-                                        <th>טלפון</th>
-                                        <th>הערות</th>
-                                        <th>סטטוס</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="importPermanentTableBody"></tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <!-- שגיאות -->
-                    <div class="import-errors-section" id="importPermanentErrors"
-                         style="display:none;">
-                        <h4>
-                            <i class="fas fa-exclamation-triangle"></i>
-                            שגיאות בקובץ
-                        </h4>
-                        <div id="importPermanentErrorsList"></div>
-                    </div>
-
-                </div>
-
-                <div class="import-permanent-modal-footer">
-                    <div style="font-size:0.82rem; color:#888; margin-left:auto;">
-                        <span id="importPermanentStatusText"></span>
-                    </div>
-                    <button class="btn-confirm-import"
-                            id="importPermanentConfirmBtn"
-                            onclick="messagesManager.confirmImportPermanentExcel()"
-                            disabled>
-                        <i class="fas fa-file-import"></i>
-                        ייבא רשומות
-                    </button>
-                    <button class="btn-cancel-import"
-                            onclick="messagesManager.closeImportPermanentExcelModal()">
-                        <i class="fas fa-times"></i>
-                        ביטול
-                    </button>
-                </div>
-            </div>
-        `;
-
-            document.body.appendChild(modal);
-            this._setupImportPermanentDropZone();
-        }
-
-        // איפוס מצב
-        this._resetImportPermanentModal();
-        modal.style.display = 'flex';
-    }
-
-    // סגירת מודל ייבוא
-    closeImportPermanentExcelModal() {
-        const modal = document.getElementById('importPermanentExcelModal');
-        if (modal) modal.style.display = 'none';
-        this._importPermanentParsedData = null;
-    }
-
-    // איפוס מצב המודל
-    _resetImportPermanentModal() {
-        const preview = document.getElementById('importPermanentPreview');
-        const errors = document.getElementById('importPermanentErrors');
-        const confirmBtn = document.getElementById('importPermanentConfirmBtn');
-        const statusText = document.getElementById('importPermanentStatusText');
-        const fileInput = document.getElementById('importPermanentFileInput');
-        const dropZone = document.getElementById('importPermanentDropZone');
-
-        if (preview) preview.style.display = 'none';
-        if (errors) errors.style.display = 'none';
-        if (confirmBtn) confirmBtn.disabled = true;
-        if (statusText) statusText.textContent = '';
-        if (fileInput) fileInput.value = '';
-        if (dropZone) dropZone.classList.remove('drag-over');
-
-        this._importPermanentParsedData = null;
-    }
-
-    // הגדרת אזור גרירה
-    _setupImportPermanentDropZone() {
-        const dropZone = document.getElementById('importPermanentDropZone');
-        const fileInput = document.getElementById('importPermanentFileInput');
-
-        if (!dropZone || !fileInput) return;
-
-        // לחיצה על אזור הגרירה
-        dropZone.addEventListener('click', (e) => {
-            if (!e.target.closest('.btn-choose-excel-file')) {
-                fileInput.click();
-            }
-        });
-
-        // שינוי קובץ
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files && e.target.files[0]) {
-                this._processImportPermanentFile(e.target.files[0]);
-            }
-        });
-
-        // גרירה
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(event => {
-            dropZone.addEventListener(event, (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-            });
-        });
-
-        ['dragenter', 'dragover'].forEach(event => {
-            dropZone.addEventListener(event, () => {
-                dropZone.classList.add('drag-over');
-            });
-        });
-
-        ['dragleave', 'drop'].forEach(event => {
-            dropZone.addEventListener(event, () => {
-                dropZone.classList.remove('drag-over');
-            });
-        });
-
-        dropZone.addEventListener('drop', (e) => {
-            const files = e.dataTransfer.files;
-            if (files && files[0]) {
-                const ext = files[0].name.split('.').pop().toLowerCase();
-                if (['xls', 'xlsx', 'csv'].includes(ext)) {
-                    this._processImportPermanentFile(files[0]);
-                } else {
-                    NotificationManager.show('יש להעלות קובץ XLS, XLSX או CSV בלבד', 'error');
-                }
-            }
-        });
-    }
-
-    // עיבוד הקובץ שנבחר
-    // עיבוד הקובץ שנבחר - עם תמיכה בפורמט רשימת שמות
-    async _processImportPermanentFile(file) {
-        const statusText = document.getElementById('importPermanentStatusText');
-        const confirmBtn = document.getElementById('importPermanentConfirmBtn');
-
-        if (statusText) statusText.textContent = 'מעבד קובץ...';
-        if (confirmBtn) confirmBtn.disabled = true;
-
-        try {
-            const ext = file.name.split('.').pop().toLowerCase();
-            let parsedData = [];
-            let detectedFormat = 'standard_table';
-
-            if (ext === 'csv') {
-                parsedData = await this._parseImportCsvFile(file);
-            } else {
-                // XLS/XLSX - שלח לשרת לעיבוד
-                const result = await this._parseImportExcelFileWithFormat(file);
-                parsedData = result.data;
-                detectedFormat = result.detectedFormat || 'standard_table';
-            }
-
-            if (!parsedData || parsedData.length === 0) {
-                this._showImportPermanentErrors(['הקובץ ריק או לא ניתן לקרוא אותו']);
-                if (statusText) statusText.textContent = '';
-                return;
-            }
-
-            // *** חדש: הצג הודעה אם זוהה פורמט מיוחד ***
-            if (detectedFormat === 'name_list') {
-                NotificationManager.show(
-                    'זוהה פורמט רשימת שמות - הומר אוטומטית לפורמט טבלאי',
-                    'info'
-                );
-            }
-
-            // ולידציה ועיבוד
-            const result = this._validateAndProcessImportData(parsedData);
-
-            // הצג תצוגה מקדימה
-            this._renderImportPermanentPreview(result.valid);
-
-            // הצג שגיאות אם יש
-            if (result.errors.length > 0) {
-                this._showImportPermanentErrors(result.errors);
-            } else {
-                const errorsSection = document.getElementById('importPermanentErrors');
-                if (errorsSection) errorsSection.style.display = 'none';
-            }
-
-            // עדכן סטטוס
-            if (statusText) {
-                let statusMsg = `נמצאו ${result.valid.length} רשומות תקינות`;
-                if (detectedFormat === 'name_list') {
-                    statusMsg += ' (פורמט רשימת שמות)';
-                }
-                if (result.errors.length > 0) {
-                    statusMsg += ` | ${result.errors.length} שגיאות`;
-                }
-                statusText.textContent = statusMsg;
-            }
-
-            if (confirmBtn) {
-                confirmBtn.disabled = result.valid.length === 0;
-            }
-
-            this._importPermanentParsedData = result.valid;
-
-        } catch (error) {
-            console.error('Error processing import file:', error);
-            this._showImportPermanentErrors([`שגיאה בעיבוד הקובץ: ${error.message}`]);
-            if (statusText) statusText.textContent = '';
-        }
-    }
-
-    // *** חדש: פרסור Excel עם זיהוי פורמט ***
-    async _parseImportExcelFileWithFormat(file) {
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const response = await fetch('/Messages/ParseExcelForPermanentAccess', {
-            method: 'POST',
-            body: formData
-        });
-
-        const result = await response.json();
-
-        if (!result.success) {
-            throw new Error(result.error || 'שגיאה בעיבוד קובץ האקסל');
-        }
-
-        return {
-            data: result.data,
-            detectedFormat: result.detectedFormat || 'standard_table'
-        };
-    }
-
-    // פרסור CSV
-    async _parseImportCsvFile(file) {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    const text = e.target.result;
-                    const lines = text.split('\n').filter(line => line.trim() !== '');
-                    const result = [];
-
-                    lines.forEach(line => {
-                        // טיפול בפסיקים בתוך מרכאות
-                        const cells = [];
-                        let current = '';
-                        let inQuotes = false;
-
-                        for (let i = 0; i < line.length; i++) {
-                            const char = line[i];
-                            if (char === '"') {
-                                inQuotes = !inQuotes;
-                            } else if (char === ',' && !inQuotes) {
-                                cells.push(current.trim());
-                                current = '';
-                            } else {
-                                current += char;
-                            }
-                        }
-                        cells.push(current.trim());
-                        result.push(cells);
-                    });
-
-                    resolve(result);
-                } catch (error) {
-                    reject(error);
-                }
-            };
-            reader.onerror = () => reject(new Error('שגיאה בקריאת הקובץ'));
-            reader.readAsText(file, 'UTF-8');
-        });
-    }
-
-    // פרסור Excel - שליחה לשרת
-    async _parseImportExcelFile(file) {
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const response = await fetch('/Messages/ParseExcelForPermanentAccess', {
-            method: 'POST',
-            body: formData
-        });
-
-        const result = await response.json();
-
-        if (!result.success) {
-            throw new Error(result.error || 'שגיאה בעיבוד קובץ האקסל');
-        }
-
-        return result.data;
-    }
-
-    // ולידציה ועיבוד הנתונים
-    // ולידציה ועיבוד הנתונים - עם תמיכה בפורמט רשימת שמות
-    _validateAndProcessImportData(rawData) {
-        const valid = [];
-        const errors = [];
-
-        if (!rawData || rawData.length === 0) {
-            errors.push('הקובץ ריק');
-            return { valid, errors };
-        }
-
-        // זיהוי שורת כותרות
-        const headers = rawData[0].map(h => (h || '').toString().trim());
-
-        // מיפוי עמודות לפי שמות אפשריים
-        const colMap = this._mapImportColumns(headers);
-
-        if (colMap.name === -1) {
-            errors.push('לא נמצאה עמודת "שם מלא" בקובץ');
-            return { valid, errors };
-        }
-
-        if (colMap.company === -1) {
-            // *** חדש: אם אין עמודת חברה - זה בסדר, נמשיך עם ריק ***
-            console.warn('לא נמצאה עמודת חברה - תמולא ידנית');
-        }
-
-        // עיבוד שורות הנתונים
-        for (let i = 1; i < rawData.length; i++) {
-            const row = rawData[i];
-            const rowNum = i + 1;
-
-            const getVal = (colIdx) => {
-                if (colIdx === -1 || colIdx >= row.length) return '';
-                return (row[colIdx] || '').toString().trim();
-            };
-
-            const name = getVal(colMap.name);
-            const company = getVal(colMap.company); // יכול להיות ריק
-            const sitesRaw = getVal(colMap.sites);
-            const carNumber = getVal(colMap.car).replace(/[-\s]/g, '');
-            const idNumber = getVal(colMap.id);
-            const phone = getVal(colMap.phone);
-            const notes = getVal(colMap.notes);
-
-            // דלג על שורות ריקות
-            if (!name && !company) continue;
-
-            // ולידציה
-            const rowErrors = [];
-
-            if (!name) {
-                rowErrors.push(`שורה ${rowNum}: חסר שם מלא`);
-            }
-
-            // *** שינוי: חברה לא חובה ***
-            // if (!company) {
-            //     rowErrors.push(`שורה ${rowNum}: חסרה חברה`);
-            // }
-
-            // עיבוד אתרים
-            const allowedSites = this._parseImportSites(sitesRaw);
-            if (allowedSites.length === 0) {
-                // *** חדש: ברירת מחדל - שני האתרים ***
-                allowedSites.push('ר"ג', 'פ"ת');
-            }
-
-            // ולידציה רכב
-            if (carNumber && !/^\d{5,8}$/.test(carNumber)) {
-                rowErrors.push(`שורה ${rowNum}: מספר רכב לא תקין (${carNumber})`);
-            }
-
-            // ולידציה ת"ז
-            if (idNumber && !/^\d{9}$/.test(idNumber)) {
-                rowErrors.push(`שורה ${rowNum}: תעודת זהות לא תקינה (${idNumber})`);
-            }
-
-            if (rowErrors.length > 0) {
-                errors.push(...rowErrors);
-                continue;
-            }
-
-            // בדיקת כפילות בתוך הקובץ
-            const isDuplicate = valid.some(p =>
-                p.name.toLowerCase() === name.toLowerCase()
-            );
-
-            valid.push({
-                id: this._generateId(),
-                name,
-                company,  // יכול להיות ריק
-                allowedSites,
-                carNumber,
-                idNumber,
-                phone,
-                notes,
-                addedDate: new Date().toISOString(),
-                addedBy: this.getLastSelectedAuthor() || 'ייבוא',
-                isDuplicate,
-                existsInList: (this._permanentAccessList || []).some(p =>
-                    p.name.toLowerCase() === name.toLowerCase()
-                )
-            });
-        }
-
-        return { valid, errors };
-    }
-
-    // מיפוי עמודות לפי שמות
-    _mapImportColumns(headers) {
-        const normalize = str => (str || '').toString().trim().toLowerCase()
-            .replace(/['"]/g, '');
-
-        const nameVariants = ['שם מלא', 'שם', 'name', 'full name', 'fullname'];
-        const companyVariants = ['חברה', 'company', 'firm'];
-        const sitesVariants = ['אתרים מורשים', 'אתר', 'sites', 'site', 'allowed sites'];
-        const carVariants = ["מס' רכב", 'מספר רכב', 'רכב', 'car', 'car number', 'vehicle'];
-        const idVariants = ['ת"ז', 'תעודת זהות', 'ת.ז.', 'id', 'id number'];
-        const phoneVariants = ['טלפון', 'phone', 'mobile', 'נייד'];
-        const notesVariants = ['הערות', 'notes', 'remarks', 'comment'];
-
-        const findCol = (variants) => {
-            for (const variant of variants) {
-                const idx = headers.findIndex(h =>
-                    normalize(h) === normalize(variant) ||
-                    normalize(h).includes(normalize(variant))
-                );
-                if (idx !== -1) return idx;
-            }
-            return -1;
-        };
-
-        return {
-            name: findCol(nameVariants),
-            company: findCol(companyVariants),
-            sites: findCol(sitesVariants),
-            car: findCol(carVariants),
-            id: findCol(idVariants),
-            phone: findCol(phoneVariants),
-            notes: findCol(notesVariants)
-        };
-    }
-
-    // פרסור אתרים מורשים - תמיכה בפורמטים נוספים
-    _parseImportSites(sitesRaw) {
-        if (!sitesRaw) return [];
-
-        const sites = [];
-        const text = sitesRaw.toString().trim();
-
-        // *** חדש: תמיכה בפורמט "ר\"ג,פ\"ת" (מופרד בפסיק) ***
-        if (text.includes(',')) {
-            const parts = text.split(',').map(s => s.trim());
-            parts.forEach(part => {
-                const partSites = this._parseImportSites(part);
-                partSites.forEach(s => {
-                    if (!sites.includes(s)) sites.push(s);
-                });
-            });
-            return sites;
-        }
-
-        if (text.includes('ר"ג') || text.includes('רג') ||
-            text.toLowerCase().includes('ramat') || text.includes('ר.ג')) {
-            sites.push('ר"ג');
-        }
-
-        if (text.includes('פ"ת') || text.includes('פת') ||
-            text.toLowerCase().includes('petah') || text.includes('פ.ת')) {
-            sites.push('פ"ת');
-        }
-
-        return sites;
-    }
-
-    // הצגת תצוגה מקדימה
-    // הצגת תצוגה מקדימה - עם תמיכה בחברה ריקה
-    _renderImportPermanentPreview(persons) {
-        const preview = document.getElementById('importPermanentPreview');
-        const tbody = document.getElementById('importPermanentTableBody');
-        const countText = document.getElementById('importPermanentCountText');
-
-        if (!preview || !tbody) return;
-
-        preview.style.display = 'block';
-
-        if (countText) {
-            countText.textContent = `${persons.length} רשומות`;
-        }
-
-        // *** חדש: בדוק אם יש רשומות ללא חברה ***
-        const missingCompany = persons.filter(p => !p.company).length;
-        if (missingCompany > 0) {
-            // הוסף הודעת אזהרה
-            const warningDiv = document.createElement('div');
-            warningDiv.className = 'import-warning-banner';
-            warningDiv.innerHTML = `
-            <i class="fas fa-exclamation-triangle"></i>
-            <strong>${missingCompany} רשומות</strong> ללא שם חברה - 
-            ניתן למלא לאחר הייבוא
-        `;
-            warningDiv.style.cssText = `
-            background: #fffbf0;
-            border: 1px solid #fde8b4;
-            border-radius: 6px;
-            padding: 8px 12px;
-            margin-bottom: 10px;
-            color: #744210;
-            font-size: 0.88rem;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        `;
-
-            const existingWarning = preview.querySelector('.import-warning-banner');
-            if (existingWarning) existingWarning.remove();
-
-            preview.insertBefore(warningDiv, preview.querySelector('.import-preview-header'));
-        }
-
-        tbody.innerHTML = '';
-
-        persons.forEach((person, index) => {
-            const tr = document.createElement('tr');
-
-            if (person.existsInList) {
-                tr.style.background = '#fffbf0';
-            } else if (person.isDuplicate) {
-                tr.style.background = '#fff5f5';
-            }
-
-            const sitesDisplay = (person.allowedSites || []).join(' + ') || '-';
-
-            let statusHtml = '';
-            if (person.isDuplicate) {
-                statusHtml = `<span style="color:#e53e3e; font-size:0.78rem;">
-                <i class="fas fa-copy"></i> כפול בקובץ
-            </span>`;
-            } else if (person.existsInList) {
-                statusHtml = `<span style="color:#d68910; font-size:0.78rem;">
-                <i class="fas fa-exclamation-triangle"></i> קיים ברשימה
-            </span>`;
-            } else {
-                statusHtml = `<span style="color:#27AE60; font-size:0.78rem;">
-                <i class="fas fa-check"></i> חדש
-            </span>`;
-            }
-
-            // *** חדש: הדגש חברה ריקה ***
-            const companyDisplay = person.company
-                ? this.escapeHtml(person.company)
-                : '<span style="color:#aaa; font-style:italic;">לא צוין</span>';
-
-            tr.innerHTML = `
-            <td style="text-align:center; color:#888;">${index + 1}</td>
-            <td><strong>${this.escapeHtml(person.name)}</strong></td>
-            <td>${companyDisplay}</td>
-            <td>${this.escapeHtml(sitesDisplay)}</td>
-            <td dir="rtl">${this.escapeHtml(person.carNumber) || '-'}</td>
-            <td dir="rtl">${this.escapeHtml(person.idNumber) || '-'}</td>
-            <td dir="rtl">${this.escapeHtml(person.phone) || '-'}</td>
-            <td>${this.escapeHtml(person.notes) || '-'}</td>
-            <td>${statusHtml}</td>
-        `;
-
-            tbody.appendChild(tr);
-        });
-    }
-
-    // הצגת שגיאות
-    _showImportPermanentErrors(errors) {
-        const errorsSection = document.getElementById('importPermanentErrors');
-        const errorsList = document.getElementById('importPermanentErrorsList');
-
-        if (!errorsSection || !errorsList) return;
-
-        errorsSection.style.display = 'block';
-        errorsList.innerHTML = errors.map(err => `
-        <div class="import-error-item">
-            <i class="fas fa-times-circle"></i>
-            ${this.escapeHtml(err)}
-        </div>
-    `).join('');
-    }
-
-    // אישור ייבוא
-    async confirmImportPermanentExcel() {
-        if (!this._importPermanentParsedData ||
-            this._importPermanentParsedData.length === 0) {
-            NotificationManager.show('אין נתונים לייבוא', 'warning');
-            return;
-        }
-
-        const confirmBtn = document.getElementById('importPermanentConfirmBtn');
-        const statusText = document.getElementById('importPermanentStatusText');
-
-        if (confirmBtn) {
-            confirmBtn.disabled = true;
-            confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> מייבא...';
-        }
-
-        if (statusText) statusText.textContent = 'מייבא נתונים...';
-
-        try {
-            // בחר מצב ייבוא - החלף הכל או הוסף
-            const importMode = await this._askImportMode(
-                this._importPermanentParsedData.length
-            );
-
-            if (importMode === null) {
-                // המשתמש ביטל
-                if (confirmBtn) {
-                    confirmBtn.disabled = false;
-                    confirmBtn.innerHTML = '<i class="fas fa-file-import"></i> ייבא רשומות';
-                }
-                if (statusText) statusText.textContent = '';
-                return;
-            }
-
-            let finalList = [];
-
-            if (importMode === 'replace') {
-                // החלף את כל הרשימה
-                finalList = this._importPermanentParsedData.map(p => ({
-                    ...p,
-                    isDuplicate: undefined,
-                    existsInList: undefined
-                }));
-            } else {
-                // הוסף לרשימה קיימת (דלג על כפולים)
-                finalList = [...(this._permanentAccessList || [])];
-
-                this._importPermanentParsedData.forEach(person => {
-                    if (!person.isDuplicate && !person.existsInList) {
-                        const cleanPerson = { ...person };
-                        delete cleanPerson.isDuplicate;
-                        delete cleanPerson.existsInList;
-                        finalList.push(cleanPerson);
-                    }
-                });
-            }
-
-            // שמור לשרת
-            const result = await this.savePermanentAccessList(finalList);
-
-            if (result.success) {
-                this._permanentAccessList = finalList;
-
-                NotificationManager.show(
-                    `ייבוא הושלם בהצלחה! ${this._importPermanentParsedData.length} רשומות יובאו`,
-                    'success'
-                );
-
-                this.closeImportPermanentExcelModal();
-
-                // רענן את הרשימה המוצגת
-                this._renderPermanentAccessListAsTable(this._permanentAccessList);
-
-            } else {
-                throw new Error(result.error || 'שגיאה בשמירה');
-            }
-
-        } catch (error) {
-            console.error('Error confirming import:', error);
-            NotificationManager.show(`שגיאה בייבוא: ${error.message}`, 'error');
-
-            if (confirmBtn) {
-                confirmBtn.disabled = false;
-                confirmBtn.innerHTML = '<i class="fas fa-file-import"></i> ייבא רשומות';
-            }
-            if (statusText) statusText.textContent = '';
-        }
-    }
-
-    // שאלת מצב ייבוא
-    _askImportMode(count) {
-        return new Promise((resolve) => {
-            // יצירת דיאלוג בחירה
-            const dialog = document.createElement('div');
-            dialog.style.cssText = `
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.6);
-            z-index: 10005;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            direction: rtl;
-        `;
-
-            dialog.innerHTML = `
-            <div style="
-                background: white;
-                border-radius: 12px;
-                padding: 28px;
-                max-width: 420px;
-                width: 90%;
-                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-                direction: rtl;
-            ">
-                <h3 style="margin:0 0 12px 0; color:#333; font-size:1.1rem;">
-                    <i class="fas fa-question-circle" style="color:#667eea;"></i>
-                    בחר מצב ייבוא
-                </h3>
-                <p style="color:#666; font-size:0.92rem; margin:0 0 20px 0;">
-                    נמצאו <strong>${count}</strong> רשומות לייבוא.
-                    כיצד ברצונך לייבא?
-                </p>
-                <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:20px;">
-                    <button id="importModeAdd" style="
-                        padding:12px 16px;
-                        background: linear-gradient(135deg, #27AE60, #1D6F42);
-                        color: white;
-                        border: none;
-                        border-radius: 8px;
-                        cursor: pointer;
-                        font-size: 0.95rem;
-                        font-weight: 600;
-                        text-align: right;
-                        display: flex;
-                        align-items: center;
-                        gap: 10px;
-                        font-family: inherit;
-                    ">
-                        <i class="fas fa-plus-circle"></i>
-                        <div>
-                            <div>הוסף לרשימה הקיימת</div>
-                            <div style="font-size:0.78rem; opacity:0.85; font-weight:normal;">
-                                רשומות קיימות לא יימחקו
-                            </div>
-                        </div>
-                    </button>
-                                        <button id="importModeReplace" style="
-                        padding:12px 16px;
-                        background: linear-gradient(135deg, #e53e3e, #c53030);
-                        color: white;
-                        border: none;
-                        border-radius: 8px;
-                        cursor: pointer;
-                        font-size: 0.95rem;
-                        font-weight: 600;
-                        text-align: right;
-                        display: flex;
-                        align-items: center;
-                        gap: 10px;
-                        font-family: inherit;
-                    ">
-                        <i class="fas fa-sync-alt"></i>
-                        <div>
-                            <div>החלף את כל הרשימה</div>
-                            <div style="font-size:0.78rem; opacity:0.85; font-weight:normal;">
-                                הרשימה הקיימת תימחק ותוחלף
-                            </div>
-                        </div>
-                    </button>
-                </div>
-                <button id="importModeCancel" style="
-                    width: 100%;
-                    padding: 10px;
-                    background: #f8f9fa;
-                    border: 1.5px solid #ddd;
-                    border-radius: 8px;
-                    cursor: pointer;
-                    font-size: 0.9rem;
-                    color: #666;
-                    font-family: inherit;
-                ">
-                    <i class="fas fa-times"></i> ביטול
-                </button>
-            </div>
-        `;
-
-            document.body.appendChild(dialog);
-
-            document.getElementById('importModeAdd').addEventListener('click', () => {
-                document.body.removeChild(dialog);
-                resolve('add');
-            });
-
-            document.getElementById('importModeReplace').addEventListener('click', () => {
-                document.body.removeChild(dialog);
-                resolve('replace');
-            });
-
-            document.getElementById('importModeCancel').addEventListener('click', () => {
-                document.body.removeChild(dialog);
-                resolve(null);
-            });
-        });
-    }
-
-    // ==========================================
-    // ייצוא רשימת מורשים לאקסל
-    // ==========================================
-
-    exportPermanentAccessToExcel() {
-        const persons = this._permanentAccessList;
-
-        if (!persons || persons.length === 0) {
-            NotificationManager.show('אין נתונים לייצוא', 'warning');
-            return;
-        }
-
-        try {
-            const headers = [
-                'שם מלא',
-                'חברה',
-                'אתרים מורשים',
-                "מס' רכב",
-                'ת"ז',
-                'טלפון',
-                'הערות',
-                'תאריך הוספה',
-                'נוסף ע"י'
-            ];
-
-            const dataRows = persons.map(person => [
-                person.name || '',
-                person.company || '',
-                (person.allowedSites || []).join(', '),
-                person.carNumber || '',
-                person.idNumber || '',
-                person.phone || '',
-                person.notes || '',
-                person.addedDate
-                    ? new Date(person.addedDate).toLocaleDateString('he-IL')
-                    : '',
-                person.addedBy || ''
-            ]);
-
-            const xlsxBlob = this._buildXlsxBlob(headers, dataRows);
-
-            const url = URL.createObjectURL(xlsxBlob);
-            const a = document.createElement('a');
-            a.href = url;
-
-            const now = new Date();
-            const dateStr = `${now.getDate()}-${now.getMonth() + 1}-${now.getFullYear()}`;
-            a.download = `מורשי_כניסה_חדר_מחשב_${dateStr}.xlsx`;
-            a.style.display = 'none';
-
-            document.body.appendChild(a);
-            a.click();
-
-            setTimeout(() => {
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            }, 2000);
-
-            NotificationManager.show(
-                `הקובץ יוצא בהצלחה (${persons.length} מורשים)`,
-                'success'
-            );
-
-        } catch (error) {
-            console.error('Error exporting permanent access list:', error);
-            NotificationManager.show('שגיאה בייצוא הקובץ', 'error');
-        }
-    }
-
-    // ==========================================
-    // הדפסת רשימת מורשים
-    // ==========================================
-
-    printPermanentAccessList() {
-        const persons = this._permanentAccessList;
-
-        if (!persons || persons.length === 0) {
-            NotificationManager.show('אין נתונים להדפסה', 'warning');
-            return;
-        }
-
-        try {
-            const now = new Date();
-            const printDateStr = now.toLocaleDateString('he-IL') +
-                ' ' + now.toLocaleTimeString('he-IL');
-
-            let tableRows = '';
-
-            persons.forEach((person, index) => {
-                const sitesDisplay = (person.allowedSites || []).join(' + ') || '-';
-                const addedDate = person.addedDate
-                    ? new Date(person.addedDate).toLocaleDateString('he-IL')
-                    : '-';
-
-                tableRows += `
-                <tr>
-                    <td style="text-align:center; color:#888;">${index + 1}</td>
-                    <td><strong>${this.escapeHtml(person.name || '')}</strong></td>
-                    <td>${this.escapeHtml(person.company || '-')}</td>
-                    <td style="text-align:center;">
-                        <span style="
-                            padding: 2px 8px;
-                            border-radius: 10px;
-                            font-size: 0.82rem;
-                            font-weight: 600;
-                            background: ${sitesDisplay.includes('ר"ג') && sitesDisplay.includes('פ"ת')
-                        ? 'linear-gradient(135deg, #e8f4fd, #fef3e2)'
-                        : sitesDisplay.includes('ר"ג')
-                            ? '#e8f4fd'
-                            : '#fef3e2'};
-                            color: #444;
-                        ">${sitesDisplay}</span>
-                    </td>
-                    <td dir="rtl" style="font-family:monospace;">
-                        ${this.escapeHtml(person.carNumber || '-')}
-                    </td>
-                    <td dir="rtl" style="font-family:monospace;">
-                        ${this.escapeHtml(person.idNumber || '-')}
-                    </td>
-                    <td dir="rtl">
-                        ${this.escapeHtml(person.phone || '-')}
-                    </td>
-                    <td style="font-size:0.82rem; color:#666;">
-                        ${this.escapeHtml(person.notes || '-')}
-                    </td>
-                    <td style="font-size:0.8rem; color:#888;">
-                        ${addedDate}
-                    </td>
-                </tr>
-            `;
-            });
-
-            // ספירה לפי אתרים
-            const rgCount = persons.filter(p =>
-                (p.allowedSites || []).includes('ר"ג')
-            ).length;
-            const ptCount = persons.filter(p =>
-                (p.allowedSites || []).includes('פ"ת')
-            ).length;
-            const bothCount = persons.filter(p =>
-                (p.allowedSites || []).includes('ר"ג') &&
-                (p.allowedSites || []).includes('פ"ת')
-            ).length;
-
-            const printContent = `
-<!DOCTYPE html>
-<html dir="rtl" lang="he">
-<head>
-    <meta charset="UTF-8">
-    <title>רשימת מורשי כניסה - חדר מחשב</title>
-    <style>
-        @page {
-            size: A4 landscape;
-            margin: 1.5cm;
-        }
-
-        * { box-sizing: border-box; }
-
-        body {
-            font-family: Arial, sans-serif;
-            direction: rtl;
-            font-size: 11px;
-            color: #222;
-            margin: 0;
-            padding: 0;
-        }
-
-        .print-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 3px solid #1D6F42;
-        }
-
-        .print-title {
-            font-size: 18px;
-            font-weight: bold;
-            color: #1D6F42;
-        }
-
-        .print-subtitle {
-            font-size: 12px;
-            color: #666;
-            margin-top: 4px;
-        }
-
-        .print-meta {
-            text-align: left;
-            font-size: 10px;
-            color: #888;
-        }
-
-        .summary-bar {
-            display: flex;
-            gap: 20px;
-            margin-bottom: 12px;
-            padding: 8px 12px;
-            background: #f0fff4;
-            border-radius: 6px;
-            border: 1px solid #a5d6a7;
-            font-size: 11px;
-            font-weight: 600;
-            color: #1D6F42;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 10.5px;
-            page-break-inside: auto;
-        }
-
-        thead {
-            display: table-header-group;
-        }
-
-        thead tr {
-            background: #1D6F42;
-            color: white;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-        }
-
-        th {
-            padding: 8px 6px;
-            text-align: right;
-            font-weight: 600;
-            white-space: nowrap;
-            border: 1px solid #155a32;
-        }
-
-        td {
-            padding: 6px;
-            border: 1px solid #ddd;
-            vertical-align: middle;
-        }
-
-        tr { page-break-inside: avoid; }
-
-        tbody tr:nth-child(even) {
-            background-color: #f9fff9;
-        }
-
-        .print-footer {
-            margin-top: 15px;
-            padding-top: 8px;
-            border-top: 1px solid #ddd;
-            font-size: 9px;
-            color: #999;
-            display: flex;
-            justify-content: space-between;
-        }
-
-        @media print {
-            body { margin: 0; }
-        }
-    </style>
-</head>
-<body>
-    <div class="print-header">
-        <div>
-            <div class="print-title">
-                🔐 רשימת מורשי כניסה - חדר מחשב
-            </div>
-            <div class="print-subtitle">
-                NOC Portal - מערכת ניהול הודעות
-            </div>
-        </div>
-        <div class="print-meta">
-            <div>הופק: ${printDateStr}</div>
-            <div>סה"כ: ${persons.length} מורשים</div>
-        </div>
-    </div>
-
-    <div class="summary-bar">
-        <span>👥 סה"כ מורשים: ${persons.length}</span>
-        <span>🏢 ר"ג: ${rgCount}</span>
-        <span>🏢 פ"ת: ${ptCount}</span>
-        ${bothCount > 0 ? `<span>🏢 שני אתרים: ${bothCount}</span>` : ''}
-    </div>
-
-    <table>
-        <thead>
-            <tr>
-                <th>#</th>
-                <th>שם מלא</th>
-                <th>חברה</th>
-                <th>אתרים מורשים</th>
-                <th>מס' רכב</th>
-                <th>ת"ז</th>
-                <th>טלפון</th>
-                <th>הערות</th>
-                <th>תאריך הוספה</th>
-            </tr>
-        </thead>
-        <tbody>
-            ${tableRows}
-        </tbody>
-    </table>
-
-    <div class="print-footer">
-        <span>NOC Portal - מערכת ניהול הודעות</span>
-        <span>הופק בתאריך: ${printDateStr}</span>
-        <span>סה"כ ${persons.length} מורשי כניסה</span>
-    </div>
-
-    <script>
-        window.onload = function() { window.print(); };
-    </script>
-</body>
-</html>`;
-
-            const printWindow = window.open('', '_blank', 'width=1200,height=800');
-
-            if (!printWindow) {
-                NotificationManager.show('אנא אפשר חלונות קופצים בדפדפן', 'warning');
-                return;
-            }
-
-            printWindow.document.open();
-            printWindow.document.write(printContent);
-            printWindow.document.close();
-
-            NotificationManager.show('מכין להדפסה...', 'info');
-
-        } catch (error) {
-            console.error('Error printing permanent access list:', error);
-            NotificationManager.show('שגיאה בהדפסה', 'error');
-        }
-    }
-
-    // ========== רשימת מורשי כניסה קבועים ==========
-
-    async loadPermanentAccessList() {
-        try {
-            const response = await fetch('/Messages/GetPermanentAccessList');
-            const result = await response.json();
-
-            if (result.success) {
-                this._permanentAccessList = result.persons || [];
-            } else {
-                this._permanentAccessList = [];
-            }
-
-            return this._permanentAccessList;
-        } catch (error) {
-            console.error('Error loading permanent access list:', error);
-            this._permanentAccessList = [];
-            return [];
-        }
-    }
-
-    async savePermanentAccessList(persons) {
-        // מיין לפני שמירה
-        const sorted = [...persons].sort((a, b) =>
-            (a.name || '').localeCompare(b.name || '', 'he')
-        );
-        try {
-            const response = await fetch('/Messages/SavePermanentAccessList', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ sorted })
-            });
-
-            return await response.json();
-        } catch (error) {
-            console.error('Error saving permanent access list:', error);
-            return { success: false, error: error.message };
-        }
-    }
-
-    async deletePermanentAccessPerson(personId) {
-        try {
-            const response = await fetch(
-                `/Messages/DeletePermanentAccessPerson?id=${personId}`,
-                { method: 'DELETE' }
-            );
-            return await response.json();
-        } catch (error) {
-            return { success: false, error: error.message };
-        }
-    }
-
-    // פונקציה חדשה - עדכון הרשאות בממשק
-    _updatePermanentAccessPermissions() {
-        const isAdmin = this.isAdmin();
-
-        // ===== כפתורי Admin בטולבר =====
-        const adminBtns = document.querySelectorAll('.admin-only-btn');
-        adminBtns.forEach(btn => {
-            btn.style.display = isAdmin ? 'inline-flex' : 'none';
-        });
-
-        // ===== הצג/הסתר עמודת פעולות בטבלה =====
-        // (יטופל ב-_renderPermanentAccessListAsTable)
-    }
-
-    // פתיחת מודל ניהול רשימת מורשים קבועים
-    async openPermanentAccessModal() {
-        await this.loadPermanentAccessList();
-
-        // ← נקה בחירות קודמות בעת פתיחה מחדש
-        if (!this._selectedPermIds) {
-            this._selectedPermIds = new Set();
-        } else {
-            this._selectedPermIds.clear();
-        }
-
-        // איפוס שדה החיפוש
-        const searchInput = document.getElementById('permAccessSearch');
-        if (searchInput) {
-            searchInput.value = '';
-        }
-
-        let modal = document.getElementById('permanentAccessModal');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'permanentAccessModal';
-            modal.className = 'modal-overlay';
-            modal.style.zIndex = '10001';
-
-            modal.innerHTML = `
-    <div class="modal-content entry-permit-history-modal">
-        <div class="modal-header">
-            <h3>
-                <i class="fas fa-id-card"></i> מורשי כניסה קבועים - חדר מחשב
-            </h3>
-            <button class="close-btn" 
-                    onclick="document.getElementById('permanentAccessModal').style.display='none'">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-        <div class="modal-body">
-            <div class="perm-access-toolbar-new" id="permAccessToolbar">
-                <!-- כפתורי Admin - יוצגו רק לאדמינים -->
-                <button class="btn-add-permanent-new admin-only-btn"
-                        onclick="messagesManager._openAddPermanentPersonForm()"
-                        style="display:none;">
-                    <i class="fas fa-plus"></i> הוסף מורשה
-                </button>
-                <button class="btn-import-permanent-excel admin-only-btn"
-                        onclick="messagesManager.openImportPermanentExcelModal()"
-                        style="display:none;">
-                    <i class="fas fa-file-excel"></i> ייבוא מאקסל
-                </button>
-                <!-- כפתורים לכולם -->
-                <button class="btn-export-permanent-excel"
-                        onclick="messagesManager.exportPermanentAccessToExcel()">
-                    <i class="fas fa-download"></i> ייצוא לאקסל
-                </button>
-                <button class="btn-print-permanent"
-                        onclick="messagesManager.printPermanentAccessList()">
-                    <i class="fas fa-print"></i> הדפסה
-                </button>
-                <div class="perm-search-wrapper">
-                    <input type="text"
-                        id="permAccessSearch"
-                        class="form-input perm-search-input"
-                        placeholder="חפש לפי שם, חברה, רכב..."
-                        oninput="messagesManager._filterPermanentList(this.value)">
-                </div>
-            </div>
-            
-            <!-- טופס הוספה/עריכה - רק לאדמינים -->
-            <div id="permanentPersonForm" 
-                 class="permanent-person-form" 
-                 style="display:none;">
-                <!-- ... תוכן קיים ... -->
-            </div>
-            
-            <!-- רשימת המורשים -->
-            <div id="permanentAccessList" class="permanent-access-list-new">
-            </div>
-        </div>
-        <div class="modal-footer">
-            <button class="btn btn-primary"
-                        onclick="messagesManager._useSelectedPermanentPersons()">
-                    <i class="fas fa-check"></i>
-                    צור אישור כניסה לנבחרים
-            </button>
-            <button class="btn btn-secondary" 
-                    onclick="document.getElementById('permanentAccessModal').style.display='none'">
-                <i class="fas fa-times"></i> סגור
-            </button>
-        </div>
-    </div>
-    `;
-
-            document.body.appendChild(modal);
-            this._addEntryPermitHistoryStyles();
-            this._addEntryPermitStyles();
-            this._addAutocompleteStyles();
-            this._addPermanentAccessNewStyles();
-
-            document.querySelectorAll('input[name="permSite"]')
-                .forEach(cb => {
-                    cb.addEventListener('change', () => {
-                        cb.nextElementSibling.classList
-                            .toggle('selected', cb.checked);
-                    });
-                });
-        }
-
-        // ← עדכן הרשאות לפי תפקיד
-        this._updatePermanentAccessPermissions();
-
-        this._renderPermanentAccessListAsTable(this._permanentAccessList);
-        modal.style.display = 'flex';
-    }
-
-    _renderPermanentAccessListAsTable(persons) {
-        const container = document.getElementById('permanentAccessList');
-        if (!container) return;
-
-        const isAdmin = this.isAdmin();
-
-        if (!persons || persons.length === 0) {
-            container.innerHTML = `
-            <div class="history-empty">
-                <i class="fas fa-users-slash"></i>
-                <p>אין מורשי כניסה קבועים</p>
-                ${isAdmin
-                    ? '<small>לחץ על "הוסף מורשה קבוע" להוספה</small>'
-                    : ''}
-            </div>`;
-            this._updateSelectedCount();
-            return;
-        }
-
-        // מיון לפי שם
-        const sortedPersons = [...persons].sort((a, b) =>
-            (a.name || '').trim().localeCompare((b.name || '').trim(), 'he')
-        );
-
-        let html = `
-    <div class="history-summary">
-        <span><i class="fas fa-list"></i> סה"כ: ${sortedPersons.length} מורשים</span>
-    </div>
-    <div class="history-table-wrapper">
-        <table class="history-table">
-            <thead>
-                <tr>
-                    <th>
-                        <input type="checkbox"
-                               id="permSelectAll"
-                               onchange="messagesManager._toggleSelectAll(this.checked)"
-                               style="width:16px;height:16px;
-                                      cursor:pointer;accent-color:#667eea;">
-                    </th>
-                    <th>שם מלא</th>
-                    <th>חברה</th>
-                    <th>אתרים מורשים</th>
-                    <th>מס' רכב</th>
-                    <th>ת"ז</th>
-                    <th>טלפון</th>
-                    <th>הערות</th>
-                    <th>פעולות</th>
-                </tr>
-            </thead>
-            <tbody>`;
-
-        sortedPersons.forEach(person => {
-            const sitesDisplay = (person.allowedSites || []).join(' + ') || '-';
-            const siteClass =
-                (person.allowedSites || []).includes('ר"ג') &&
-                    (person.allowedSites || []).includes('פ"ת')
-                    ? 'both'
-                    : ((person.allowedSites || []).includes('ר"ג') ? 'rg' : 'pt');
-
-            // ← קרא מה-Set הפנימי
-            const isChecked = this._selectedPermIds.has(person.id);
-
-            html += `
-        <tr class="history-row ${isChecked ? 'row-selected' : ''}">
-            <td style="text-align:center; width:40px;">
-                <input type="checkbox"
-                       class="perm-person-checkbox"
-                       data-id="${person.id}"
-                       value="${person.id}"
-                       ${isChecked ? 'checked' : ''}
-                       style="width:16px;height:16px;
-                              cursor:pointer;accent-color:#667eea;">
-            </td>
-            <td class="person-name-cell">
-                <strong>${this.escapeHtml(person.name || '')}</strong>
-            </td>
-            <td>${this.escapeHtml(person.company || '-')}</td>
-            <td>
-                <span class="site-badge site-${siteClass}">
-                    ${sitesDisplay}
-                </span>
-            </td>
-            <td dir="rtl">
-                ${person.carNumber
-                    ? `<span class="car-badge">
-                           ${this.escapeHtml(person.carNumber)}
-                       </span>`
-                    : '<span class="empty-cell">-</span>'}
-            </td>
-            <td dir="rtl">
-                ${person.idNumber
-                    ? `<span class="id-badge">
-                           ${this.escapeHtml(person.idNumber)}
-                       </span>`
-                    : '<span class="empty-cell">-</span>'}
-            </td>
-            <td dir="rtl">
-                ${person.phone
-                    ? `<a href="tel:${person.phone}" class="phone-link">
-                           ${this.escapeHtml(person.phone)}
-                       </a>`
-                    : '<span class="empty-cell">-</span>'}
-            </td>
-            <td>
-                ${person.notes
-                    ? `<span class="perm-notes-cell"
-                              title="${this.escapeHtml(person.notes)}">
-                           ${this.escapeHtml(
-                        person.notes.substring(0, 20)
-                    )}${person.notes.length > 20 ? '...' : ''}
-                       </span>`
-                    : '<span class="empty-cell">-</span>'}
-            </td>
-            <td style="text-align:center; white-space:nowrap;">
-                <button class="history-duplicate-btn"
-                        style="background:linear-gradient(
-                                   135deg,#28a745,#1e7e34);
-                               margin-left:4px;"
-                        onclick="messagesManager
-                            ._usePermanentPerson('${person.id}')"
-                        title="צור אישור כניסה">
-                    <i class="fas fa-paper-plane"></i>
-                    <span>צור אישור כניסה</span>
-                </button>
-                ${isAdmin ? `
-                <button class="history-duplicate-btn"
-                        style="background:linear-gradient(
-                                   135deg,#667eea,#764ba2);
-                               margin-left:4px;"
-                        onclick="messagesManager
-                            ._editPermanentPerson('${person.id}')"
-                        title="ערוך">
-                    <i class="fas fa-edit"></i>
-                </button>
-                <button class="history-duplicate-btn"
-                        style="background:linear-gradient(
-                                   135deg,#dc3545,#c82333);"
-                        onclick="messagesManager
-                            ._deletePermanentPerson('${person.id}')"
-                        title="מחק">
-                    <i class="fas fa-trash"></i>
-                </button>` : ''}
-            </td>
-        </tr>`;
-        });
-
-        html += `</tbody></table></div>`;
-        container.innerHTML = html;
-
-        // ← הוסף מאזינים שמעדכנים את ה-Set הפנימי
-        document.querySelectorAll('.perm-person-checkbox').forEach(cb => {
-            cb.addEventListener('change', () => {
-                if (cb.checked) {
-                    this._selectedPermIds.add(cb.dataset.id);
-                } else {
-                    this._selectedPermIds.delete(cb.dataset.id);
-                }
-                // עדכן מראה השורה
-                const row = cb.closest('tr');
-                if (row) {
-                    row.classList.toggle('row-selected', cb.checked);
-                }
-                this._updateSelectedCount();
-            });
-        });
-
-        this._updateSelectedCount();
-    }
-
-    _addPermanentAccessNewStyles() {
-        if (document.getElementById('permanentAccessNewStyles')) return;
-
-        const style = document.createElement('style');
-        style.id = 'permanentAccessNewStyles';
-        style.textContent = `
-    /* Toolbar חדש */
-    .perm-access-toolbar-new {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 15px;
-        flex-wrap: wrap;
-    }
-
-    .btn-add-permanent-new {
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
-        padding: 9px 18px;
-        background: linear-gradient(135deg, #38a169, #276749);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        font-size: 0.9rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s;
-        font-family: inherit;
-        white-space: nowrap;
-        box-shadow: 0 2px 8px rgba(56,161,105,0.3);
-    }
-
-    .btn-add-permanent-new:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(56,161,105,0.4);
-    }
-
-    /* מיכל הרשימה */
-    .permanent-access-list-new {
-        width: 100%;
-    }
-
-    /* תא הערות */
-    .perm-notes-cell {
-        font-size: 0.82rem;
-        color: #856404;
-        background: #fffbf0;
-        padding: 2px 6px;
-        border-radius: 4px;
-        border: 1px solid #fde8b4;
-        cursor: help;
-    }
-
-    /* Dark mode */
-    [data-theme="dark"] .perm-access-toolbar-new {
-        background: transparent;
-    }
-
-    [data-theme="dark"] .permanent-access-list-new .history-table {
-        color: var(--text-primary);
-    }
-
-    [data-theme="dark"] .permanent-access-list-new .history-table td {
-        border-bottom-color: var(--border-color);
-        color: var(--text-primary);
-    }
-
-    [data-theme="dark"] .permanent-access-list-new .history-table tbody tr:hover {
-        background: #252535;
-    }
-
-    [data-theme="dark"] .perm-notes-cell {
-        background: #2a2010;
-        border-color: rgba(255,193,7,0.3);
-        color: #fcd34d;
-    }
-
-    /* מודל מורשים קבועים - גלילה ומבנה */
-    #permanentAccessModal .modal-content {
-        max-width: 1200px;
-        width: 95%;
-        height: 90vh;
-        max-height: 90vh;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        border-radius: 16px;
-    }
-
-    #permanentAccessModal .modal-header {
-        flex-shrink: 0;
-        padding: 18px 24px;
-        background: linear-gradient(135deg, #3182ce, #2b6cb0);
-        color: white;
-        border-radius: 16px 16px 0 0;
-        margin-bottom:2px;
-    }
-
-    #permanentAccessModal .modal-header h3 {
-        color: white;
-        margin: 0;
-        font-size: 1.15rem;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
-
-    #permanentAccessModal .modal-header .close-btn {
-        background: rgba(255,255,255,0.2);
-        border: 2px solid rgba(255,255,255,0.3);
-        color: white;
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-
-    #permanentAccessModal .modal-header .close-btn:hover {
-        background: rgba(255,255,255,0.35);
-        transform: rotate(90deg);
-    }
-
-    #permanentAccessModal .modal-body {
-        flex: 1;
-        overflow-y: auto;
-        overflow-x: hidden;
-        padding: 20px 24px;
-        min-height: 0;
-    }
-
-    /* Scrollbar מותאם */
-    #permanentAccessModal .modal-body::-webkit-scrollbar {
-        width: 8px;
-    }
-
-    #permanentAccessModal .modal-body::-webkit-scrollbar-track {
-        background: #f1f5f9;
-        border-radius: 10px;
-    }
-
-    #permanentAccessModal .modal-body::-webkit-scrollbar-thumb {
-        background: linear-gradient(135deg, #3182ce, #2b6cb0);
-        border-radius: 10px;
-    }
-
-    #permanentAccessModal .modal-body::-webkit-scrollbar-thumb:hover {
-        background: linear-gradient(135deg, #2b6cb0, #1a4a8a);
-    }
-
-    #permanentAccessModal .modal-footer {
-        flex-shrink: 0;
-        display: flex;
-        justify-content: flex-end;
-        gap: 10px;
-        padding: 14px 24px;
-        border-top: 1px solid #e2e8f0;
-        background: #f8f9fa;
-        border-radius: 0 0 16px 16px;
-    }
-
-    /* טופס הוספה/עריכה - גלילה פנימית */
-    #permanentPersonForm {
-        max-height: 400px;
-        overflow-y: auto;
-    }
-
-    /* טבלת הרשימה - גלילה */
-    .history-table-wrapper {
-        max-height: calc(90vh - 310px);
-        overflow-y: auto;
-        overflow-x: auto;
-    }
-
-    /* כותרת הטבלה - sticky */
-    .history-table thead {
-        position: sticky;
-        top: 0;
-        z-index: 5;
-    }
-
-    /* Dark mode */
-    [data-theme="dark"] #permanentAccessModal .modal-content {
-        background: var(--bg-secondary);
-        border: 1px solid var(--border-color);
-    }
-
-    [data-theme="dark"] #permanentAccessModal .modal-body {
-        background: var(--bg-secondary);
-    }
-
-    [data-theme="dark"] #permanentAccessModal .modal-footer {
-        background: var(--bg-primary);
-        border-top-color: var(--border-color);
-    }
-
-    [data-theme="dark"] #permanentAccessModal .modal-body::-webkit-scrollbar-track {
-        background: var(--bg-primary);
-    }
-
-    [data-theme="dark"] #permanentAccessModal .modal-body::-webkit-scrollbar-thumb {
-        background: #3182ce;
-    }
-    /* מודל עריכה/הוספה מורשה קבוע - גלילה */
-    #permanentPersonEditModal .modal-content {
-        max-width: 520px;
-        width: 95%;
-        max-height: 90vh;
-        height: auto;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        border-radius: 12px;
-    }
-
-    #permanentPersonEditModal .modal-header {
-        flex-shrink: 0;
-        padding: 16px 20px;
-        border-bottom: 1px solid #e2e8f0;
-    }
-
-    #permanentPersonEditModal .modal-body {
-        flex: 1;
-        overflow-y: auto;
-        overflow-x: hidden;
-        padding: 20px;
-        min-height: 0;
-    }
-
-    #permanentPersonEditModal .modal-body::-webkit-scrollbar {
-        width: 6px;
-    }
-
-    #permanentPersonEditModal .modal-body::-webkit-scrollbar-track {
-        background: #f1f5f9;
-        border-radius: 10px;
-    }
-
-    #permanentPersonEditModal .modal-body::-webkit-scrollbar-thumb {
-        background: linear-gradient(135deg, #3182ce, #2b6cb0);
-        border-radius: 10px;
-    }
-
-    #permanentPersonEditModal .modal-footer {
-        flex-shrink: 0;
-        display: flex;
-        gap: 10px;
-        justify-content: flex-end;
-        padding: 14px 20px;
-        border-top: 1px solid #e2e8f0;
-        background: #f8f9fa;
-        border-radius: 0 0 12px 12px;
-    }
-
-    /* Dark mode */
-    [data-theme="dark"] #permanentPersonEditModal .modal-content {
-        background: var(--bg-secondary);
-        border: 1px solid var(--border-color);
-    }
-
-    [data-theme="dark"] #permanentPersonEditModal .modal-body {
-        background: var(--bg-secondary);
-    }
-
-    [data-theme="dark"] #permanentPersonEditModal .modal-footer {
-        background: var(--bg-primary);
-        border-top-color: var(--border-color);
-    }
-
-    [data-theme="dark"] #permanentPersonEditModal .modal-body::-webkit-scrollbar-track {
-        background: var(--bg-primary);
-    }
-
-    /* ← הוסף: הדגשת שורה מסומנת */
-    .history-table tbody tr.row-selected td {
-        background-color: #f0f4ff !important;
-    }
-
-    .history-table tbody tr.row-selected:hover td {
-        background-color: #e8edff !important;
-    }
-
-    [data-theme="dark"] .history-table tbody tr.row-selected td {
-        background-color: #1a1a35 !important;
-    }
-
-    [data-theme="dark"] .history-table tbody tr.row-selected:hover td {
-        background-color: #22223a !important;
-    }
-
-    /* ← הוסף: אנימציה עדינה בעת שמירת בחירה */
-    .perm-person-checkbox:checked {
-        accent-color: #667eea;
-    }
-    `;
-        document.head.appendChild(style);
-    }
-
-    _filterPermanentList(searchText) {
-        if (!this._permanentAccessList) return;
-
-        const term = searchText.trim().toLowerCase();
-
-        if (!term) {
-            this._renderPermanentAccessListAsTable(this._permanentAccessList);
-        } else {
-            const filtered = this._permanentAccessList.filter(p => {
-                return (
-                    (p.name || '').toLowerCase().includes(term) ||
-                    (p.company || '').toLowerCase().includes(term) ||
-                    (p.carNumber || '').toLowerCase().includes(term) ||
-                    (p.idNumber || '').toLowerCase().includes(term) ||
-                    (p.phone || '').toLowerCase().includes(term) ||
-                    (p.notes || '').toLowerCase().includes(term)
-                );
-            });
-            this._renderPermanentAccessListAsTable(filtered);
-        }
-    }
-
-    _getSelectedPermIds() {
-        const selected = new Set();
-        document.querySelectorAll('.perm-person-checkbox:checked')
-            .forEach(cb => {
-                if (cb.dataset.id) selected.add(cb.dataset.id);
-            });
-        return selected;
-    }
-
-    _restoreSelectedPermIds(selectedIds) {
-        if (!selectedIds || selectedIds.size === 0) return;
-
-        document.querySelectorAll('.perm-person-checkbox').forEach(cb => {
-            if (selectedIds.has(cb.dataset.id)) {
-                cb.checked = true;
-            }
-        });
-
-        // עדכן את מצב "בחר הכל" ואת הכפתור - חייב להיות אחרון
-        this._updateSelectedCount();
-    }
-
-    _renderPermanentAccessList(persons) {
-        const container = document.getElementById('permanentAccessList');
-        if (!container) return;
-
-        if (!persons || persons.length === 0) {
-            container.innerHTML = `
-            <div class="perm-empty">
-                <i class="fas fa-users-slash"></i>
-                <p>אין מורשי כניסה קבועים</p>
-                <small>לחץ על "הוסף מורשה קבוע" להוספה</small>
-            </div>
-        `;
-            return;
-        }
-
-        let html = `
-        <div class="perm-list-header">
-            <label class="perm-select-all-label">
-                <input type="checkbox" 
-                       id="permSelectAll"
-                       onchange="messagesManager._toggleSelectAll(this.checked)">
-                <span>בחר הכל</span>
-            </label>
-            <span class="perm-count">
-                ${persons.length} מורשים
-            </span>
-        </div>
-        <div class="perm-cards-grid">
-    `;
-
-        persons.forEach(person => {
-            const sitesDisplay = (person.allowedSites || []).join(' + ') || '-';
-            const siteClass =
-                (person.allowedSites || []).includes('ר"ג') &&
-                    (person.allowedSites || []).includes('פ"ת')
-                    ? 'both'
-                    : ((person.allowedSites || []).includes('ר"ג') ? 'rg' : 'pt');
-
-            html += `
-            <div class="perm-card" data-id="${person.id}">
-                <div class="perm-card-select">
-                    <input type="checkbox" 
-                           class="perm-person-checkbox"
-                           data-id="${person.id}"
-                           value="${person.id}">
-                </div>
-                <div class="perm-card-body">
-                    <div class="perm-card-header">
-                        <span class="perm-name">
-                            <i class="fas fa-user"></i> 
-                            ${this.escapeHtml(person.name || '')}
-                        </span>
-                        <span class="site-badge site-${siteClass}">
-                            ${sitesDisplay}
-                        </span>
-                    </div>
-                    <div class="perm-card-details">
-                        ${person.company ? `
-                            <span class="perm-detail">
-                                <i class="fas fa-building"></i> 
-                                ${this.escapeHtml(person.company)}
-                            </span>` : ''}
-                        ${person.carNumber ? `
-                            <span class="perm-detail">
-                                <i class="fas fa-car"></i> 
-                                ${this.escapeHtml(person.carNumber)}
-                            </span>` : ''}
-                        ${person.idNumber ? `
-                            <span class="perm-detail">
-                                <i class="fas fa-id-card"></i> 
-                                ${this.escapeHtml(person.idNumber)}
-                            </span>` : ''}
-                        ${person.phone ? `
-                            <span class="perm-detail">
-                                <i class="fas fa-phone"></i> 
-                                ${this.escapeHtml(person.phone)}
-                            </span>` : ''}
-                        ${person.notes ? `
-                            <span class="perm-detail perm-notes">
-                                <i class="fas fa-sticky-note"></i> 
-                                ${this.escapeHtml(person.notes)}
-                            </span>` : ''}
-                    </div>
-                </div>
-                <div class="perm-card-actions">
-                    <button class="perm-action-btn perm-use-btn"
-                            onclick="messagesManager
-                                ._usePermanentPerson('${person.id}')"
-                            title="השתמש באישור כניסה">
-                        <i class="fas fa-paper-plane"></i>
-                    </button>
-                    <button class="perm-action-btn perm-edit-btn"
-                            onclick="messagesManager
-                                ._editPermanentPerson('${person.id}')"
-                            title="ערוך">
-                        <i class="fas fa-edit"></i>
-                    </button>
-                    <button class="perm-action-btn perm-delete-btn"
-                            onclick="messagesManager
-                                ._deletePermanentPerson('${person.id}')"
-                            title="מחק">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </div>
-            </div>
-        `;
-        });
-
-        html += '</div>';
-        container.innerHTML = html;
-    }
-
-    _updateSelectedCount() {
-        const count = this._selectedPermIds.size;
-
-        // עדכן כפתור "צור אישור כניסה לנבחרים"
-        const useBtn = document.querySelector(
-            '#permanentAccessModal .modal-footer .btn-primary'
-        );
-        if (useBtn) {
-            if (count > 0) {
-                useBtn.innerHTML =
-                    `<i class="fas fa-check"></i> ` +
-                    `צור אישור כניסה ל-${count} נבחרים`;
-                useBtn.style.opacity = '1';
-            } else {
-                useBtn.innerHTML =
-                    `<i class="fas fa-check"></i> ` +
-                    `צור אישור כניסה לנבחרים`;
-                useBtn.style.opacity = '0.7';
-            }
-        }
-
-        // עדכן checkbox "בחר הכל"
-        const selectAll = document.getElementById('permSelectAll');
-        if (selectAll) {
-            const visibleCheckboxes = document.querySelectorAll(
-                '.perm-person-checkbox'
-            );
-            const visibleCount = visibleCheckboxes.length;
-            const visibleCheckedCount = Array.from(visibleCheckboxes)
-                .filter(cb => cb.checked).length;
-
-            if (visibleCheckedCount === 0) {
-                selectAll.checked = false;
-                selectAll.indeterminate = false;
-            } else if (visibleCheckedCount === visibleCount) {
-                selectAll.checked = true;
-                selectAll.indeterminate = false;
-            } else {
-                selectAll.checked = false;
-                selectAll.indeterminate = true;
-            }
-        }
-    }
-
-    _toggleSelectAll(checked) {
-        document.querySelectorAll('.perm-person-checkbox').forEach(cb => {
-            cb.checked = checked;
-            // ← עדכן את ה-Set הפנימי
-            if (checked) {
-                this._selectedPermIds.add(cb.dataset.id);
-            } else {
-                this._selectedPermIds.delete(cb.dataset.id);
-            }
-            // עדכן מראה השורה
-            const row = cb.closest('tr');
-            if (row) {
-                row.classList.toggle('row-selected', checked);
-            }
-        });
-        this._updateSelectedCount();
-    }
-
-    openPermanentPersonModal(personId = null) {
-        // יצירת מודל נפרד לעריכה/הוספה
-        let modal = document.getElementById('permanentPersonEditModal');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'permanentPersonEditModal';
-            modal.className = 'modal-overlay';
-            modal.style.zIndex = '10002'; // מעל מודל הרשימה
-
-            modal.innerHTML = `
-        <div class="modal-content" style="max-width:520px; width:95%; max-height: 90%;">
-            <div class="modal-header">
-                <h3 id="permPersonModalTitle">
-                    <i class="fas fa-user-plus"></i> הוסף מורשה חדש
-                </h3>
-                <button class="close-btn" 
-                        onclick="messagesManager.closePermanentPersonModal()">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="modal-body" style="padding:20px;">
-                <div class="perm-form-grid">
-                    <div class="form-group">
-                        <label class="form-label required-field">שם מלא</label>
-                        <input type="text" id="permModalName" 
-                               class="form-input" 
-                               placeholder="שם פרטי ושם משפחה">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label required-field">חברה</label>
-                        <input type="text" id="permModalCompany" 
-                               class="form-input" 
-                               placeholder="שם החברה">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">מספר רכב</label>
-                        <input type="text" id="permModalCar" 
-                               class="form-input" 
-                               placeholder="ללא מקפים"
-                               maxlength="8">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">תעודת זהות</label>
-                        <input type="text" id="permModalId" 
-                               class="form-input" 
-                               placeholder="9 ספרות"
-                               maxlength="9">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">טלפון</label>
-                        <input type="tel" id="permModalPhone" 
-                               class="form-input" 
-                               placeholder="מספר טלפון">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">הערות</label>
-                        <input type="text" id="permModalNotes" 
-                               class="form-input" 
-                               placeholder="הערות נוספות">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label required-field">
-                        אתרים מורשים
-                    </label>
-                    <div class="perm-sites-selector">
-                        <label class="site-option">
-                            <input type="checkbox" 
-                                   name="permModalSite" 
-                                   value='ר"ג'>
-                            <span class="site-btn">ר"ג</span>
-                        </label>
-                        <label class="site-option">
-                            <input type="checkbox" 
-                                   name="permModalSite" 
-                                   value='פ"ת'>
-                            <span class="site-btn">פ"ת</span>
-                        </label>
-                    </div>
-                </div>
-                <input type="hidden" id="permModalEditId">
-                
-                <!-- הודעת שגיאה -->
-                <div id="permModalError" 
-                     class="field-error" 
-                     style="display:none; margin-top:10px;">
-                    <i class="fas fa-exclamation-circle"></i>
-                    <span id="permModalErrorText"></span>
-                </div>
-            </div>
-            <div class="modal-footer" 
-                 style="display:flex; gap:10px; justify-content:flex-end; 
-                        padding:15px 20px; border-top:1px solid #eee;">
-                <button class="btn btn-primary" 
-                        onclick="messagesManager.savePermanentPersonFromModal()">
-                    <i class="fas fa-save"></i> שמור
-                </button>
-                <button class="btn btn-secondary" 
-                        onclick="messagesManager.closePermanentPersonModal()">
-                    <i class="fas fa-times"></i> ביטול
-                </button>
-            </div>
-        </div>`;
-
-            document.body.appendChild(modal);
-
-            // מאזיני checkboxes
-            modal.querySelectorAll('input[name="permModalSite"]')
-                .forEach(cb => {
-                    cb.addEventListener('change', () => {
-                        cb.nextElementSibling.classList
-                            .toggle('selected', cb.checked);
-                    });
-                });
-
-            // ניקוי רכב
-            const carInput = modal.querySelector('#permModalCar');
-            if (carInput) {
-                carInput.addEventListener('input', (e) => {
-                    e.target.value = e.target.value.replace(/[-\s]/g, '');
-                });
-            }
-        }
-
-        // כותרת ומצב
-        const titleEl = document.getElementById('permPersonModalTitle');
-        const editIdInput = document.getElementById('permModalEditId');
-
-        if (personId) {
-            // מצב עריכה
-            const person = (this._permanentAccessList || [])
-                .find(p => p.id === personId);
-            if (!person) {
-                NotificationManager.show('מורשה לא נמצא', 'error');
-                return;
-            }
-
-            if (titleEl) titleEl.innerHTML =
-                '<i class="fas fa-edit"></i> עריכת מורשה';
-
-            // מילוי שדות
-            document.getElementById('permModalName').value = person.name || '';
-            document.getElementById('permModalCompany').value = person.company || '';
-            document.getElementById('permModalCar').value = person.carNumber || '';
-            document.getElementById('permModalId').value = person.idNumber || '';
-            document.getElementById('permModalPhone').value = person.phone || '';
-            document.getElementById('permModalNotes').value = person.notes || '';
-            editIdInput.value = person.id;
-
-            // אתרים
-            modal.querySelectorAll('input[name="permModalSite"]')
-                .forEach(cb => {
-                    const checked = (person.allowedSites || [])
-                        .includes(cb.value);
-                    cb.checked = checked;
-                    cb.nextElementSibling.classList
-                        .toggle('selected', checked);
-                });
-        } else {
-            // מצב הוספה
-            if (titleEl) titleEl.innerHTML =
-                '<i class="fas fa-user-plus"></i> הוסף מורשה חדש';
-
-            // איפוס שדות
-            ['permModalName', 'permModalCompany', 'permModalCar',
-                'permModalId', 'permModalPhone', 'permModalNotes']
-                .forEach(id => {
-                    const el = document.getElementById(id);
-                    if (el) el.value = '';
-                });
-            editIdInput.value = '';
-
-            modal.querySelectorAll('input[name="permModalSite"]')
-                .forEach(cb => {
-                    cb.checked = false;
-                    cb.nextElementSibling.classList.remove('selected');
-                });
-        }
-
-        // הסתר שגיאה
-        document.getElementById('permModalError').style.display = 'none';
-
-        // הצג מודל
-        modal.style.display = 'flex';
-
-        // פוקוס על שדה השם
-        setTimeout(() => {
-            document.getElementById('permModalName')?.focus();
-        }, 100);
-    }
-
-    closePermanentPersonModal() {
-        const modal = document.getElementById('permanentPersonEditModal');
-        if (modal) modal.style.display = 'none';
-    }
-
-    async savePermanentPersonFromModal() {
-        const name = document.getElementById('permModalName').value.trim();
-        const company = document.getElementById('permModalCompany').value.trim();
-        const errorEl = document.getElementById('permModalError');
-        const errorText = document.getElementById('permModalErrorText');
-
-        // ולידציה
-        const showError = (msg) => {
-            errorText.textContent = msg;
-            errorEl.style.display = 'flex';
-        };
-
-        errorEl.style.display = 'none';
-
-        if (!name) {
-            showError('יש להזין שם מלא');
-            document.getElementById('permModalName').focus();
-            return;
-        }
-
-        if (!company) {
-            showError('יש להזין שם חברה');
-            document.getElementById('permModalCompany').focus();
-            return;
-        }
-
-        const selectedSites = Array.from(
-            document.querySelectorAll('input[name="permModalSite"]:checked')
-        ).map(cb => cb.value);
-
-        if (selectedSites.length === 0) {
-            showError('יש לבחור לפחות אתר אחד');
-            return;
-        }
-
-        const editId = document.getElementById('permModalEditId').value;
-        const isEditing = !!editId;
-
-        const personData = {
-            id: isEditing ? editId : this._generateId(),
-            name,
-            company,
-            carNumber: document.getElementById('permModalCar').value
-                .trim().replace(/[-\s]/g, ''),
-            idNumber: document.getElementById('permModalId').value.trim(),
-            phone: document.getElementById('permModalPhone').value.trim(),
-            notes: document.getElementById('permModalNotes').value.trim(),
-            allowedSites: selectedSites,
-            addedDate: isEditing
-                ? ((this._permanentAccessList || [])
-                    .find(p => p.id === editId)?.addedDate ||
-                    new Date().toISOString())
-                : new Date().toISOString(),
-            addedBy: this.getLastSelectedAuthor() || 'NOC'
-        };
-
-        if (!this._permanentAccessList) this._permanentAccessList = [];
-
-        if (isEditing) {
-            const idx = this._permanentAccessList
-                .findIndex(p => p.id === editId);
-            if (idx !== -1) {
-                this._permanentAccessList[idx] = personData;
-            }
-        } else {
-            this._permanentAccessList.push(personData);
-        }
-
-        const result = await this.savePermanentAccessList(
-            this._permanentAccessList
-        );
-
-        if (result.success) {
-            NotificationManager.show(
-                isEditing ? 'המורשה עודכן בהצלחה' : 'המורשה נוסף בהצלחה',
-                'success'
-            );
-            this.closePermanentPersonModal();
-            // רענן את הרשימה הראשית
-            this._renderPermanentAccessListAsTable(this._permanentAccessList);
-        } else {
-            showError(result.error || 'שגיאה בשמירה');
-        }
-    }
-
-    _openAddPermanentPersonForm() {
-
-        this.openPermanentPersonModal(null);
-    }
-
-    _closePermanentPersonForm() {
-        document.getElementById('permanentPersonForm').style.display = 'none';
-    }
-
-    _editPermanentPerson(personId) {
-
-        this.openPermanentPersonModal(personId); // עריכה
-    }
-
-    async _savePermanentPerson() {
-        const name = document.getElementById('permName').value.trim();
-        const company = document.getElementById('permCompany').value.trim();
-
-        if (!name) {
-            NotificationManager.show('יש להזין שם', 'error');
-            document.getElementById('permName').focus();
-            return;
-        }
-
-        if (!company) {
-            NotificationManager.show('יש להזין חברה', 'error');
-            document.getElementById('permCompany').focus();
-            return;
-        }
-
-        const selectedSites = Array.from(
-            document.querySelectorAll('input[name="permSite"]:checked')
-        ).map(cb => cb.value);
-
-        if (selectedSites.length === 0) {
-            NotificationManager.show('יש לבחור לפחות אתר אחד', 'error');
-            return;
-        }
-
-        const editId = document.getElementById('permEditId').value;
-        const isEditing = !!editId;
-
-        const personData = {
-            id: isEditing ? editId : this._generateId(),
-            name: name,
-            company: company,
-            carNumber: document.getElementById('permCar').value
-                .trim().replace(/[-\s]/g, ''),
-            idNumber: document.getElementById('permId').value.trim(),
-            phone: document.getElementById('permPhone').value.trim(),
-            notes: document.getElementById('permNotes').value.trim(),
-            allowedSites: selectedSites,
-            addedDate: isEditing
-                ? ((this._permanentAccessList || [])
-                    .find(p => p.id === editId)?.addedDate ||
-                    new Date().toISOString())
-                : new Date().toISOString(),
-            addedBy: this.getLastSelectedAuthor() || 'NOC'
-        };
-
-        if (!this._permanentAccessList) this._permanentAccessList = [];
-
-        if (isEditing) {
-            const idx = this._permanentAccessList
-                .findIndex(p => p.id === editId);
-            if (idx !== -1) {
-                this._permanentAccessList[idx] = personData;
-            }
-        } else {
-            this._permanentAccessList.push(personData);
-        }
-
-        const result = await this.savePermanentAccessList(
-            this._permanentAccessList
-        );
-
-        if (result.success) {
-            NotificationManager.show(
-                isEditing ? 'המורשה עודכן בהצלחה' : 'המורשה נוסף בהצלחה',
-                'success'
-            );
-            this._closePermanentPersonForm();
-            this._renderPermanentAccessListAsTable(this._permanentAccessList);
-        } else {
-            NotificationManager.show(result.error || 'שגיאה בשמירה', 'error');
-        }
-    }
-
-    async _deletePermanentPerson(personId) {
-        if (!confirm('האם אתה בטוח שברצונך למחוק מורשה זה?')) return;
-
-        const result = await this.deletePermanentAccessPerson(personId);
-
-        if (result.success) {
-            this._permanentAccessList = (this._permanentAccessList || [])
-                .filter(p => p.id !== personId);
-            this._renderPermanentAccessListAsTable(this._permanentAccessList);
-            NotificationManager.show('המורשה נמחק בהצלחה', 'success');
-        } else {
-            NotificationManager.show(result.error || 'שגיאה במחיקה', 'error');
-        }
-    }
-
-    // שימוש במורשה בודד - פותח אישור כניסה עם הנתונים שלו
-    _usePermanentPerson(personId) {
-        const person = (this._permanentAccessList || [])
-            .find(p => p.id === personId);
-        if (!person) return;
-
-        // סגור מודל הרשימה
-        document.getElementById('permanentAccessModal').style.display = 'none';
-
-        // פתח מודל אישור כניסה עם הנתונים
-        this.openEntryPermitModal();
-
-        // מלא את הנתונים אחרי שהמודל נפתח
-        setTimeout(() => {
-            this._fillEntryPermitFromPermanentPerson(person);
-        }, 100);
-    }
-
-    // שימוש במספר מורשים מסומנים
-    _useSelectedPermanentPersons() {
-        // ← קרא מה-Set הפנימי
-        const selectedIds = Array.from(this._selectedPermIds);
-
-        if (selectedIds.length === 0) {
-            NotificationManager.show('יש לסמן לפחות מורשה אחד', 'warning');
-            return;
-        }
-
-        const selectedPersons = (this._permanentAccessList || [])
-            .filter(p => selectedIds.includes(p.id));
-
-        // נקה את הבחירות
-        this._selectedPermIds.clear();
-
-        // סגור מודל הרשימה
-        document.getElementById('permanentAccessModal').style.display = 'none';
-
-        // פתח מודל אישור כניסה
-        this.openEntryPermitModal();
-
-        setTimeout(() => {
-            this._fillEntryPermitFromMultiplePermanentPersons(selectedPersons);
-        }, 100);
-    }
-
-    _fillEntryPermitFromPermanentPerson(person) {
-        // מלא אתר
-        if (person.allowedSites && person.allowedSites.length > 0) {
-            document.querySelectorAll('input[name="permitSite"]').forEach(cb => {
-                const checked = person.allowedSites.includes(cb.value);
-                cb.checked = checked;
-                cb.nextElementSibling.classList.toggle('selected', checked);
-            });
-        }
-
-        // מלא חברה
-        const companyField = document.getElementById('permitCompany');
-        if (companyField && person.company) {
-            companyField.value = person.company;
-        }
-
-        // מלא שורת האדם הראשונה
-        const namesContainer = document.getElementById('permitNamesContainer');
-        if (namesContainer) {
-            namesContainer.innerHTML = '';
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = this._buildNameRowHtml(
-                0,
-                person.name || '',
-                person.carNumber || '',
-                person.idNumber || '',
-                person.phone || ''
-            );
-            const newRow = tempDiv.firstElementChild;
-            namesContainer.appendChild(newRow);
-
-            const carInput = newRow.querySelector('.permit-car-input');
-            if (carInput) this._attachCarInputListeners(carInput);
-
-            const nameInput = newRow.querySelector('.permit-name-input');
-            if (nameInput) {
-                this._addAutocompleteStyles();
-                this._attachNameAutocomplete(nameInput, newRow);
-            }
-        }
-
-        NotificationManager.show(
-            `נתוני ${person.name} הוזנו בטופס`,
-            'success'
-        );
-    }
-
-    _fillEntryPermitFromMultiplePermanentPersons(persons) {
-        if (!persons || persons.length === 0) return;
-
-        // מלא אתר לפי האתרים המשותפים
-        const allSites = new Set();
-        persons.forEach(p => {
-            (p.allowedSites || []).forEach(s => allSites.add(s));
-        });
-
-        document.querySelectorAll('input[name="permitSite"]').forEach(cb => {
-            const checked = allSites.has(cb.value);
-            cb.checked = checked;
-            cb.nextElementSibling.classList.toggle('selected', checked);
-        });
-
-        // מלא חברה (אם כולם מאותה חברה)
-        const companies = [...new Set(persons.map(p => p.company).filter(Boolean))];
-        if (companies.length === 1) {
-            const companyField = document.getElementById('permitCompany');
-            if (companyField) companyField.value = companies[0];
-        }
-
-        // מלא שורות אנשים
-        const namesContainer = document.getElementById('permitNamesContainer');
-        if (namesContainer) {
-            namesContainer.innerHTML = '';
-
-            persons.forEach((person, index) => {
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = this._buildNameRowHtml(
-                    index,
-                    person.name || '',
-                    person.carNumber || '',
-                    person.idNumber || '',
-                    person.phone || ''
-                );
-                const newRow = tempDiv.firstElementChild;
-                namesContainer.appendChild(newRow);
-
-                const carInput = newRow.querySelector('.permit-car-input');
-                if (carInput) this._attachCarInputListeners(carInput);
-
-                const nameInput = newRow.querySelector('.permit-name-input');
-                if (nameInput) {
-                    this._addAutocompleteStyles();
-                    this._attachNameAutocomplete(nameInput, newRow);
-                }
-            });
-
-            this._updateRemoveButtons(namesContainer);
-        }
-
-        NotificationManager.show(
-            `נתוני ${persons.length} אנשים הוזנו בטופס`,
-            'success'
-        );
-    }
-
-    _generateId() {
-        return 'perm_' + Date.now() + '_' +
-            Math.random().toString(36).substring(2, 9);
-    }
-
-    // ========== CSS לרשימת מורשים קבועים ==========
-    _addPermanentAccessStyles() {
-        if (document.getElementById('permanentAccessStyles')) return;
-
-        const style = document.createElement('style');
-        style.id = 'permanentAccessStyles';
-        style.textContent = `
-        /* מודל ראשי */
-        .permanent-access-modal {
-            max-width: 900px;
-            width: 95%;
-            max-height: 90vh;
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .permanent-access-modal .modal-body {
-            overflow-y: auto;
-            flex: 1;
-            padding: 15px 20px;
-        }
-        
-        /* Toolbar */
-        .perm-access-toolbar {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 15px;
-            flex-wrap: wrap;
-        }
-        
-        .btn-add-permanent {
-            display: inline-flex;
-            align-items: center;
-            gap: 7px;
-            padding: 9px 18px;
-            background: linear-gradient(135deg, #38a169, #276749);
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 0.9rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-family: inherit;
-            white-space: nowrap;
-        }
-        
-        .btn-add-permanent:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(56, 161, 105, 0.4);
-        }
-        
-        .perm-search-wrapper {
-            position: relative;
-            margin-right: auto;
-            margin-left: 0;
-            width: 260px;
-            flex-shrink: 0;
-        }
-
-        .perm-search-input {
-            padding: 6px 10px 6px 32px !important;
-            border-radius: 8px;
-            font-size: 0.85rem !important;
-            height: 34px;
-        }
-        
-        /* טופס הוספה/עריכה */
-        .permanent-person-form {
-            background: linear-gradient(135deg, #f0f4ff, #faf5ff);
-            border: 1.5px solid #c3d0f7;
-            border-radius: 10px;
-            padding: 16px 18px;
-            margin-bottom: 18px;
-            animation: slideDown 0.2s ease;
-        }
-        
-        @keyframes slideDown {
-            from { opacity: 0; transform: translateY(-10px); }
-            to   { opacity: 1; transform: translateY(0);     }
-        }
-        
-        .permanent-person-form h4 {
-            margin: 0 0 14px 0;
-            color: #333;
-            font-size: 1rem;
-            display: flex;
-            align-items: center;
-            gap: 7px;
-        }
-        
-        .permanent-person-form h4 i {
-            color: #667eea;
-        }
-        
-        .perm-form-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 12px;
-            margin-bottom: 14px;
-        }
-        
-        .perm-form-grid .form-group {
-            margin-bottom: 0;
-        }
-        
-        .perm-form-grid .form-label {
-            font-size: 0.82rem;
-            margin-bottom: 4px;
-            color: #555;
-            font-weight: 600;
-        }
-        
-        .perm-form-grid .form-input {
-            padding: 8px 10px;
-            font-size: 0.88rem;
-        }
-        
-        .perm-sites-selector {
-            display: flex;
-            gap: 10px;
-        }
-        
-        .perm-form-actions {
-            display: flex;
-            gap: 10px;
-            margin-top: 14px;
-            justify-content: flex-end;
-        }
-        
-        /* כותרת רשימה */
-        .perm-list-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 10px;
-            padding: 0 4px;
-        }
-        
-        .perm-select-all-label {
-            display: flex;
-            align-items: center;
-            gap: 7px;
-            cursor: pointer;
-            font-size: 0.88rem;
-            color: #555;
-            font-weight: 600;
-        }
-        
-        .perm-select-all-label input[type="checkbox"] {
-            width: 16px;
-            height: 16px;
-            cursor: pointer;
-            accent-color: #667eea;
-        }
-        
-        .perm-count {
-            font-size: 0.82rem;
-            color: #888;
-            background: #f0f4ff;
-            padding: 3px 10px;
-            border-radius: 10px;
-            border: 1px solid #c3d0f7;
-        }
-        
-        /* גריד כרטיסים */
-        .perm-cards-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 12px;
-        }
-        
-        /* כרטיס מורשה */
-        .perm-card {
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
-            padding: 12px 14px;
-            background: white;
-            border: 1.5px solid #e2e8f0;
-            border-radius: 10px;
-            transition: all 0.2s;
-            position: relative;
-        }
-        
-        .perm-card:hover {
-            border-color: #667eea;
-            box-shadow: 0 3px 12px rgba(102, 126, 234, 0.15);
-            transform: translateY(-1px);
-        }
-        
-        .perm-card-select {
-            padding-top: 2px;
-            flex-shrink: 0;
-        }
-        
-        .perm-card-select input[type="checkbox"] {
-            width: 16px;
-            height: 16px;
-            cursor: pointer;
-            accent-color: #667eea;
-        }
-        
-        .perm-card-body {
-            flex: 1;
-            min-width: 0;
-        }
-        
-        .perm-card-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-            margin-bottom: 8px;
-            flex-wrap: wrap;
-        }
-        
-        .perm-name {
-            font-weight: 700;
-            color: #222;
-            font-size: 0.95rem;
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        
-        .perm-name i {
-            color: #667eea;
-            font-size: 0.85rem;
-        }
-        
-        .perm-card-details {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-        }
-        
-        .perm-detail {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            font-size: 0.8rem;
-            color: #555;
-            background: #f8f9ff;
-            padding: 2px 8px;
-            border-radius: 6px;
-            border: 1px solid #e8ecff;
-        }
-        
-        .perm-detail i {
-            color: #667eea;
-            font-size: 0.75rem;
-        }
-        
-        .perm-notes {
-            background: #fffbf0;
-            border-color: #fde8b4;
-            color: #744210;
-        }
-        
-        .perm-notes i {
-            color: #d68910;
-        }
-        
-        /* כפתורי פעולה בכרטיס */
-        .perm-card-actions {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-            flex-shrink: 0;
-        }
-        
-        .perm-action-btn {
-            width: 30px;
-            height: 30px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: none;
-            border-radius: 7px;
-            cursor: pointer;
-            transition: all 0.18s;
-            font-size: 0.82rem;
-        }
-        
-        .perm-use-btn {
-            background: #e8f4fd;
-            color: #2980b9;
-            border: 1px solid #bee3f8;
-        }
-        
-        .perm-use-btn:hover {
-            background: #2980b9;
-            color: white;
-            transform: scale(1.1);
-        }
-        
-        .perm-edit-btn {
-            background: #f0f4ff;
-            color: #667eea;
-            border: 1px solid #c3d0f7;
-        }
-        
-        .perm-edit-btn:hover {
-            background: #667eea;
-            color: white;
-            transform: scale(1.1);
-        }
-        
-        .perm-delete-btn {
-            background: #fff5f5;
-            color: #e53e3e;
-            border: 1px solid #feb2b2;
-        }
-        
-        .perm-delete-btn:hover {
-            background: #e53e3e;
-            color: white;
-            transform: scale(1.1);
-        }
-        
-        /* ריק */
-        .perm-empty {
-            text-align: center;
-            padding: 50px 20px;
-            color: #aaa;
-        }
-        
-        .perm-empty i {
-            font-size: 3rem;
-            margin-bottom: 12px;
-            display: block;
-            color: #ddd;
-        }
-        
-        .perm-empty p {
-            font-size: 1rem;
-            margin-bottom: 5px;
-            color: #888;
-        }
-        
-        .perm-empty small {
-            font-size: 0.82rem;
-            color: #bbb;
-        }
-        
-        /* footer */
-        .permanent-access-modal .modal-footer {
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
-            padding: 12px 20px;
-            border-top: 1px solid #eee;
-            background: #f8f9fa;
-            border-radius: 0 0 12px 12px;
-        }
-        
-        /* Responsive */
-        @media (max-width: 600px) {
-            .perm-cards-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .perm-form-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .perm-access-toolbar {
-                flex-direction: column;
-                align-items: stretch;
-            }
-            
-            .btn-add-permanent {
-                justify-content: center;
-            }
-        }
-        `;
-
-        document.head.appendChild(style);
-    }
-
-    /**
-     * מחזיר את הנתונים העדכניים ביותר לשם נתון
-     */
-    _getLatestPermitDataForName(name) {
-        if (!name || !name.trim()) return null;
-
-        const index = this._buildPermitAutocompleteIndex();
-        const key = name.trim().toLowerCase();
-
-        // חיפוש מדויק
-        if (index.has(key)) {
-            const entries = index.get(key);
-            // מיין לפי תאריך - הכי חדש ראשון
-            entries.sort((a, b) =>
-                new Date(b.messageDate) - new Date(a.messageDate)
-            );
-            return entries[0];
-        }
-
-        // חיפוש חלקי (אם לא נמצא מדויק)
-        for (const [indexKey, entries] of index.entries()) {
-            if (indexKey.includes(key) || key.includes(indexKey)) {
-                entries.sort((a, b) =>
-                    new Date(b.messageDate) - new Date(a.messageDate)
-                );
-                return entries[0];
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * מחזיר רשימת הצעות לפי קידומת שם
-     */
-    _getPermitNameSuggestions(prefix, maxResults = 8) {
-        if (!prefix || prefix.trim().length < 2) return [];
-
-        const index = this._buildPermitAutocompleteIndex();
-        const lowerPrefix = prefix.trim().toLowerCase();
-        const suggestions = [];
-        const seen = new Set();
-
-        for (const [key, entries] of index.entries()) {
-            if (key.includes(lowerPrefix) || lowerPrefix.includes(key.substring(0, 3))) {
-                // קח את הרשומה הכי עדכנית
-                const latest = entries.sort((a, b) =>
-                    new Date(b.messageDate) - new Date(a.messageDate)
-                )[0];
-
-                const displayName = latest.person.name;
-                if (!seen.has(displayName.toLowerCase())) {
-                    seen.add(displayName.toLowerCase());
-                    suggestions.push({
-                        name: displayName,
-                        carNumber: latest.person.carNumber || '',
-                        idNumber: latest.person.idNumber || '',
-                        phone: latest.person.phone || '',
-                        company: latest.permitData.company || '',
-                        escort: latest.permitData.escort || '',
-                        sites: latest.permitData.sites || [],
-                    });
-                }
-            }
-
-            if (suggestions.length >= maxResults) break;
-        }
-
-        // מיין: התאמות שמתחילות בקידומת קודם
-        suggestions.sort((a, b) => {
-            const aStarts = a.name.toLowerCase().startsWith(lowerPrefix);
-            const bStarts = b.name.toLowerCase().startsWith(lowerPrefix);
-            if (aStarts && !bStarts) return -1;
-            if (!aStarts && bStarts) return 1;
-            return a.name.localeCompare(b.name, 'he');
-        });
-
-        return suggestions;
-    }
-
-    /**
-     * הוספת מאזין השלמה אוטומטית לשדה שם
-     */
-    _attachNameAutocomplete(nameInput, row) {
-        if (!nameInput || nameInput._autocompleteAttached) return;
-        nameInput._autocompleteAttached = true;
-
-        // יצירת רשימת הצעות
-        const dropdown = document.createElement('div');
-        dropdown.className = 'permit-autocomplete-dropdown';
-        dropdown.style.display = 'none';
-        nameInput.parentNode.style.position = 'relative';
-        nameInput.parentNode.appendChild(dropdown);
-
-        let debounceTimer = null;
-
-        const showSuggestions = (suggestions) => {
-            dropdown.innerHTML = '';
-
-            if (suggestions.length === 0) {
-                dropdown.style.display = 'none';
-                return;
-            }
-
-            suggestions.forEach(suggestion => {
-                const item = document.createElement('div');
-                item.className = 'permit-autocomplete-item';
-
-                // בנה תצוגה
-                let subText = [];
-                if (suggestion.company) subText.push(suggestion.company);
-                if (suggestion.carNumber) subText.push(`רכב: ${suggestion.carNumber}`);
-                if (suggestion.phone) subText.push(`טל: ${suggestion.phone}`);
-
-                item.innerHTML = `
-                <div class="autocomplete-name">${suggestion.name}</div>
-                ${subText.length > 0
-                        ? `<div class="autocomplete-sub">${subText.join(' | ')}</div>`
-                        : ''}
-            `;
-
-                item.addEventListener('mousedown', (e) => {
-                    e.preventDefault(); // מנע blur לפני הלחיצה
-                    this._applyPermitSuggestion(suggestion, row);
-                    dropdown.style.display = 'none';
-                });
-
-                dropdown.appendChild(item);
-            });
-
-            dropdown.style.display = 'block';
-        };
-
-        nameInput.addEventListener('input', () => {
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(() => {
-                const val = nameInput.value.trim();
-                if (val.length < 2) {
-                    dropdown.style.display = 'none';
-                    return;
-                }
-                const suggestions = this._getPermitNameSuggestions(val);
-                showSuggestions(suggestions);
-            }, 200);
-        });
-
-        nameInput.addEventListener('keydown', (e) => {
-            if (dropdown.style.display === 'none') return;
-
-            const items = dropdown.querySelectorAll('.permit-autocomplete-item');
-            const active = dropdown.querySelector('.permit-autocomplete-item.active');
-            let activeIndex = -1;
-
-            items.forEach((item, i) => {
-                if (item === active) activeIndex = i;
-            });
-
-            if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                const next = activeIndex < items.length - 1 ? activeIndex + 1 : 0;
-                items.forEach(i => i.classList.remove('active'));
-                items[next]?.classList.add('active');
-                items[next]?.scrollIntoView({ block: 'nearest' });
-
-            } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                const prev = activeIndex > 0 ? activeIndex - 1 : items.length - 1;
-                items.forEach(i => i.classList.remove('active'));
-                items[prev]?.classList.add('active');
-                items[prev]?.scrollIntoView({ block: 'nearest' });
-
-            } else if (e.key === 'Enter' && active) {
-                e.preventDefault();
-                active.dispatchEvent(new MouseEvent('mousedown'));
-
-            } else if (e.key === 'Escape') {
-                dropdown.style.display = 'none';
-            }
-        });
-
-        nameInput.addEventListener('blur', () => {
-            // השהייה קצרה כדי לאפשר לחיצה על פריט
-            setTimeout(() => {
-                dropdown.style.display = 'none';
-            }, 200);
-        });
-
-        nameInput.addEventListener('focus', () => {
-            const val = nameInput.value.trim();
-            if (val.length >= 2) {
-                const suggestions = this._getPermitNameSuggestions(val);
-                showSuggestions(suggestions);
-            }
-        });
-    }
-
-    /**
-     * החלת הצעה על שורת אדם
-     */
-    _applyPermitSuggestion(suggestion, row) {
-        const nameInput = row.querySelector('.permit-name-input');
-        const carInput = row.querySelector('.permit-car-input');
-        const idInput = row.querySelector('.permit-id-input');
-        const phoneInput = row.querySelector('.permit-phone-input');
-        const companyField = document.getElementById('permitCompany');
-        const escortField = document.getElementById('permitEscort');
-
-        if (nameInput) nameInput.value = suggestion.name;
-        if (carInput) carInput.value = suggestion.carNumber || '';
-        if (idInput) idInput.value = suggestion.idNumber || '';
-        if (phoneInput) phoneInput.value = suggestion.phone || '';
-
-        // מלא חברה ומלווה רק אם ריקים
-        if (companyField && !companyField.value.trim() && suggestion.company) {
-            companyField.value = suggestion.company;
-            this._clearFieldError('companyError', 'permitCompany');
-        }
-
-        if (escortField && !escortField.value.trim() && suggestion.escort) {
-            escortField.value = suggestion.escort;
-        }
-
-        // מלא אתרים רק אם לא נבחרו עדיין
-        const checkedSites = document.querySelectorAll('input[name="permitSite"]:checked');
-        if (checkedSites.length === 0 && suggestion.sites && suggestion.sites.length > 0) {
-            document.querySelectorAll('input[name="permitSite"]').forEach(cb => {
-                const shouldCheck = suggestion.sites.some(s => s === cb.value);
-                cb.checked = shouldCheck;
-                cb.nextElementSibling.classList.toggle('selected', shouldCheck);
-            });
-            document.getElementById('siteError').style.display = 'none';
-        }
-
-        // נקה שגיאות
-        if (nameInput) {
-            nameInput.classList.remove('input-error');
-            this._removeInlineError(nameInput);
-        }
-
-        // הצג אנימציית מילוי
-        [nameInput, carInput, idInput, phoneInput].forEach(input => {
-            if (input && input.value) {
-                input.classList.add('autocomplete-filled');
-                setTimeout(() => input.classList.remove('autocomplete-filled'), 600);
-            }
-        });
-
-        NotificationManager.show(`נתונים הושלמו עבור ${suggestion.name}`, 'success');
-    }
-
-    /**
-     * הוספת CSS לרכיבי ההשלמה האוטומטית
-     */
-    _addAutocompleteStyles() {
-        if (document.getElementById('permitAutocompleteStyles')) return;
-
-        const style = document.createElement('style');
-        style.id = 'permitAutocompleteStyles';
-        style.textContent = `
-        /* Dropdown */
-        .permit-autocomplete-dropdown {
-            position: absolute;
-            top: calc(100% + 2px);
-            right: 0;
-            left: 0;
-            background: white;
-            border: 1.5px solid #667eea;
-            border-radius: 8px;
-            box-shadow: 0 8px 24px rgba(102, 126, 234, 0.2);
-            z-index: 9999;
-            max-height: 220px;
-            overflow-y: auto;
-            animation: dropdownFadeIn 0.15s ease;
-        }
-
-        @keyframes dropdownFadeIn {
-            from { opacity: 0; transform: translateY(-6px); }
-            to   { opacity: 1; transform: translateY(0);    }
-        }
-
-        .permit-autocomplete-item {
-            padding: 9px 12px;
-            cursor: pointer;
-            border-bottom: 1px solid #f0f0f0;
-            transition: background 0.12s;
-        }
-
-        .permit-autocomplete-item:last-child {
-            border-bottom: none;
-        }
-
-        .permit-autocomplete-item:hover,
-        .permit-autocomplete-item.active {
-            background: linear-gradient(135deg, #f0f4ff, #f8f0ff);
-        }
-
-        .autocomplete-name {
-            font-weight: 600;
-            color: #222;
-            font-size: 0.92rem;
-        }
-
-        .autocomplete-sub {
-            font-size: 0.78rem;
-            color: #888;
-            margin-top: 2px;
-        }
-
-        /* אנימציית מילוי */
-        @keyframes fillPulse {
-            0%   { background-color: rgba(102, 126, 234, 0.15); }
-            100% { background-color: transparent; }
-        }
-
-        .autocomplete-filled {
-            animation: fillPulse 0.6s ease;
-        }
-
-        /* גלילה בתוך ה-dropdown */
-        .permit-autocomplete-dropdown::-webkit-scrollbar {
-            width: 6px;
-        }
-        .permit-autocomplete-dropdown::-webkit-scrollbar-thumb {
-            background: #c3d0f7;
-            border-radius: 3px;
-        }
-    `;
-        document.head.appendChild(style);
     }
 
     _collectEntryPermitData() {
@@ -20588,19 +13016,15 @@ ${data.base64Data}`;
         else if (dateDisplay === tomorrowStr) dateLabel = `מחר (${dateDisplay})`;
 
         // איסוף מחבר
-        const currentUser = this.getCurrentUserName();
-        let author = currentUser || '';
+        const authorSelect = document.getElementById('permitAuthor');
+        const customAuthorInput = document.getElementById('permitCustomAuthorInput');
+        let author = '';
 
-        if (!author) {
-            // fallback - קרא מה-select רק אם אין יוזר מחובר
-            const authorSelect = document.getElementById('permitAuthor');
-            const customAuthorInput = document.getElementById('permitCustomAuthorInput');
-            if (authorSelect) {
-                if (authorSelect.value === 'other') {
-                    author = customAuthorInput?.value.trim() || '';
-                } else {
-                    author = authorSelect.value;
-                }
+        if (authorSelect) {
+            if (authorSelect.value === 'other') {
+                author = customAuthorInput?.value.trim() || '';
+            } else {
+                author = authorSelect.value;
             }
         }
 
@@ -20694,7 +13118,7 @@ ${data.base64Data}`;
                 cc: 'noc@menoramivt.co.il'
             },
             'פ"ת': {
-                to: 'HananBD1@kyndryl.com',
+                to: 'BAKARA@il.ibm.com;HananBD1@kyndryl.com',
                 cc: 'noc@menoramivt.co.il'
             }
         };
@@ -21674,128 +14098,6 @@ ${htmlBody}
     }
 
     // ========== CSS ==========
-    // הוסף בתוך addTableStyles() או בנפרד:
-    _addControlMStyles() {
-        if (document.getElementById('controlMStyles')) return;
-
-        const style = document.createElement('style');
-        style.id = 'controlMStyles';
-        style.textContent = `
-        .control-m-fetch-wrapper {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            margin-bottom: 15px;
-            padding: 12px;
-            background: linear-gradient(135deg, #f0f4ff, #faf5ff);
-            border: 1.5px dashed #667eea;
-            border-radius: 10px;
-        }
-        
-        .btn-fetch-controlm {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 20px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 0.95rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-family: inherit;
-            width: fit-content;
-        }
-        
-        .btn-fetch-controlm:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-        }
-        
-        .control-m-hint {
-            color: #888;
-            font-size: 0.82rem;
-        }
-        
-        .control-m-table-preview {
-            margin-top: 10px;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        
-        .control-m-preview-header {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 14px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            font-weight: 600;
-            font-size: 0.9rem;
-        }
-        
-        .control-m-preview-header span {
-            flex: 1;
-        }
-        
-        .btn-clear-controlm {
-            background: rgba(255,255,255,0.2);
-            border: 1px solid rgba(255,255,255,0.4);
-            color: white;
-            border-radius: 6px;
-            padding: 3px 8px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        
-        .btn-clear-controlm:hover {
-            background: rgba(255,255,255,0.35);
-        }
-        
-        .control-m-table-wrapper {
-            overflow-x: auto;
-            max-height: 250px;
-            overflow-y: auto;
-        }
-        
-        .control-m-preview-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.82rem;
-        }
-        
-        .control-m-preview-table th {
-            background: #f8f9ff;
-            padding: 7px 10px;
-            text-align: right;
-            border-bottom: 2px solid #e2e8f0;
-            white-space: nowrap;
-            font-weight: 600;
-            color: #444;
-        }
-        
-        .control-m-preview-table td {
-            padding: 6px 10px;
-            border-bottom: 1px solid #f0f0f0;
-            white-space: nowrap;
-        }
-        
-        .control-m-preview-table tr:hover td {
-            background: #f8f9ff;
-        }
-        
-        .more-rows-indicator td {
-            text-align: center;
-            color: #888;
-            font-style: italic;
-            padding: 8px;
-        }
-    `;
-        document.head.appendChild(style);
-    }
 
     _addEntryPermitStyles() {
         if (document.getElementById('entryPermitStyles')) return;
@@ -22024,16 +14326,9 @@ ${htmlBody}
         }
 
         /* רוחב כל שדה בשורה */
-        .name-input-wrapper {
-            flex: 1.2;  
-            min-width: 110px;
-            position: relative;
-        }
-
-        .name-input-wrapper .permit-name-input {
-            width: 100%;
-            min-width: 0;
-            flex: none;
+        .person-inline-fields .permit-name-input {
+            flex: 2.5;          /* שם - הכי רחב */
+            min-width: 130px;
         }
 
         .person-inline-fields .permit-car-input {
@@ -22065,10 +14360,10 @@ ${htmlBody}
             font-weight: 600;
         }
 
-        .person-col-label.col-name  { flex: 1.5; min-width: 110px; }
-        .person-col-label.col-car   { flex: 1.3; min-width: 100px; }
-        .person-col-label.col-id    { flex: 1.3; min-width: 90px;  }
-        .person-col-label.col-phone { flex: 1.3; min-width: 105px; }
+        .person-col-label.col-name    { flex: 1.7; width: 95px;}
+        .person-col-label.col-car     { flex: 1.7; width: 95px;  }
+        .person-col-label.col-id      { flex: 1.7;   width: 95px;  }
+        .person-col-label.col-phone   { flex: 1.7; width: 95px;  }
 
         /* מסך קטן - עבור לעמודות */
         @media (max-width: 560px) {
@@ -22209,36 +14504,6 @@ ${htmlBody}
             align-items: center;
         }
 
-        .history-duplicate-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            padding: 6px 12px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-            border: none;
-            border-radius: 7px;
-            font-size: 0.82rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-family: inherit;
-            white-space: nowrap;
-        }
-
-        .history-duplicate-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-        }
-
-        .history-duplicate-btn:active {
-            transform: translateY(0);
-        }
-
-        .action-cell {
-            min-width: 90px;
-        }
-
         .btn-success {
             background: linear-gradient(135deg, #38a169, #276749);
             color: white;
@@ -22310,4 +14575,3 @@ function toggleFilterTabs() {
     const isCollapsed = content.classList.contains('collapsed');
     localStorage.setItem('messagesFiltersSectionCollapsed', isCollapsed);
 }
-

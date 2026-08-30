@@ -696,6 +696,7 @@ class SavedFiltersManager {
         // close
         dialog.querySelector('#sfpAddClose')?.addEventListener('click', () => dialog.remove());
         dialog.querySelector('#sfpAddCancel')?.addEventListener('click', () => dialog.remove());
+        dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.remove(); });
 
         // save
         dialog.querySelector('#sfpAddSave')?.addEventListener('click', async () => {
@@ -984,6 +985,7 @@ class SavedFiltersManager {
         // --- סגירה ---
         dialog.querySelector('#sfpEditClose')?.addEventListener('click', () => dialog.remove());
         dialog.querySelector('#sfpEditCancel')?.addEventListener('click', () => dialog.remove());
+        dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.remove(); });
 
         // --- שמירה ---
         dialog.querySelector('#sfpEditSave')?.addEventListener('click', async () => {
@@ -1144,6 +1146,14 @@ class SavedFiltersManager {
             confirmBtn.addEventListener('click', () => {
                 modal.remove();
                 resolve(true);
+            });
+
+            // סגירה בלחיצה על הרקע
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.remove();
+                    resolve(false);
+                }
             });
 
             // סגירה ב-Escape
@@ -2003,11 +2013,11 @@ class SavedFiltersManager {
                 color: #a78bfa;
             }
 
-            #alertsInlineControlsBar .saved-filters-btn {
+            .dashboard-header .saved-filters-btn {
                background: linear-gradient(135deg, #9b59b6, #8e44ad);
             }
 
-            #alertsInlineControlsBar .saved-filters-btn:hover {
+            .dashboard-header .saved-filters-btn:hover {
                 box-shadow: 0 0px 0px rgba(39, 174, 96, 0.4);
             }
             /* ===== פאנל ===== */

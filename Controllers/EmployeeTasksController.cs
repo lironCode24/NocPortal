@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using System.Collections.Generic;
 using System.IO;
@@ -14,12 +15,11 @@ public class EmployeeTasksController : Controller
     private const int MaxRetries = 3;
     private const int RetryDelayMs = 100;
 
-    public EmployeeTasksController()
+    public EmployeeTasksController(IWebHostEnvironment env)
     {
-        _employeeService = new EmployeeService();
+        _employeeService = new EmployeeService(env);
         _userTasksService = new UserTasksService();
-        _employeeTasksFilePath = 
-            @"R:\USERS\TASHTIT\NOC\Portal\files\employee_tasks.txt";
+        _employeeTasksFilePath = Path.Combine(env.WebRootPath, "assets", "files", "employee_tasks.txt");
     }
 
     [HttpGet]
@@ -76,6 +76,7 @@ public class EmployeeTasksController : Controller
             try
             {
                 var task = JsonSerializer.Deserialize<EmployeeTask>(line);
+                
                 task.Completed = task.LastCompletedDate == currentDate;
                 if (task.LastSkippedDate == currentDate)
                 {
@@ -84,6 +85,7 @@ public class EmployeeTasksController : Controller
                 else if (task.LastCompletedDate != currentDate)
                 {
                     task.Completed = false;
+                    task.CompletedTime = null;
                     task.SkipReason = null;
                 }
                 if (string.IsNullOrEmpty(task.CreatedAt))
@@ -247,7 +249,7 @@ public class EmployeeTasksController : Controller
                             {
                                 task.Status = "בוצע";
                                 task.Completed = true;
-                                task.CompletedTime = DateTime.Now.ToString("dd/MM/yyyy HH:mm");
+                                task.CompletedTime = DateTime.Now.ToString("HH:mm");
                                 task.LastCompletedDate = request.Date;
                             }
                             else if (request.Progress > 0 && task.Status == "חדש")
@@ -287,10 +289,7 @@ public class EmployeeTasksController : Controller
                 
                 if (task.EmployeeId == employeeId)
                 {
-                    var originalCompletedTime = task.CompletedTime;
-                    
                     task.Completed = task.LastCompletedDate == currentDate;
-                    
                     if (task.LastSkippedDate == currentDate)
                     {
                         task.Completed = false;
@@ -298,15 +297,16 @@ public class EmployeeTasksController : Controller
                     else if (task.LastCompletedDate != currentDate)
                     {
                         task.Completed = false;
+                        task.CompletedTime = null;
                         task.SkipReason = null;
                     }
                     // הוסף תאריך יצירה אם חסר
                     if (string.IsNullOrEmpty(task.CreatedAt))
                     {
                         // השתמש בתאריך מהשדה StatusDate אם קיים, אחרת השתמש בתאריך נוכחי
-                        task.CreatedAt = !string.IsNullOrEmpty(task.StatusDate) 
-                            ? task.StatusDate 
-                            : DateTime.Now.ToString("yyyy-MM-dd");
+                        task.CreatedAt = !string.IsNullOrEmpty(task.StatusDate) ? 
+                            task.StatusDate : 
+                            DateTime.Now.ToString("yyyy-MM-dd");
                     }
                     
                     tasks.Add(task);
@@ -553,7 +553,7 @@ public class EmployeeTasksController : Controller
                                 if (request.Status == "בוצע")
                                 {
                                     task.Completed = true;
-                                    task.CompletedTime = request.CompletedTime ?? DateTime.Now.ToString("dd/MM/yyyy HH:mm");
+                                    task.CompletedTime = request.CompletedTime ?? DateTime.Now.ToString("HH:mm");
                                     task.LastCompletedDate = request.Date;
                                     task.SkipReason = null;
                                 }
@@ -803,7 +803,7 @@ public class EmployeeTasksController : Controller
                         {
                             task.Completed = true;
                             task.CompletedTime = request.CompletedTime
-                                ?? DateTime.Now.ToString("dd/MM/yyyy HH:mm");
+                                ?? DateTime.Now.ToString("HH:mm");
                             task.LastCompletedDate = request.Date;
                             task.SkipReason = null;
                         }
@@ -854,7 +854,7 @@ public class EmployeeTasksController : Controller
                     {
                         task.Status = "בוצע";
                         task.Completed = true;
-                        task.CompletedTime = DateTime.Now.ToString("dd/MM/yyyy HH:mm");
+                        task.CompletedTime = DateTime.Now.ToString("HH:mm");
                         task.LastCompletedDate = request.Date;
                     }
                     else if (request.Progress > 0 && task.Status == "חדש")
