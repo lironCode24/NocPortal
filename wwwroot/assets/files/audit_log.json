@@ -9,5 +9,38 @@
     "IpAddress": "::1",
     "Details": "כניסה מוצלחת | Role: Admin",
     "Success": true
+  },
+  {
+    "Id": "07ddf68b-fddc-435a-9a97-6f04cf314e7d",
+    "Timestamp": "2026-11-07T08:12:27.8174669Z",
+    "EventType": "LOGOUT",
+    "Username": "admin",
+    "UserId": "admin-default-001",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "יציאה מהמערכת",
+    "Success": true
+  },
+  {
+    "Id": "ddee0e30-c74d-4285-a7dc-8b31bf717f0a",
+    "Timestamp": "2026-11-07T08:14:36.5967115Z",
+    "EventType": "LOGIN",
+    "Username": "admin",
+    "UserId": "admin-default-001",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "כניסה מוצלחת | Role: Admin",
+    "Success": true
+  },
+  {
+    "Id": "50322f2b-1122-4ad7-92c8-d6b5685e3467",
+    "Timestamp": "2026-11-07T08:37:41.0720157Z",
+    "EventType": "LOGIN",
+    "Username": "admin",
+    "UserId": "admin-default-001",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "כניסה מוצלחת | Role: Admin",
+    "Success": true
   }
 ]

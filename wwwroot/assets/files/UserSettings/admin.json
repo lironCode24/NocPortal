@@ -43,21 +43,36 @@
     "searchTerm": "",
     "sortColumn": null,
     "sortDirection": "asc",
-    "timestamp": "2026-11-07T08:03:39.493Z"
+    "timestamp": "2026-11-07T08:56:25.251Z"
   },
-  "lastSelectedEmployee": "\u05D8\u05DC",
   "sectionStates": {
     "shifts": true,
-    "employeeTasks": false,
-    "phoneDirectory": false,
-    "activityManagement": false,
-    "procedures": false,
-    "messages": false,
-    "dailyTasks": false,
-    "teamLinks": false,
+    "employeeTasks": true,
+    "phoneDirectory": true,
+    "activityManagement": true,
+    "procedures": true,
+    "messages": true,
+    "dailyTasks": true,
+    "teamLinks": true,
     "datacenter": true,
-    "alerts": false,
-    "changes": false
+    "alerts": true,
+    "changes": true
   },
-  "dashboardColorTheme": "dark"
+  "dashboardColorTheme": "dark",
+  "noc-sections-default-order": {
+    "messagesColumn": [
+      "messages",
+      "dailyTasks",
+      "changes",
+      "activityManagement",
+      "datacenter"
+    ],
+    "shiftsColumn": [
+      "shifts",
+      "phoneDirectory",
+      "procedures",
+      "teamLinks",
+      "employeeTasks"
+    ]
+  }
 }

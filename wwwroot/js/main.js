@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         // Initialize the application
         await nocPortalApp.initialize();
+        openSectionFromHash();
 
         console.log('NOC Portal fully loaded and initialized');
     } catch (error) {
@@ -35,6 +36,20 @@ document.addEventListener('DOMContentLoaded', async function () {
         }
     }
 });
+
+function openSectionFromHash() {
+    const sectionName = (window.location.hash || "").replace("#", "");
+    if (!sectionName || !sectionManager) return;
+
+    const content = document.getElementById(sectionName + "Content");
+    const section = document.querySelector(`[data-section-id="${sectionName}"]`);
+    if (!content || !section) return;
+
+    if (content.classList.contains("collapsed")) {
+        sectionManager.toggleSection(sectionName);
+    }
+    section.scrollIntoView({ behavior: "smooth", block: "start" });
+}
 
 // Define global functions for backward compatibility with onclick handlers
 function defineGlobalFunctions() {

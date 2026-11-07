@@ -1,0 +1,52 @@
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>מדריך הפיצ'רים</title>
+    <link rel="icon" type="image/x-icon" href="https://www.menoramivt.co.il/customers-homepage/static/img/favicon.ico">
+    <link rel="stylesheet" href="https://cdn.menoramivt.co.il/public/fonts/fonts.css">
+    <link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+    <link rel="stylesheet" href="~/css/features-hub.css" asp-append-version="true" />
+</head>
+<body class="features-page">
+    <header class="hub-header">
+        <div class="hub-brand">
+            <div class="hub-mark"><i class="fas fa-book-open"></i></div>
+            <div>
+                <h1>מדריך הפיצ'רים</h1>
+                <p>איך מגיעים לכל פעולה, צעד אחרי צעד</p>
+            </div>
+        </div>
+        <nav class="hub-nav">
+            <a href="/Home">פורטל</a>
+            <a href="/Dashboards">דשבורדים</a>
+        </nav>
+    </header>
+    <div class="hub-shell">
+        <aside class="hub-side">
+            <div class="side-label">תחום</div>
+            <div id="categoryNav"></div>
+            <div class="side-label">למי זה</div>
+            <div id="audienceNav"></div>
+        </aside>
+        <main class="hub-main">
+            <div class="hub-search">
+                <i class="fas fa-search"></i>
+                <input id="featureSearch" type="search" placeholder="חפש פעולה, למשל סוויטה, תיקוף, אקסל, הרשאות..." autocomplete="off" />
+            </div>
+            <div class="hub-lead">
+                <div>
+                    <h2 id="resultTitle">כל המדריכים</h2>
+                    <p id="resultMeta"></p>
+                </div>
+            </div>
+            <div id="hubStage"></div>
+        </main>
+    </div>
+    <script src="~/js/FeaturesHub.js" asp-append-version="true"></script>
+</body>
+</html>

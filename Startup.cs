@@ -119,6 +119,11 @@ namespace MyWebApp
                     defaults: new { controller = "SystemsCatalog", action = "Index" });
 
                 endpoints.MapControllerRoute(
+                    name: "features",
+                    pattern: "features",
+                    defaults: new { controller = "Features", action = "Index" });
+
+                endpoints.MapControllerRoute(
                     name: "default",
                     pattern: "{controller=Auth}/{action=Login}/{id?}");
             });
