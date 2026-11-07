@@ -1,3 +1,4 @@
+@model NocPortal.Models.ContactViewModel
 @{
     Layout = null;
     ViewData["Title"] = "NocPortal";
@@ -8,7 +9,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NocPortal — חדר הבקרה, במסך אחד</title>
+    <title>NocPortal - חדר הבקרה, במסך אחד</title>
     <meta name="description" content="NocPortal מרכז את חדר הבקרה למסך אחד: ניטור, משמרת ותמונת מצב. פחות כלים, יותר שליטה.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -113,33 +114,46 @@
                 <div class="contact-copy">
                     <p class="kicker">צור קשר</p>
                     <h2>רוצים לראות את זה אצלכם?</h2>
-                    <p>השאירו כמה מילים. ייפתח ג'ימייל עם הפנייה מוכנה, וממנו נחזור לשיחה קצרה על חדר הבקרה שלכם.</p>
+                    <p>השאירו פרטים והודעה, ונחזור אליכם בהקדם.</p>
                 </div>
 
-                <form id="contactForm" class="contact-form" novalidate>
+                <form asp-controller="Home" asp-action="Contact" method="post" class="contact-form">
+                    @Html.AntiForgeryToken()
+                    <div asp-validation-summary="ModelOnly" class="form-status is-error"></div>
+                    @if (TempData["Success"] != null)
+                    {
+                        <p class="form-status is-ok" role="status">@TempData["Success"]</p>
+                    }
+                    @if (TempData["Success"] != null)
+                    {
+                        <p class="form-status is-ok" role="status">@TempData["Success"]</p>
+                    }
                     <label>
                         שם
-                        <input type="text" name="name" autocomplete="name" required maxlength="80">
+                        <input asp-for="Name" autocomplete="name" required>
+                        <span asp-validation-for="Name" class="form-status is-error"></span>
                     </label>
                     <label>
                         מייל
-                        <input type="email" name="email" autocomplete="email" required maxlength="120">
+                        <input asp-for="Email" type="email" autocomplete="email" required>
+                        <span asp-validation-for="Email" class="form-status is-error"></span>
+                    </label>
+                    <label>
+                        מספר טלפון
+                        <input asp-for="Phone" type="tel" autocomplete="tel" required>
+                        <span asp-validation-for="Phone" class="form-status is-error"></span>
                     </label>
                     <label>
                         נושא
-                        <select name="topic" required>
-                            <option value="">בחרו נושא</option>
-                            <option>היכרות עם המוצר</option>
-                            <option>הדגמה לחדר בקרה</option>
-                            <option>שאלה כללית</option>
-                        </select>
+                        <input asp-for="Subject" required>
+                        <span asp-validation-for="Subject" class="form-status is-error"></span>
                     </label>
                     <label>
                         הודעה
-                        <textarea name="message" rows="5" required maxlength="2000" placeholder="ספרו בקצרה מי אתם ומה תרצו לראות"></textarea>
+                        <textarea asp-for="Message" rows="5" required placeholder="ספרו בקצרה מי אתם ומה תרצו לראות"></textarea>
+                        <span asp-validation-for="Message" class="form-status is-error"></span>
                     </label>
-                    <p class="form-status" role="status" hidden></p>
-                    <button type="submit" class="btn btn-primary">פתיחה בג'ימייל</button>
+                    <button type="submit" class="btn btn-primary">שליחת הודעה</button>
                 </form>
             </div>
         </section>
@@ -164,41 +178,6 @@
             });
         });
 
-        const form = document.getElementById('contactForm');
-        const status = form.querySelector('.form-status');
-
-        function showStatus(text, ok) {
-            status.hidden = false;
-            status.textContent = text;
-            status.classList.toggle('is-ok', ok);
-            status.classList.toggle('is-error', !ok);
-        }
-
-        form.addEventListener('submit', (event) => {
-            event.preventDefault();
-            const data = new FormData(form);
-            const name = String(data.get('name') || '').trim();
-            const email = String(data.get('email') || '').trim();
-            const topic = String(data.get('topic') || '').trim();
-            const message = String(data.get('message') || '').trim();
-            const emailOk = /^[^\s@@]+@@[^\s@@]+\.[^\s@@]+$/.test(email);
-
-            if (name.length < 2 || !emailOk || !topic || message.length < 5) {
-                showStatus('מלאו שם, מייל תקין, נושא והודעה קצרה.', false);
-                return;
-            }
-
-            const subject = `NocPortal | ${topic} | ${name}`;
-            const body = `שם: ${name}\nמייל לחזרה: ${email}\nנושא: ${topic}\n\n${message}`;
-            const to = 'talyohay@yahoo.com,lirongo12@gmail.com';
-            const gmail = 'https://mail.google.com/mail/?view=cm&fs=1'
-                + `&to=${encodeURIComponent(to)}`
-                + `&su=${encodeURIComponent(subject)}`
-                + `&body=${encodeURIComponent(body)}`;
-            const draft = window.open(gmail, '_blank', 'noopener');
-            if (!draft) window.location.href = gmail;
-            showStatus('נפתח ג\'ימייל עם הפנייה מוכנה. שלחו אותה כדי שהיא תגיע אלינו.', true);
-        });
     </script>
 </body>
 </html>

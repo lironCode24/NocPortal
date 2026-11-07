@@ -364,7 +364,8 @@ namespace NocPortal.Services
             string toName,
             string subject,
             string htmlBody,
-            string emailEventType = AuditEventTypes.EmailSent)
+            string emailEventType = AuditEventTypes.EmailSent,
+            string? replyToEmail = null)
         {
             try
             {
@@ -393,6 +394,8 @@ namespace NocPortal.Services
                 mail.BodyEncoding    = System.Text.Encoding.UTF8;
                 mail.HeadersEncoding = System.Text.Encoding.UTF8;
                 mail.To.Add(new MailAddress(toEmail, toName));
+                if (!string.IsNullOrWhiteSpace(replyToEmail))
+                    mail.ReplyToList.Add(new MailAddress(replyToEmail));
 
                 await client.SendMailAsync(mail);
 
@@ -441,6 +444,59 @@ namespace NocPortal.Services
                     "[Email] ❌ שגיאה | אל: {Email}", toEmail);
                 return (false, $"Error: {ex.Message}");
             }
+        }
+
+        public async Task<(bool success, string message)> SendContactMessageAsync(
+            string name,
+            string email,
+            string phone,
+            string subject,
+            string message)
+        {
+            var recipients = _config.GetSection("Email:AdminList").Get<string[]>()
+                ?.Where(address => !string.IsNullOrWhiteSpace(address))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray() ?? Array.Empty<string>();
+
+            if (recipients.Length == 0)
+            {
+                _logger.LogError("לא הוגדרו נמענים לשליחת פניות מטופס צור קשר");
+                return (false, "לא הוגדרו נמענים");
+            }
+
+            var encodedMessage = WebUtility.HtmlEncode(message)
+                .Replace("\r\n", "<br />")
+                .Replace("\n", "<br />");
+            var body = $@"
+                <p><strong>שם:</strong> {WebUtility.HtmlEncode(name)}</p>
+                <p><strong>מייל:</strong> {WebUtility.HtmlEncode(email)}</p>
+                <p><strong>טלפון:</strong> {WebUtility.HtmlEncode(phone)}</p>
+                <p><strong>נושא:</strong> {WebUtility.HtmlEncode(subject)}</p>
+                <p><strong>הודעה:</strong><br />{encodedMessage}</p>";
+            var htmlBody = BuildEmailHtml(
+                ColorAccent,
+                "פנייה חדשה",
+                "טופס צור קשר",
+                body);
+
+            var failures = new List<string>();
+            foreach (var recipient in recipients)
+            {
+                var (sent, error) = await SendEmailAsync(
+                    recipient,
+                    "NOC",
+                    $"פנייה חדשה: {subject}",
+                    htmlBody,
+                    AuditEventTypes.EmailSent,
+                    email);
+
+                if (!sent)
+                    failures.Add($"{recipient}: {error}");
+            }
+
+            return failures.Count == 0
+                ? (true, "ההודעה נשלחה בהצלחה")
+                : (false, $"שליחה נכשלה לחלק מהנמענים: {string.Join("; ", failures)}");
         }
 
         // ────────────────────────────────────────────────────────────────────

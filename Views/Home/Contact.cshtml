@@ -1,17 +1,51 @@
+@model NocPortal.Models.ContactViewModel
 @{
-    ViewData["Title"] = "Contact";
+    ViewData["Title"] = "צור קשר";
 }
-<h2>@ViewData["Title"]</h2>
-<h3>@ViewData["Message"]</h3>
 
-<address>
-    One Microsoft Way<br />
-    Redmond, WA 98052-6399<br />
-    <abbr title="Phone">P:</abbr>
-    425.555.0100
-</address>
+<div dir="rtl" style="max-width:720px; margin:30px auto;">
+    <h2>@ViewData["Title"]</h2>
+    <p>מלאו את הפרטים ונחזור אליכם בהקדם.</p>
 
-<address>
-    <strong>Support:</strong> <a href="mailto:Support@example.com">Support@example.com</a><br />
-    <strong>Marketing:</strong> <a href="mailto:Marketing@example.com">Marketing@example.com</a>
-</address>
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success" role="status">@TempData["Success"]</div>
+    }
+
+    <form asp-action="Contact" method="post">
+        @Html.AntiForgeryToken()
+        <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+        <div class="form-group">
+            <label asp-for="Name">שם</label>
+            <input asp-for="Name" class="form-control" autocomplete="name" />
+            <span asp-validation-for="Name" class="text-danger"></span>
+        </div>
+
+        <div class="form-group">
+            <label asp-for="Email">מייל</label>
+            <input asp-for="Email" class="form-control" type="email" autocomplete="email" />
+            <span asp-validation-for="Email" class="text-danger"></span>
+        </div>
+
+        <div class="form-group">
+            <label asp-for="Phone">מספר טלפון</label>
+            <input asp-for="Phone" class="form-control" type="tel" autocomplete="tel" />
+            <span asp-validation-for="Phone" class="text-danger"></span>
+        </div>
+
+        <div class="form-group">
+            <label asp-for="Subject">נושא</label>
+            <input asp-for="Subject" class="form-control" />
+            <span asp-validation-for="Subject" class="text-danger"></span>
+        </div>
+
+        <div class="form-group">
+            <label asp-for="Message">תוכן ההודעה</label>
+            <textarea asp-for="Message" class="form-control" rows="6"></textarea>
+            <span asp-validation-for="Message" class="text-danger"></span>
+        </div>
+
+        <button type="submit" class="btn btn-primary">שליחת הודעה</button>
+    </form>
+</div>

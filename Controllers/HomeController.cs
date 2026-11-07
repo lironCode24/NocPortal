@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using MyWebApp.Models;
 using Microsoft.AspNetCore.Authorization;
 using NocPortal.Services; 
+using NocPortal.Models;
 
 namespace MyWebApp.Controllers
 {
@@ -14,10 +15,12 @@ namespace MyWebApp.Controllers
     public class HomeController : Controller
     {
         private readonly UserService _userService;
+        private readonly EmailService _emailService;
 
-        public HomeController(UserService userService)
+        public HomeController(UserService userService, EmailService emailService)
         {
             _userService = userService;
+            _emailService = emailService;
         }
         // ─────────────────────────────────────────────────────────────
 
@@ -32,7 +35,7 @@ namespace MyWebApp.Controllers
                 return RedirectToAction("Index", "Dashboards");
             }
 
-            return View();
+            return View(new ContactViewModel());
         }
 
         [Authorize(Roles = "Admin,NOC")]
@@ -53,10 +56,35 @@ namespace MyWebApp.Controllers
             return View();
         }
 
+        [AllowAnonymous]
         public IActionResult Contact()
         {
-            ViewData["Message"] = "Your contact page.";
-            return View();
+            return View(new ContactViewModel());
+        }
+
+        [AllowAnonymous]
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Contact(ContactViewModel model)
+        {
+            if (!ModelState.IsValid)
+                return View("Landing", model);
+
+            var (success, _) = await _emailService.SendContactMessageAsync(
+                model.Name,
+                model.Email,
+                model.Phone,
+                model.Subject,
+                model.Message);
+
+            if (!success)
+            {
+                ModelState.AddModelError(string.Empty, "לא ניתן לשלוח את ההודעה כרגע. נא לנסות שוב מאוחר יותר.");
+                return View("Landing", model);
+            }
+
+            TempData["Success"] = "ההודעה נשלחה בהצלחה.";
+            return RedirectToAction(nameof(Landing));
         }
 
         public IActionResult Privacy()
