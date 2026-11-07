@@ -1507,29 +1507,116 @@ tr:hover .btn-role-edit {
 }
 
 /* Select */
+/* ══════════════════════════════════════════
+   AUDIT SELECT - תיקון רקע לבן
+══════════════════════════════════════════ */
+
+/* Select עצמו */
 .audit-select {
-    background:   #21262d;
-    border:       1px solid #30363d;
-    color:        #e6edf3;
-    border-radius: 8px;
-    padding:      8px 12px;
-    font-family:  inherit;
-    font-size:    0.88rem;
-    cursor:       pointer;
-    outline:      none;
-    transition:   all 0.2s ease;
-    width:        100%;
+    background:        #21262d;
+    border:            1px solid #30363d;
+    color:             #e6edf3;
+    border-radius:     8px;
+    padding:           9px 12px;
+    font-family:       inherit;
+    font-size:         0.88rem;
+    cursor:            pointer;
+    outline:           none;
+    transition:        all 0.2s ease;
+    width:             100%;
+    height:            40px;
+    /* ← תיקון רקע לבן */
+    color-scheme:      dark;
+    -webkit-appearance: none;
+    appearance:        none;
+
+    /* חץ מותאם */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='rgba(255,255,255,0.4)' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat:   no-repeat;
+    background-position: left 12px center; /* RTL - שמאל */
+    padding-left:        36px;
 }
 
-.audit-select:hover  { border-color: #484f58; }
-.audit-select:focus  {
+.audit-select:hover {
+    border-color: #484f58;
+}
+
+.audit-select:focus {
     border-color: #4a9eff;
     box-shadow:   0 0 0 3px rgba(74, 158, 255, 0.12);
 }
 
-/* Input עם אייקון */
-.audit-search-input-wrap {
-    position: relative;
+/* Options - כהה */
+.audit-select option {
+    background:   #21262d;
+    color:        #e6edf3;
+    padding:      8px 12px;
+    font-size:    0.88rem;
+}
+
+/* Optgroup תווית */
+.audit-select optgroup {
+    background:   #161b22;
+    color:        rgba(255, 255, 255, 0.4);
+    font-size:    0.78rem;
+    font-weight:  600;
+    font-style:   normal;
+    padding:      6px 0;
+}
+
+/* Option בתוך optgroup */
+.audit-select optgroup option {
+    background:   #21262d;
+    color:        #e6edf3;
+    padding-right: 16px; /* הזחה לאפשרויות */
+}
+
+/* Option נבחרת */
+.audit-select option:checked,
+.audit-select option:selected {
+    background:   rgba(74, 158, 255, 0.3);
+    color:        #7ec8ff;
+}
+
+/* ── כל ה-select במערכת ────────────────── */
+select {
+    color-scheme: dark;
+}
+
+/* ── תיקון לכל dropdown ──────────────────
+   Firefox - תמיכה נוספת               */
+@-moz-document url-prefix() {
+    .audit-select option,
+    .audit-select optgroup {
+        background: #21262d;
+        color:      #e6edf3;
+    }
+}
+
+/* ── שדה תאריך לא תקין ────────────────── */
+.audit-input.date-invalid {
+    border-color: rgba(220, 53, 69, 0.6) !important;
+    background:   rgba(220, 53, 69, 0.08) !important;
+    color:        #ff6b7a !important;
+}
+
+.audit-input.date-invalid::placeholder {
+    color: rgba(220, 53, 69, 0.5);
+}
+
+/* ── הודעת שגיאה תאריך ───────────────── */
+.date-range-error {
+    display:       none;
+    align-items:   center;
+    gap:           8px;
+    padding:       8px 14px;
+    background:    rgba(220, 53, 69, 0.1);
+    border:        1px solid rgba(220, 53, 69, 0.3);
+    border-radius: 8px;
+    color:         #ff6b7a;
+    font-size:     0.83rem;
+    margin-top:    8px;
+    animation:     slideDown 0.2s ease;
 }
 
 .audit-search-icon {
@@ -1658,6 +1745,488 @@ tr:hover .btn-role-edit {
     background:   rgba(118, 75, 162, 0.15);
     border-color: rgba(118, 75, 162, 0.4);
     color:        #b39ddb;
+}
+
+/* ============================================
+   AUDIT FILTER - IMPROVED
+   ============================================ */
+
+/* גוף הסינון - גריד במקום flex */
+.audit-filter-body {
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* טופס סינון - גריד 2 שורות */
+.audit-filter-form {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px;
+    align-items: end;
+}
+
+/* קבוצת שדה */
+.audit-filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0; /* מניעת overflow בגריד */
+}
+
+/* תווית */
+.audit-filter-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.45);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+
+.audit-filter-label i {
+    font-size: 0.72rem;
+    color: #4a9eff;
+    width: 12px;
+}
+
+/* Select */
+.audit-select {
+    background:    #21262d;
+    border:        1px solid #30363d;
+    color:         #e6edf3;
+    border-radius: 8px;
+    padding:       9px 12px;
+    font-family:   inherit;
+    font-size:     0.88rem;
+    cursor:        pointer;
+    outline:       none;
+    transition:    all 0.2s ease;
+    width:         100%;
+    height:        40px;
+}
+
+.audit-select:hover { border-color: #484f58; }
+.audit-select:focus {
+    border-color: #4a9eff;
+    box-shadow:   0 0 0 3px rgba(74, 158, 255, 0.12);
+}
+
+/* Input עם אייקון */
+.audit-search-input-wrap {
+    position: relative;
+}
+
+.audit-search-icon {
+    position:       absolute;
+    right:          12px;
+    top:            50%;
+    transform:      translateY(-50%);
+    color:          rgba(255, 255, 255, 0.3);
+    font-size:      0.82rem;
+    pointer-events: none;
+    transition:     color 0.2s;
+}
+
+.audit-search-input-wrap:focus-within .audit-search-icon {
+    color: #4a9eff;
+}
+
+.audit-input {
+    width:         100%;
+    background:    #21262d;
+    border:        1px solid #30363d;
+    color:         #e6edf3;
+    border-radius: 8px;
+    padding:       9px 36px 9px 12px;
+    font-family:   inherit;
+    font-size:     0.88rem;
+    outline:       none;
+    transition:    all 0.2s ease;
+    direction:     rtl;
+    height:        40px;
+    box-sizing:    border-box;
+}
+
+.audit-input::placeholder { color: rgba(255, 255, 255, 0.2); }
+.audit-input:hover         { border-color: #484f58; }
+.audit-input:focus         {
+    border-color: #4a9eff;
+    box-shadow:   0 0 0 3px rgba(74, 158, 255, 0.12);
+}
+
+/* שדה עם ערך פעיל */
+.audit-input.has-value,
+.audit-select.has-value {
+    border-color: rgba(74, 158, 255, 0.5);
+    background:   rgba(74, 158, 255, 0.06);
+    color:        #7ec8ff;
+}
+
+/* כפתורי פעולה */
+.audit-filter-actions {
+    display:     flex;
+    gap:         8px;
+    align-items: flex-end;
+    flex-shrink: 0;
+    height:      40px;
+}
+
+.audit-filter-actions .btn {
+    height:      40px;
+    white-space: nowrap;
+}
+
+/* ── Active Filters Summary ── */
+.audit-active-filters {
+    display:       none; /* מוצג רק כשיש סינון */
+    align-items:   center;
+    gap:           8px;
+    padding:       10px 14px;
+    background:    rgba(74, 158, 255, 0.06);
+    border:        1px solid rgba(74, 158, 255, 0.18);
+    border-radius: 8px;
+    flex-wrap:     wrap;
+    font-size:     0.82rem;
+    animation:     slideDown 0.2s ease;
+}
+
+.audit-active-filters.visible {
+    display: flex;
+}
+
+.audit-active-filters-label {
+    color:       rgba(255, 255, 255, 0.35);
+    font-weight: 600;
+    font-size:   0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    display:     flex;
+    align-items: center;
+    gap:         5px;
+    white-space: nowrap;
+}
+
+.audit-active-filters-label i {
+    color: #4a9eff;
+}
+
+/* תגיות סינון פעיל */
+.audit-filter-tag {
+    display:       inline-flex;
+    align-items:   center;
+    gap:           5px;
+    padding:       4px 10px;
+    background:    rgba(74, 158, 255, 0.15);
+    border:        1px solid rgba(74, 158, 255, 0.3);
+    border-radius: 20px;
+    color:         #7ec8ff;
+    font-size:     0.78rem;
+    font-weight:   500;
+}
+
+.audit-filter-tag-remove {
+    background:  none;
+    border:      none;
+    color:       rgba(74, 158, 255, 0.5);
+    cursor:      pointer;
+    padding:     0;
+    font-size:   0.7rem;
+    line-height: 1;
+    transition:  color 0.2s;
+    display:     flex;
+    align-items: center;
+    margin-right: 2px; /* RTL */
+}
+
+.audit-filter-tag-remove:hover {
+    color: #ff6b7a;
+}
+
+/* ══════════════════════════════════════════
+   AUDIT CHIPS - עיצוב מחדש
+══════════════════════════════════════════ */
+
+/* מיכל הצ'יפס */
+.audit-chips-section {
+    border-top: 1px solid #21262d;
+    padding-top: 16px;
+}
+
+.audit-chips-title {
+    font-size:      0.72rem;
+    font-weight:    600;
+    color:          rgba(255, 255, 255, 0.25);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom:  10px;
+    display:        flex;
+    align-items:    center;
+    gap:            6px;
+}
+
+.audit-chips-title i {
+    font-size: 0.68rem;
+    color:     rgba(255, 255, 255, 0.2);
+}
+
+.audit-chips-groups {
+    display:   flex;
+    flex-direction: column;
+    gap:       10px;
+}
+
+/* קבוצת צ'יפס */
+.audit-chips-group {
+    display:   flex;
+    gap:       6px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.audit-chips-group-label {
+    font-size:   0.7rem;
+    color:       rgba(255, 255, 255, 0.2);
+    white-space: nowrap;
+    min-width:   60px;
+    padding-top: 1px;
+}
+
+/* צ'יפ יחיד - עיצוב מחדש */
+.audit-chip {
+    display:         inline-flex;
+    align-items:     center;
+    gap:             6px;
+    padding:         6px 14px;
+    border-radius:   8px; /* פחות עגול - נראה יותר רציני */
+    border:          1px solid rgba(255, 255, 255, 0.1);
+    background:      rgba(255, 255, 255, 0.04);
+    color:           rgba(255, 255, 255, 0.55);
+    font-size:       0.82rem;
+    font-weight:     500;
+    text-decoration: none;
+    transition:      all 0.18s ease;
+    white-space:     nowrap;
+    cursor:          pointer;
+    position:        relative;
+}
+
+.audit-chip:hover {
+    border-color:    rgba(255, 255, 255, 0.25);
+    color:           rgba(255, 255, 255, 0.85);
+    background:      rgba(255, 255, 255, 0.09);
+    text-decoration: none;
+    transform:       translateY(-1px);
+}
+
+.audit-chip i {
+    font-size:   0.75rem;
+    flex-shrink: 0;
+}
+
+/* מספר רשומות בצ'יפ */
+.audit-chip-count {
+    background:    rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding:       1px 6px;
+    font-size:     0.7rem;
+    font-weight:   700;
+    min-width:     20px;
+    text-align:    center;
+    transition:    background 0.18s;
+}
+
+/* ── צ'יפ "הכל" ── */
+.audit-chip-all {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.15);
+    font-weight: 600;
+}
+
+.audit-chip-all.active {
+    background:   rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.35);
+    color:        #fff;
+}
+
+.audit-chip-all.active .audit-chip-count {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* ── צבעים לפי קטגוריה ── */
+
+/* כניסות */
+.audit-chip-login:hover,
+.audit-chip-login.active {
+    background:   rgba(40, 167, 69, 0.18);
+    border-color: rgba(40, 167, 69, 0.45);
+    color:        #6fcf97;
+}
+.audit-chip-login.active .audit-chip-count {
+    background: rgba(40, 167, 69, 0.3);
+}
+
+/* כניסה כושלת */
+.audit-chip-login-failed:hover,
+.audit-chip-login-failed.active {
+    background:   rgba(220, 53, 69, 0.18);
+    border-color: rgba(220, 53, 69, 0.45);
+    color:        #ff6b7a;
+}
+.audit-chip-login-failed.active .audit-chip-count {
+    background: rgba(220, 53, 69, 0.3);
+}
+
+/* יציאה */
+.audit-chip-logout:hover,
+.audit-chip-logout.active {
+    background:   rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.3);
+    color:        rgba(255, 255, 255, 0.75);
+}
+
+/* הרשמה */
+.audit-chip-register:hover,
+.audit-chip-register.active {
+    background:   rgba(74, 158, 255, 0.18);
+    border-color: rgba(74, 158, 255, 0.45);
+    color:        #4a9eff;
+}
+.audit-chip-register.active .audit-chip-count {
+    background: rgba(74, 158, 255, 0.3);
+}
+
+/* אישור משתמש */
+.audit-chip-user-approved:hover,
+.audit-chip-user-approved.active {
+    background:   rgba(40, 167, 69, 0.18);
+    border-color: rgba(40, 167, 69, 0.45);
+    color:        #6fcf97;
+}
+
+/* מחיקת משתמש */
+.audit-chip-user-deleted:hover,
+.audit-chip-user-deleted.active {
+    background:   rgba(220, 53, 69, 0.18);
+    border-color: rgba(220, 53, 69, 0.45);
+    color:        #ff6b7a;
+}
+
+/* שינוי תפקיד */
+.audit-chip-role-changed:hover,
+.audit-chip-role-changed.active {
+    background:   rgba(240, 165, 0, 0.18);
+    border-color: rgba(240, 165, 0, 0.45);
+    color:        #f0a500;
+}
+.audit-chip-role-changed.active .audit-chip-count {
+    background: rgba(240, 165, 0, 0.3);
+}
+
+/* שינוי הרשאות */
+.audit-chip-permissions-changed:hover,
+.audit-chip-permissions-changed.active {
+    background:   rgba(118, 75, 162, 0.18);
+    border-color: rgba(118, 75, 162, 0.45);
+    color:        #b39ddb;
+}
+
+/* הודעות */
+.audit-chip-message-created:hover,
+.audit-chip-message-created.active,
+.audit-chip-message-edited:hover,
+.audit-chip-message-edited.active,
+.audit-chip-message-deactivated:hover,
+.audit-chip-message-deactivated.active,
+.audit-chip-message-acknowledged:hover,
+.audit-chip-message-acknowledged.active {
+    background:   rgba(52, 211, 153, 0.15);
+    border-color: rgba(52, 211, 153, 0.4);
+    color:        #34d399;
+}
+
+/* מיילים - הצלחה */
+.audit-chip-email-sent:hover,
+.audit-chip-email-sent.active,
+.audit-chip-email-temp-pass:hover,
+.audit-chip-email-temp-pass.active,
+.audit-chip-email-approved:hover,
+.audit-chip-email-approved.active {
+    background:   rgba(6, 182, 212, 0.15);
+    border-color: rgba(6, 182, 212, 0.4);
+    color:        #06b6d4;
+}
+
+/* מיילים - כישלון */
+.audit-chip-email-failed:hover,
+.audit-chip-email-failed.active {
+    background:   rgba(220, 53, 69, 0.15);
+    border-color: rgba(220, 53, 69, 0.4);
+    color:        #ff6b7a;
+}
+
+/* סיסמאות */
+.audit-chip-passwordchanged:hover,
+.audit-chip-passwordchanged.active,
+.audit-chip-passwordreset:hover,
+.audit-chip-passwordreset.active,
+.audit-chip-passwordresetrequested:hover,
+.audit-chip-passwordresetrequested.active {
+    background:   rgba(245, 158, 11, 0.15);
+    border-color: rgba(245, 158, 11, 0.4);
+    color:        #fbbf24;
+}
+
+/* ── סטייט פעיל - קו תחתון / אינדיקטור ── */
+.audit-chip.active {
+    font-weight: 600;
+    box-shadow:  0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.audit-chip.active::after {
+    content:       '';
+    position:      absolute;
+    bottom:        -1px;
+    right:         20%;
+    left:          20%;
+    height:        2px;
+    border-radius: 2px 2px 0 0;
+    background:    currentColor;
+    opacity:       0.6;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    .audit-filter-form {
+        grid-template-columns: 1fr;
+    }
+
+    .audit-filter-actions {
+        width:  100%;
+        height: auto;
+    }
+
+    .audit-filter-actions .btn {
+        flex:   1;
+        height: 40px;
+    }
+
+    .audit-chips-groups {
+        gap: 8px;
+    }
+
+    .audit-chip {
+        font-size: 0.78rem;
+        padding:   5px 10px;
+    }
+
+    .audit-chips-group-label {
+        display: none; /* הסתר תוויות קבוצה במובייל */
+    }
 }
 
 /* ══════════════════════════════════════════
@@ -2506,9 +3075,8 @@ EMAIL MODAL
 /* ── Admin Dashboard Grid ── */
 .admin-dashboard-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 1.5rem;
-    padding: 2rem;
     max-width: 1700px;
     margin: 0 auto;
 }
@@ -2553,6 +3121,7 @@ EMAIL MODAL
 .admin-nav-card.card-dashboards:hover { border-color: #f59e0b; box-shadow: 0 12px 40px rgba(245,158,11,0.2); }
 .admin-nav-card.card-portal:hover { border-color: #f87171; box-shadow: 0 12px 40px rgba(248,113,113,0.2); }
 .admin-nav-card.card-phonechange:hover { border-color: #06b6d4; box-shadow: 0 12px 40px rgba(6, 182, 212, 0.2);}
+.admin-nav-card.card-blocked-days:hover { border-color: #ef4444; box-shadow: 0 12px 40px rgba(239, 68, 68, 0.2);}
 
 .nav-card-icon {
     width: 72px;
@@ -2571,6 +3140,7 @@ EMAIL MODAL
 .icon-dashboards{ background: rgba(245,158,11,0.15);  color: #f59e0b; }
 .icon-portal    { background: rgba(248,113,113,0.15); color: #f87171; }
 .icon-phonechange { background: rgba(6, 182, 212, 0.15); color: #06b6d4; }
+.icon-blocked-days { background: rgba(239, 68, 68, 0.15); color: #ef4444;}
 
 .nav-card-title {
     font-size: 1.15rem;
@@ -3506,4 +4076,277 @@ textarea.form-control { resize: vertical; min-height: 150px; }
 .edit-changes-summary i {
     flex-shrink: 0;
     font-size:   0.85rem;
+}
+
+/* ══ כותרת קבועה בגלילה ══════════════════════════════════════════ */
+.changes-table-wrap {
+    overflow-x: auto;
+    overflow-y: auto;           /* ← הוסף */
+    max-height: 600px;          /* ← הוסף גובה מקסימלי */
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.08);
+    position: relative;         /* ← הוסף */
+}
+
+.changes-table thead th {
+    position: sticky;           /* ← הוסף */
+    top: 0;                     /* ← הוסף */
+    z-index: 10;                /* ← הוסף */
+    background: #1a1a2e;        /* ← הוסף - צבע רקע אחיד */
+    box-shadow: 0 1px 0 rgba(255,255,255,.08); /* ← הוסף */
+}
+
+/* ── שורת סינון מתחת לכותרת ──────────────────────────────────── */
+.changes-table thead tr.filter-row th {
+    position: sticky;
+    top: 41px;                  /* ← גובה שורת הכותרת */
+    z-index: 9;
+    background: #141428;        /* ← צבע כהה יותר להבדלה */
+    padding: .35rem .5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,.3);
+}
+
+/* ── תיבת סינון בעמודה ────────────────────────────────────────── */
+.col-filter-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.col-filter-input {
+    width: 100%;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 5px;
+    color: rgba(255,255,255,.8);
+    font-size: .75rem;
+    padding: .28rem .28rem .28rem 1.6rem;
+    outline: none;
+    transition: border-color .2s, background .2s;
+    direction: rtl;
+    min-width: 60px;
+}
+
+.col-filter-input:focus {
+    border-color: rgba(99,102,241,.5);
+    background: rgba(99,102,241,.08);
+}
+
+.col-filter-input::placeholder {
+    color: rgba(255,255,255,.2);
+    font-size: .72rem;
+}
+
+.col-filter-icon {
+    position: absolute;
+    left: .4rem;
+    color: rgba(255,255,255,.2);
+    font-size: .65rem;
+    pointer-events: none;
+}
+
+/* ── כפתור ניקוי סינון עמודה ──────────────────────────────────── */
+.col-filter-clear {
+    position: absolute;
+    right: .3rem;
+    background: none;
+    border: none;
+    color: rgba(255,255,255,.2);
+    cursor: pointer;
+    font-size: .6rem;
+    padding: 0;
+    display: none;
+    line-height: 1;
+    transition: color .2s;
+}
+
+.col-filter-clear.visible  { display: block; }
+.col-filter-clear:hover    { color: #f87171; }
+
+/* ── אינדיקטור סינון פעיל ─────────────────────────────────────── */
+.col-filter-input.active {
+    border-color: rgba(99,102,241,.5);
+    background: rgba(99,102,241,.1);
+    color: #a5b4fc;
+}
+
+/* ── פס סינון פעיל ────────────────────────────────────────────── */
+.active-filters-bar {
+    display: none;
+    align-items: center;
+    gap: .5rem;
+    padding: .5rem .8rem;
+    background: rgba(99,102,241,.07);
+    border: 1px solid rgba(99,102,241,.15);
+    border-radius: 7px;
+    margin-bottom: .7rem;
+    flex-wrap: wrap;
+    font-size: .78rem;
+}
+
+.active-filters-bar.visible { display: flex; }
+
+.active-filters-label {
+    color: rgba(255,255,255,.35);
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    white-space: nowrap;
+}
+
+.active-filters-label i { color: #6366f1; }
+
+.active-filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .18rem .55rem;
+    background: rgba(99,102,241,.15);
+    border: 1px solid rgba(99,102,241,.3);
+    border-radius: 12px;
+    color: #a5b4fc;
+    font-size: .73rem;
+}
+
+.active-filter-chip button {
+    background: none;
+    border: none;
+    color: rgba(165,180,252,.5);
+    cursor: pointer;
+    padding: 0;
+    font-size: .62rem;
+    line-height: 1;
+    transition: color .2s;
+}
+
+.active-filter-chip button:hover { color: #f87171; }
+
+.btn-clear-all-filters {
+    margin-right: auto;
+    background: none;
+    border: 1px solid rgba(239,68,68,.25);
+    border-radius: 6px;
+    color: rgba(239,68,68,.6);
+    font-size: .73rem;
+    padding: .18rem .55rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: .3rem;
+    transition: all .2s;
+}
+
+.btn-clear-all-filters:hover {
+    background: rgba(239,68,68,.1);
+    color: #f87171;
+}
+
+/* ── מונה שורות מסוננות ───────────────────────────────────────── */
+.filtered-count-bar {
+    font-size: .78rem;
+    color: rgba(255,255,255,.3);
+    margin-bottom: .5rem;
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+}
+
+.filtered-count-bar strong { color: rgba(255,255,255,.6); }
+.filtered-count-bar.hidden { display: none; }
+
+
+/* ── שורה מוסתרת בסינון עמודה ────────────────────────────────── */
+.changes-table tr.col-filter-hidden { display: none; }
+
+/* ── indeterminate checkbox ───────────────────────────────────── */
+#selectAllChanges:indeterminate {
+    opacity: .7;
+}
+
+/* ── select בשורת סינון ───────────────────────────────────────── */
+.col-filter-input select,
+select.col-filter-input {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-left: 1.4rem;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='rgba(255,255,255,.3)'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: left .4rem center;
+}
+
+select.col-filter-input option {
+    background: #1a1a2e;
+    color: rgba(255,255,255,.85);
+}
+
+/* ══ אינדיקציה לשינוי ישן (מעל 5 ימים) ══════════════════════════ */
+.btn-reapprove-row {
+    padding: .3rem .7rem;
+    border-radius: 6px;
+    border: 1px solid rgba(245,158,11,.4);
+    background: rgba(245,158,11,.12);
+    color: #fbbf24;
+    font-size: .75rem;
+    cursor: pointer;
+    transition: all .2s;
+    display: flex;
+    align-items: center;
+    gap: .3rem;
+    animation: pulse-warning 2s infinite;
+}
+
+.btn-reapprove-row:hover {
+    background: rgba(245,158,11,.25);
+    border-color: rgba(245,158,11,.6);
+}
+
+@keyframes pulse-warning {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,.4); }
+    50%       { box-shadow: 0 0 0 4px rgba(245,158,11,.0); }
+}
+
+.stale-change-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    font-size: .7rem;
+    color: #fbbf24;
+    margin-top: .2rem;
+    padding: .15rem .5rem;
+    background: rgba(245,158,11,.1);
+    border-radius: 4px;
+    border: 1px solid rgba(245,158,11,.2);
+}
+
+.status-badge.reapprove {
+    background: rgba(245,158,11,.12);
+    color: #fbbf24;
+    border: 1px solid rgba(245,158,11,.3);
+    animation: pulse-reapprove 2.5s infinite;
+}
+
+@keyframes pulse-reapprove {
+    0%, 100% { box-shadow: 0 0 0 0   rgba(245,158,11,.5); }
+    50%       { box-shadow: 0 0 0 4px rgba(245,158,11,.0); }
+}
+
+/* ══ כפתור אישור מחדש ══ */
+.btn-reapprove-row {
+    padding: .3rem .7rem;
+    border-radius: 6px;
+    border: 1px solid rgba(245,158,11,.4);
+    background: rgba(245,158,11,.12);
+    color: #fbbf24;
+    font-size: .75rem;
+    cursor: pointer;
+    transition: all .2s;
+    display: flex;
+    align-items: center;
+    gap: .3rem;
+}
+
+.btn-reapprove-row:hover {
+    background: rgba(245,158,11,.25);
+    border-color: rgba(245,158,11,.6);
 }

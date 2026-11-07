@@ -5,18 +5,188 @@ using System;
 using System.Linq;
 using System.Text.Json;
 using System.Runtime.InteropServices;
+using Microsoft.AspNetCore.Http;
+using System.Threading.Tasks;
 
 public class ActivitiesController : Controller
 {
-    private readonly string _activitiesFilePath;
-    private readonly string _activityTasksFilePath;
-    private readonly string _templatesPath;
+    private readonly string _activitiesFilePath = PortalPaths.UnderFiles(@"activities.txt");
+    private readonly string _activityTasksFilePath = PortalPaths.UnderFiles(@"activity_tasks.txt");
+    private readonly string _activityPermissionsFilePath = 
+        PortalPaths.UnderFiles(@"activity_permissions.json");
+    private readonly NocPortal.Services.EmailService _emailService;
 
-    public ActivitiesController(IWebHostEnvironment env)
+    public ActivitiesController(NocPortal.Services.EmailService emailService)
     {
-        _activitiesFilePath = Path.Combine(env.WebRootPath, "assets", "files", "activities.txt");
-        _activityTasksFilePath = Path.Combine(env.WebRootPath, "assets", "files", "activity_tasks.txt");
-        _templatesPath = Path.Combine(env.WebRootPath, "assets", "files", "activityTemplates");
+        _emailService = emailService;
+    }
+
+    private bool IsUserAuthenticated()
+    {
+        return HttpContext.User?.Identity?.IsAuthenticated == true;
+    }
+
+    private IActionResult RequireAuth()
+    {
+        return Json(new { 
+            success = false, 
+            error = "נדרשת התחברות לביצוע פעולה זו",
+            requireLogin = true 
+        });
+    }
+
+    // ─── Helper: קרא הרשאות מקובץ ───
+    private List<ActivityPermission> ReadPermissionsFromFile()
+    {
+        if (!System.IO.File.Exists(_activityPermissionsFilePath))
+            return new List<ActivityPermission>();
+        try
+        {
+            var json = System.IO.File.ReadAllText(_activityPermissionsFilePath);
+            return JsonSerializer.Deserialize<List<ActivityPermission>>(json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                ?? new List<ActivityPermission>();
+        }
+        catch { return new List<ActivityPermission>(); }
+    }
+
+    // ─── Helper: כתוב הרשאות לקובץ ───
+    private void WritePermissionsToFile(List<ActivityPermission> permissions)
+    {
+        var dir = Path.GetDirectoryName(_activityPermissionsFilePath);
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+        var json = JsonSerializer.Serialize(permissions,
+            new JsonSerializerOptions { WriteIndented = true });
+        System.IO.File.WriteAllText(_activityPermissionsFilePath, json);
+    }
+
+    // ─── GET: קבל הרשאות לפעילות ───
+    [HttpGet]
+    public IActionResult GetActivityPermissions(string activityId)
+    {
+        if (!IsUserAuthenticated()) return RequireAuth();
+        try
+        {
+            var all = ReadPermissionsFromFile();
+            var perms = activityId != null
+                ? all.Where(p => p.ActivityId == activityId).ToList()
+                : all;
+            return Json(new { success = true, permissions = perms });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    // ─── GET: בדוק אם למשתמש הנוכחי יש הרשאה לפעילות ───
+    [HttpGet]
+    public IActionResult CheckUserPermission(string activityId)
+    {
+        try
+        {
+            var username = HttpContext.User?.Identity?.Name ?? "";
+            if (string.IsNullOrEmpty(username))
+                return Json(new { success = true, hasPermission = false });
+
+            var all = ReadPermissionsFromFile();
+            var hasPerm = all.Any(p =>
+                p.ActivityId == activityId &&
+                string.Equals(p.Username, username,
+                    StringComparison.OrdinalIgnoreCase) &&
+                p.CanToggle);
+
+            return Json(new { success = true, hasPermission = hasPerm, username });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    // ─── POST: הוסף/עדכן הרשאה ───
+    [HttpPost]
+    public IActionResult SetActivityPermission(
+        [FromBody] ActivityPermissionRequest request)
+    {
+        if (!IsUserAuthenticated()) return RequireAuth();
+        try
+        {
+            if (string.IsNullOrEmpty(request.ActivityId) ||
+                string.IsNullOrEmpty(request.Username))
+                return Json(new { success = false, error = "חסרים פרטים" });
+
+            var all = ReadPermissionsFromFile();
+            var existing = all.FirstOrDefault(p =>
+                p.ActivityId == request.ActivityId &&
+                string.Equals(p.Username, request.Username,
+                    StringComparison.OrdinalIgnoreCase));
+
+            // *** הוסף: קבע grantedBy לפי מי נתן את ההרשאה ***
+            // אם זה בא מ-grantManagerPermissionAuto - ה-caller שולח "מערכת"
+            var grantedBy = HttpContext.User?.Identity?.Name ?? "admin";
+            bool isAutoGrant = !string.IsNullOrEmpty(request.GrantedBy) && 
+                            request.GrantedBy == "מערכת";
+            if (isAutoGrant) 
+            {
+                grantedBy = "מערכת";
+            }
+
+            if (existing != null)
+            {
+                existing.CanToggle   = request.CanToggle;
+                existing.GrantedBy   = grantedBy;
+                existing.GrantedAt   = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                existing.AutoGranted = isAutoGrant;
+            }
+            else
+            {
+                all.Add(new ActivityPermission
+                {
+                    ActivityId   = request.ActivityId,
+                    Username     = request.Username,
+                    CanToggle    = request.CanToggle,
+                    GrantedBy    = grantedBy,
+                    GrantedAt    = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                    AutoGranted  = isAutoGrant
+                });
+            }
+
+            WritePermissionsToFile(all);
+            return Json(new { success = true });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    // ─── DELETE: הסר הרשאה ───
+    [HttpDelete]
+    public IActionResult RemoveActivityPermission(
+        string activityId, string username)
+    {
+        if (!IsUserAuthenticated()) return RequireAuth();
+        try
+        {
+            var all = ReadPermissionsFromFile();
+            var toRemove = all.FirstOrDefault(p =>
+                p.ActivityId == activityId &&
+                string.Equals(p.Username, username,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (toRemove != null)
+            {
+                all.Remove(toRemove);
+                WritePermissionsToFile(all);
+            }
+
+            return Json(new { success = true });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
     }
 
     // Get all activities
@@ -70,17 +240,14 @@ public class ActivitiesController : Controller
     [HttpPost]
     public IActionResult AddActivity([FromBody] ActivityRequest request)
     {
+        if (!IsUserAuthenticated()) return RequireAuth();
         try
         {
             if (string.IsNullOrEmpty(request.Name))
-            {
                 return Json(new { success = false, error = "שם הפעילות נדרש" });
-            }
 
             if (string.IsNullOrEmpty(request.ActivityDate))
-            {
                 return Json(new { success = false, error = "תאריך הפעילות נדרש" });
-            }
 
             var activities = ReadActivitiesFromFile();
 
@@ -88,23 +255,24 @@ public class ActivitiesController : Controller
             foreach (var act in activities)
             {
                 var json = JsonSerializer.Serialize(act);
-                var obj = JsonSerializer.Deserialize<JsonElement>(json);
+                var obj  = JsonSerializer.Deserialize<JsonElement>(json);
                 if (obj.TryGetProperty("order", out var orderProp))
                 {
-                    int currentOrder = orderProp.GetInt32();
-                    if (currentOrder > maxOrder) maxOrder = currentOrder;
+                    int cur = orderProp.GetInt32();
+                    if (cur > maxOrder) maxOrder = cur;
                 }
             }
 
             var newActivity = new
             {
-                id = Guid.NewGuid().ToString(),
-                name = request.Name,
-                description = request.Description ?? "",
-                activityDate = request.ActivityDate,
-                createdAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
-                archived = false,
-                order = maxOrder + 1 
+                id              = Guid.NewGuid().ToString(),
+                name            = request.Name,
+                description     = request.Description     ?? "",
+                activityDate    = request.ActivityDate,
+                activityManager = request.ActivityManager ?? "",  // *** חדש ***
+                createdAt       = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                archived        = false,
+                order           = maxOrder + 1
             };
 
             activities.Add(newActivity);
@@ -122,6 +290,7 @@ public class ActivitiesController : Controller
     [HttpPut]
     public IActionResult UpdateActivity([FromBody] ActivityUpdateRequest request)
     {
+        if (!IsUserAuthenticated()) return RequireAuth(); 
         try
         {
             if (string.IsNullOrEmpty(request.Id))
@@ -138,16 +307,27 @@ public class ActivitiesController : Controller
                 
                 if (obj.GetProperty("id").GetString() == request.Id)
                 {
-                   var updatedActivity = new
+                    var updatedActivity = new
                     {
-                        id = request.Id,
-                        name = request.Name ?? obj.GetProperty("name").GetString(),
-                        description = request.Description ?? (obj.TryGetProperty("description", out var desc) ? desc.GetString() : ""),
-                        activityDate = request.ActivityDate ?? obj.GetProperty("activityDate").GetString(), 
-                        createdAt = obj.TryGetProperty("createdAt", out var created) ? created.GetString() : DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
-                        archived = request.Archived ?? (obj.TryGetProperty("archived", out var arch) && arch.GetBoolean()),
-                        order = obj.TryGetProperty("order", out var order) ? order.GetInt32() : 999999  // ADD THIS
-
+                        id              = request.Id,
+                        name            = request.Name ??
+                                        obj.GetProperty("name").GetString(),
+                        description     = request.Description ??
+                                        (obj.TryGetProperty("description", out var desc)
+                                            ? desc.GetString() : ""),
+                        activityDate    = request.ActivityDate ??
+                                        obj.GetProperty("activityDate").GetString(),
+                        activityManager = request.ActivityManager ??
+                                        (obj.TryGetProperty("activityManager", out var am)
+                                            ? am.GetString() : ""),   // *** חדש ***
+                        createdAt       = obj.TryGetProperty("createdAt", out var created)
+                                        ? created.GetString()
+                                        : DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                        archived        = request.Archived ??
+                                        (obj.TryGetProperty("archived", out var arch)
+                                        && arch.GetBoolean()),
+                        order           = obj.TryGetProperty("order", out var order)
+                                        ? order.GetInt32() : 999999
                     };
                     
                     activities[i] = updatedActivity;
@@ -169,6 +349,7 @@ public class ActivitiesController : Controller
     [HttpDelete]
     public IActionResult DeleteActivity(string id)
     {
+        if (!IsUserAuthenticated()) return RequireAuth(); 
         try
         {
             var activities = ReadActivitiesFromFile();
@@ -202,6 +383,7 @@ public class ActivitiesController : Controller
     [HttpPost]
     public IActionResult DuplicateActivity([FromBody] DuplicateActivityRequest request)
     {
+        if (!IsUserAuthenticated()) return RequireAuth(); 
         try
         {
             var activities = ReadActivitiesFromFile();
@@ -324,6 +506,7 @@ public class ActivitiesController : Controller
     [HttpPost]
     public IActionResult AddTask([FromBody] ActivityTaskRequest request)
     {
+        if (!IsUserAuthenticated()) return RequireAuth(); 
         try
         {
             if (string.IsNullOrEmpty(request.Title) || string.IsNullOrEmpty(request.ActivityId))
@@ -366,6 +549,18 @@ public class ActivitiesController : Controller
                 executorNames        = new Dictionary<string, string>(),
                 order                = 999999,
                 hasAlarm             = request.HasAlarm,
+                alertsToCheck        = request.AlertsToCheck        ?? "",
+                emailTo              = request.EmailTo              ?? "",
+                emailCc              = request.EmailCc              ?? "",
+                emailSubject         = request.EmailSubject         ?? "",
+                emailBody            = request.EmailBody            ?? "",
+                emailSent            = false,
+                emailSentAt          = "",
+                systemName        = request.SystemName        ?? "",
+                environment       = request.Environment       ?? "",
+                dependency        = request.Dependency        ?? "",
+                disruptionDuration = request.DisruptionDuration ?? "",
+                impact            = request.Impact            ?? "",
                 history              = initialHistory
             };
 
@@ -385,6 +580,7 @@ public class ActivitiesController : Controller
     [HttpPut]
     public IActionResult UpdateTask([FromBody] ActivityTaskUpdateRequest request)
     {
+        if (!IsUserAuthenticated()) return RequireAuth(); 
         try
         {
             if (string.IsNullOrEmpty(request.Id))
@@ -593,7 +789,19 @@ public class ActivitiesController : Controller
                         executorNames        = executorNames,
                         order                = obj.TryGetProperty("order",                 out var order)    ? order.GetInt32()     : 999999,
                         hasAlarm             = request.HasAlarm,
-                        history              = existingHistory
+                        alertsToCheck        = request.AlertsToCheck        ?? (obj.TryGetProperty("alertsToCheck",        out var atc)      ? atc.GetString()      : ""),
+                        emailTo      = request.EmailTo      ?? (obj.TryGetProperty("emailTo",      out var et)  ? et.GetString()  : ""),
+                        emailCc      = request.EmailCc      ?? (obj.TryGetProperty("emailCc",      out var ec)  ? ec.GetString()  : ""),
+                        emailSubject = request.EmailSubject ?? (obj.TryGetProperty("emailSubject", out var es)  ? es.GetString()  : ""),
+                        emailBody    = request.EmailBody    ?? (obj.TryGetProperty("emailBody",    out var eb)  ? eb.GetString()  : ""),
+                        emailSent    = obj.TryGetProperty("emailSent",  out var ems) && ems.GetBoolean(),
+                        emailSentAt  = obj.TryGetProperty("emailSentAt", out var esa) ? esa.GetString() : "",
+                        systemName        = request.SystemName        ?? (obj.TryGetProperty("systemName",        out var sn)  ? sn.GetString()  : ""),
+                        environment       = request.Environment       ?? (obj.TryGetProperty("environment",       out var env) ? env.GetString() : ""),
+                        dependency        = request.Dependency        ?? (obj.TryGetProperty("dependency",        out var dep) ? dep.GetString() : ""),
+                        disruptionDuration = request.DisruptionDuration ?? (obj.TryGetProperty("disruptionDuration", out var dd) ? dd.GetString() : ""),
+                        impact            = request.Impact            ?? (obj.TryGetProperty("impact",            out var imp) ? imp.GetString() : ""),
+                        history      = existingHistory
                     };
 
                     allTasks[i] = updatedTask;
@@ -652,8 +860,9 @@ public class ActivitiesController : Controller
 
     // Toggle task completion
     [HttpPut]
-    public IActionResult ToggleTask([FromBody] ToggleTaskRequest request)
+    public async Task<IActionResult> ToggleTask([FromBody] ToggleTaskRequest request)
     {
+        if (!IsUserAuthenticated()) return RequireAuth(); 
         try
         {
             var allTasks = ReadActivityTasksFromFile();
@@ -851,13 +1060,130 @@ public class ActivitiesController : Controller
                         executorNames        = executorNames,
                         order                = obj.TryGetProperty("order",                 out var order)   ? order.GetInt32()    : 999999,
                         hasAlarm             = obj.TryGetProperty("hasAlarm",              out var ha)      && ha.GetBoolean(),
+                        activityManager      = obj.TryGetProperty("activityManager",  out var amTog)  ? amTog.GetString()  : "",
+                        alertsToCheck        = obj.TryGetProperty("alertsToCheck",    out var atcTog) ? atcTog.GetString() : "",
+                        emailTo      = obj.TryGetProperty("emailTo", out var et) ? et.GetString() : "",
+                        emailCc      = obj.TryGetProperty("emailCc", out var ec) ? ec.GetString() : "",
+                        emailSubject = obj.TryGetProperty("emailSubject", out var es) ? es.GetString() : "",
+                        emailBody    = obj.TryGetProperty("emailBody", out var eb) ? eb.GetString() : "",
+                        emailSent    = obj.TryGetProperty("emailSent", out var ems) && ems.GetBoolean(),
+                        emailSentAt  = obj.TryGetProperty("emailSentAt", out var esa) ? esa.GetString() : "",
+                        systemName        = obj.TryGetProperty("systemName",         out var sn)  ? sn.GetString()  : "",
+                        environment       = obj.TryGetProperty("environment",        out var env) ? env.GetString() : "",
+                        dependency        = obj.TryGetProperty("dependency",         out var dep) ? dep.GetString() : "",
+                        disruptionDuration = obj.TryGetProperty("disruptionDuration", out var dd)  ? dd.GetString()  : "",
+                        impact            = obj.TryGetProperty("impact",             out var imp) ? imp.GetString() : "",
                         history              = toggleHistory   // ← חדש
                     };
 
                     allTasks[i] = updatedTask;
                     WriteActivityTasksToFile(allTasks);
-                    
-                    return Json(new { success = true, completed = !isCompleted });
+
+                    // *** חדש: שלח מייל אם המשימה הושלמה ויש הגדרת מייל ***
+                    bool emailWasSent = false;
+                    string emailSentAt = updatedTask.emailSentAt ?? "";
+
+                    if (!isCompleted) // המשימה הושלמה עכשיו (הפוך מ-isCompleted)
+                    {
+                        string taskEmailTo = obj.TryGetProperty("emailTo", out var emailToProp) 
+                            ? emailToProp.GetString() : "";
+                        string taskEmailCc = obj.TryGetProperty("emailCc", out var emailCcProp) 
+                            ? emailCcProp.GetString() : "";
+                        string taskEmailSubject = obj.TryGetProperty("emailSubject", out var emailSubjProp) 
+                            ? emailSubjProp.GetString() : "";
+                        string taskEmailBody = obj.TryGetProperty("emailBody", out var emailBodyProp) 
+                            ? emailBodyProp.GetString() : "";
+
+                        if (!string.IsNullOrEmpty(taskEmailTo) && _emailService != null)
+                        {
+                            try
+                            {
+                                // בנה גוף HTML מהתבנית
+                                var completedBy = request.CompletedByEmployee ?? "לא ידוע";
+                                var completionTime = request.CompletionTime ?? DateTime.Now.ToString("HH:mm");
+                                var taskTitle = obj.TryGetProperty("title", out var titleProp) 
+                                    ? titleProp.GetString() : "";
+
+                                // החלף placeholders בגוף המייל
+                                var finalBody = taskEmailBody
+                                    .Replace("{task}", taskTitle ?? "")
+                                    .Replace("{completedBy}", completedBy)
+                                    .Replace("{time}", completionTime)
+                                    .Replace("{date}", request.Date ?? DateTime.Now.ToString("yyyy-MM-dd"));
+
+                                var finalSubject = taskEmailSubject
+                                    .Replace("{task}", taskTitle ?? "")
+                                    .Replace("{completedBy}", completedBy);
+
+                                // שלח את המייל הראשי
+                                var (success, msg) = await _emailService.SendTaskCompletionEmailAsync(
+                                    toEmail:   taskEmailTo,
+                                    ccEmail:   taskEmailCc,
+                                    subject:   finalSubject,
+                                    body:      finalBody,
+                                    taskTitle: taskTitle ?? "",
+                                    completedBy: completedBy,
+                                    completionTime: completionTime
+                                );
+
+                                if (success)
+                                {
+                                    emailWasSent = true;
+                                    emailSentAt  = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                                    System.Diagnostics.Debug.WriteLine(
+                                        $"[Email] נשלח מייל ביצוע משימה: {taskTitle} → {taskEmailTo}");
+                                }
+                            }
+                            catch (Exception emailEx)
+                            {
+                                System.Diagnostics.Debug.WriteLine(
+                                    $"[Email] שגיאה בשליחת מייל ביצוע: {emailEx.Message}");
+                            }
+                        }
+                    }
+
+                    // עדכן את updatedTask עם מצב המייל
+                    var finalUpdatedTask = new
+                    {
+                        id                   = updatedTask.id,
+                        activityId           = updatedTask.activityId,
+                        title                = updatedTask.title,
+                        description          = updatedTask.description,
+                        priority             = updatedTask.priority,
+                        taskDate             = updatedTask.taskDate,
+                        taskHour             = updatedTask.taskHour,
+                        taskMinute           = updatedTask.taskMinute,
+                        responsiblePerson    = updatedTask.responsiblePerson,
+                        secondaryResponsible = updatedTask.secondaryResponsible,
+                        status               = updatedTask.status,
+                        notes                = updatedTask.notes,
+                        createdAt            = updatedTask.createdAt,
+                        completionDates      = updatedTask.completionDates,
+                        skipReasons          = updatedTask.skipReasons,
+                        skipUserNames        = updatedTask.skipUserNames,
+                        completedByEmployees = updatedTask.completedByEmployees,
+                        completionTimes      = updatedTask.completionTimes,
+                        executorNames        = updatedTask.executorNames,
+                        order                = updatedTask.order,
+                        hasAlarm             = updatedTask.hasAlarm,
+                        activityManager      = updatedTask.activityManager,
+                        alertsToCheck        = updatedTask.alertsToCheck,
+                        emailTo              = obj.TryGetProperty("emailTo",      out var et2) ? et2.GetString() : "",
+                        emailCc              = obj.TryGetProperty("emailCc",      out var ec2) ? ec2.GetString() : "",
+                        emailSubject         = obj.TryGetProperty("emailSubject", out var es2) ? es2.GetString() : "",
+                        emailBody            = obj.TryGetProperty("emailBody",    out var eb2) ? eb2.GetString() : "",
+                        emailSent            = emailWasSent
+                                                ? true
+                                                : (obj.TryGetProperty("emailSent", out var ems2) && ems2.GetBoolean()),
+                        emailSentAt          = emailWasSent
+                                                ? emailSentAt
+                                                : (obj.TryGetProperty("emailSentAt", out var esa2) ? esa2.GetString() : ""),
+                        history              = updatedTask.history
+                    };
+
+                    allTasks[i] = finalUpdatedTask;
+                    WriteActivityTasksToFile(allTasks);
+                    return Json(new { success = true, completed = !isCompleted, emailSent = emailWasSent });
                 }
             }
 
@@ -873,6 +1199,7 @@ public class ActivitiesController : Controller
     [HttpPut]
     public IActionResult SkipTask([FromBody] SkipTaskRequest request)
     {
+        if (!IsUserAuthenticated()) return RequireAuth(); 
         try
         {
             var allTasks = ReadActivityTasksFromFile();
@@ -1003,7 +1330,14 @@ public class ActivitiesController : Controller
                         completionTimes      = completionTimes,
                         executorNames        = executorNames,
                         order                = obj.TryGetProperty("order",                 out var order)   ? order.GetInt32()    : 999999,
+                        activityManager      = obj.TryGetProperty("activityManager",  out var amSkip)  ? amSkip.GetString()  : "",
+                        alertsToCheck        = obj.TryGetProperty("alertsToCheck",    out var atcSkip) ? atcSkip.GetString() : "",
                         hasAlarm             = obj.TryGetProperty("hasAlarm",              out var ha)      && ha.GetBoolean(),
+                        systemName        = obj.TryGetProperty("systemName",         out var sn)  ? sn.GetString()  : "",
+                        environment       = obj.TryGetProperty("environment",        out var env) ? env.GetString() : "",
+                        dependency        = obj.TryGetProperty("dependency",         out var dep) ? dep.GetString() : "",
+                        disruptionDuration = obj.TryGetProperty("disruptionDuration", out var dd)  ? dd.GetString()  : "",
+                        impact            = obj.TryGetProperty("impact",             out var imp) ? imp.GetString() : "",
                         history              = skipHistory   // ← חדש
                     };
                     allTasks[i] = updatedTask;
@@ -1025,6 +1359,7 @@ public class ActivitiesController : Controller
     [HttpDelete]
     public IActionResult DeleteTask(string taskId, string activityId)
     {
+        if (!IsUserAuthenticated()) return RequireAuth(); 
         try
         {
             var allTasks = ReadActivityTasksFromFile();
@@ -1057,6 +1392,7 @@ public class ActivitiesController : Controller
     [HttpPut]
     public IActionResult UpdateActivityOrder([FromBody] ActivityOrderRequest request)
     {
+        if (!IsUserAuthenticated()) return RequireAuth(); 
         try
         {
             if (!System.IO.File.Exists(_activitiesFilePath))
@@ -1078,13 +1414,14 @@ public class ActivitiesController : Controller
                     {
                         var updatedActivity = new
                         {
-                            id = obj.GetProperty("id").GetString(),
-                            name = obj.GetProperty("name").GetString(),
-                            description = obj.TryGetProperty("description", out var desc) ? desc.GetString() : "",
-                            activityDate = obj.GetProperty("activityDate").GetString(),
-                            createdAt = obj.TryGetProperty("createdAt", out var created) ? created.GetString() : DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
-                            archived = obj.TryGetProperty("archived", out var arch) && arch.GetBoolean(),
-                            order = orderItem.Order
+                            id              = obj.GetProperty("id").GetString(),
+                            name            = obj.GetProperty("name").GetString(),
+                            description     = obj.TryGetProperty("description",     out var desc) ? desc.GetString() : "",
+                            activityDate    = obj.GetProperty("activityDate").GetString(),
+                            activityManager = obj.TryGetProperty("activityManager", out var am)   ? am.GetString()   : "", 
+                            createdAt       = obj.TryGetProperty("createdAt",       out var cr)   ? cr.GetString()   : DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                            archived        = obj.TryGetProperty("archived",        out var arch) && arch.GetBoolean(),
+                            order           = orderItem.Order
                         };
                         
                         activities[i] = updatedActivity;
@@ -1105,6 +1442,7 @@ public class ActivitiesController : Controller
     [HttpPut]
     public IActionResult UpdateTaskOrder([FromBody] ActivityTaskOrderRequest request)
     {
+        if (!IsUserAuthenticated()) return RequireAuth(); 
         try
         {
             if (!System.IO.File.Exists(_activityTasksFilePath))
@@ -1145,12 +1483,18 @@ public class ActivitiesController : Controller
                             completionDates = obj.TryGetProperty("completionDates", out var cd) ? JsonSerializer.Deserialize<List<string>>(cd.GetRawText()) : new List<string>(),
                             skipReasons = obj.TryGetProperty("skipReasons", out var srr) ? JsonSerializer.Deserialize<Dictionary<string, string>>(srr.GetRawText()) : new Dictionary<string, string>(),
                             skipUserNames = obj.TryGetProperty("skipUserNames", out var sun) ? JsonSerializer.Deserialize<Dictionary<string, string>>(sun.GetRawText()) : new Dictionary<string, string>(),
-                            // ✅ הוסף שדות חסרים:
                             completedByEmployees = obj.TryGetProperty("completedByEmployees", out var cbe) ? JsonSerializer.Deserialize<Dictionary<string, string>>(cbe.GetRawText()) : new Dictionary<string, string>(),
                             completionTimes = obj.TryGetProperty("completionTimes", out var ct) ? JsonSerializer.Deserialize<Dictionary<string, string>>(ct.GetRawText()) : new Dictionary<string, string>(),
                             executorNames = obj.TryGetProperty("executorNames", out var en) ? JsonSerializer.Deserialize<Dictionary<string, string>>(en.GetRawText()) : new Dictionary<string, string>(),
                             hasAlarm = obj.TryGetProperty("hasAlarm", out var ha) && ha.GetBoolean(), // ✅ חיוני!
                             history = obj.TryGetProperty("history", out var hist) ? JsonSerializer.Deserialize<List<object>>(hist.GetRawText()) : new List<object>(),
+                            activityManager      = obj.TryGetProperty("activityManager",  out var amOrd)  ? amOrd.GetString()  : "",
+                            systemName        = obj.TryGetProperty("systemName",         out var sn)  ? sn.GetString()  : "",
+                            environment       = obj.TryGetProperty("environment",        out var env) ? env.GetString() : "",
+                            dependency        = obj.TryGetProperty("dependency",         out var dep) ? dep.GetString() : "",
+                            disruptionDuration = obj.TryGetProperty("disruptionDuration", out var dd)  ? dd.GetString()  : "",
+                            impact            = obj.TryGetProperty("impact",             out var imp) ? imp.GetString() : "",
+                            alertsToCheck        = obj.TryGetProperty("alertsToCheck",    out var atcOrd) ? atcOrd.GetString() : "",
                             order = orderItem.Order
                         };
                         
@@ -1172,6 +1516,10 @@ public class ActivitiesController : Controller
     [HttpPost]
     public async Task<IActionResult> ImportFromExcel(IFormFile excelFile)
     {
+        // *** חדש: קריאת מנהל הפעילות מהכותרת ***
+        // מחפש בשורות 1-3 תא שמכיל "מנהל" ולוקח את הערך שלידו
+        string activityManagerFromHeader = "";
+        if (!IsUserAuthenticated()) return RequireAuth(); 
         if (excelFile == null || excelFile.Length == 0)
         {
             return Json(new { 
@@ -1191,7 +1539,8 @@ public class ActivitiesController : Controller
         string tempFilePath = null;
         string activityId = Guid.NewGuid().ToString();
         string importedActivityName = Path.GetFileNameWithoutExtension(excelFile.FileName);
-
+        if (string.IsNullOrWhiteSpace(importedActivityName))
+            importedActivityName = $"פעילות {DateTime.Now:yyyy-MM-dd HH:mm}";
         try
         {
             tempFilePath = Path.Combine(
@@ -1210,10 +1559,56 @@ public class ActivitiesController : Controller
                 var worksheet = helper.GetWorksheet(1);
 
                 // ── קריאת שם הפעילות מתא D1 ──────────────────────────────────
-                string activityNameFromExcel = worksheet.Cells[1, 4].Value?.ToString();
-                if (!string.IsNullOrEmpty(activityNameFromExcel))
-                {
+                string activityNameFromExcel = 
+                    worksheet.Cells[1, 4].Value?.ToString();
+                if (!string.IsNullOrEmpty(activityNameFromExcel) && activityNameFromExcel.Length > 8)
                     importedActivityName = activityNameFromExcel;
+
+                for (int searchRow = 1; searchRow <= 3; searchRow++)
+                {
+                    for (int searchCol = 1; searchCol <= 10; searchCol++)
+                    {
+                        string cellVal = worksheet.Cells[searchRow, searchCol]
+                                                .Value?.ToString()?.Trim() ?? "";
+
+                        // בדוק אם התא מכיל מילת "מנהל" - הערך בתא הבא
+                        if (cellVal.IndexOf("מנהל", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                            cellVal.IndexOf("manager", StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            // נסה לקרוא מהתא הסמוך (ימין או שמאל)
+                            string nextVal = worksheet.Cells[searchRow, searchCol + 1]
+                                                    .Value?.ToString()?.Trim() ?? "";
+                            string prevVal = searchCol > 1
+                                ? worksheet.Cells[searchRow, searchCol - 1]
+                                            .Value?.ToString()?.Trim() ?? ""
+                                : "";
+
+                            if (!string.IsNullOrEmpty(nextVal))
+                            {
+                                activityManagerFromHeader = nextVal;
+                                break;
+                            }
+                            else if (!string.IsNullOrEmpty(prevVal))
+                            {
+                                activityManagerFromHeader = prevVal;
+                                break;
+                            }
+                        }
+
+                        // או - אם התא עצמו מכיל "מנהל: שם" בפורמט
+                        if (cellVal.Contains(":"))
+                        {
+                            var parts = cellVal.Split(':', 2);
+                            if (parts[0].IndexOf("מנהל", 
+                                    StringComparison.OrdinalIgnoreCase) >= 0 &&
+                                !string.IsNullOrEmpty(parts[1].Trim()))
+                            {
+                                activityManagerFromHeader = parts[1].Trim();
+                                break;
+                            }
+                        }
+                    }
+                    if (!string.IsNullOrEmpty(activityManagerFromHeader)) break;
                 }
 
                 // ── קריאת תאריך הפעילות ───────────────────────────────────────
@@ -1344,7 +1739,53 @@ public class ActivitiesController : Controller
                         fieldName = "description";
                     else if (header.IndexOf("description", StringComparison.OrdinalIgnoreCase) >= 0)
                         fieldName = "description";
-
+                    else if (header.IndexOf("התראות",        StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "alertsToCheck";
+                    else if (header.IndexOf("התראה",         StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "alertsToCheck";
+                    else if (header.IndexOf("alerts",        StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "alertsToCheck";
+                    else if (header.IndexOf("alert",         StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "alertsToCheck";
+                    else if (header.IndexOf("מייל",        StringComparison.OrdinalIgnoreCase) >= 0 &&
+                            header.IndexOf("נמען",        StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "emailTo";
+                    else if (header.IndexOf("emailto",     StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "emailTo";
+                    else if (header.IndexOf("cc",          StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "emailCc";
+                    else if (header.IndexOf("נושא מייל",  StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "emailSubject";
+                    else if (header.IndexOf("emailsubject",StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "emailSubject";
+                    else if (header.IndexOf("גוף מייל",   StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "emailBody";
+                    else if (header.IndexOf("emailbody",   StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "emailBody";
+                    else if (header.IndexOf("מערכת",   StringComparison.OrdinalIgnoreCase) >= 0 &&
+                            header.IndexOf("שם",       StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "system";
+                    else if (header.IndexOf("מערכת", StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "system";
+                    else if (header.IndexOf("system", StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "system";
+                    else if (header.IndexOf("סביבה",   StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "environment";
+                    else if (header.IndexOf("environment", StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "environment";
+                    else if (header.IndexOf("תלות",    StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "dependency";
+                    else if (header.IndexOf("dependency", StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "dependency";
+                    else if (header.IndexOf("משך",     StringComparison.OrdinalIgnoreCase) >= 0 &&
+                            header.IndexOf("שיבוש",   StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "disruptionDuration";
+                    else if (header.IndexOf("duration", StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "disruptionDuration";
+                    else if (header.IndexOf("השפעה",   StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "impact";
+                    else if (header.IndexOf("impact",  StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "impact";
                     // שמור רק את ההתאמה הראשונה לכל שדה
                     if (fieldName != null && !columnMap.ContainsKey(fieldName))
                     {
@@ -1370,7 +1811,11 @@ public class ActivitiesController : Controller
                         fieldName = "secondaryResponsible";
                     else if (header.IndexOf("secondary",   StringComparison.OrdinalIgnoreCase) >= 0)
                         fieldName = "secondaryResponsible";
-                    else if (header.IndexOf("אחראי",       StringComparison.OrdinalIgnoreCase) >= 0)
+                    else if (header.IndexOf("אחראי", StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "responsible";
+                    else if (header.IndexOf("אחריות", StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "responsible";
+                    else if (header.IndexOf("responsible", StringComparison.OrdinalIgnoreCase) >= 0)
                         fieldName = "responsible";
                     else if (header.IndexOf("responsible", StringComparison.OrdinalIgnoreCase) >= 0)
                         fieldName = "responsible";
@@ -1435,17 +1880,18 @@ public class ActivitiesController : Controller
                     }
                 }
 
+                // ── יצירת פעילות חדשה ────────────────────────────────────────
                 var newActivity = new
                 {
-                    id          = activityId,
-                    name        = importedActivityName,
-                    description = "יובא מקובץ אקסל",
-                    activityDate = activityDate,
-                    createdAt   = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
-                    archived    = false,
-                    order       = maxOrder + 1
+                    id              = activityId,
+                    name            = importedActivityName,
+                    description     = "יובא מקובץ אקסל",
+                    activityDate    = activityDate,
+                    activityManager = activityManagerFromHeader,   // *** חדש ***
+                    createdAt       = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                    archived        = false,
+                    order           = maxOrder + 1
                 };
-
                 activities.Add(newActivity);
                 WriteActivitiesToFile(activities);
 
@@ -1535,7 +1981,7 @@ public class ActivitiesController : Controller
                     // ── קריאת ערכי עמודות לפי המיפוי הדינמי ─────────────────
                     string day, date, time, title, responsible, 
                         secondaryResponsible, status, notes, 
-                        priorityText, description;
+                        priorityText, description,activityManagerName,alertsToCheck,emailTo,emailCc,emailSubject,emailBody,systemName,environment,dependency,disruptionDuration,impact;
 
                     if (columnMap.Count > 0)
                     {
@@ -1549,7 +1995,29 @@ public class ActivitiesController : Controller
                         int colNotes = columnMap.ContainsKey("notes")                ? columnMap["notes"]                : 0;
                         int colPrio  = columnMap.ContainsKey("priority")             ? columnMap["priority"]             : 0;
                         int colDesc  = columnMap.ContainsKey("description")          ? columnMap["description"]          : 0;
+                        int colActMgr  = columnMap.ContainsKey("activityManager") ? columnMap["activityManager"] : 0;
+                        int colAlerts  = columnMap.ContainsKey("alertsToCheck")   ? columnMap["alertsToCheck"]   : 0;
+                        int colSystem     = columnMap.ContainsKey("system")             ? columnMap["system"]             : 0;
+                        int colEnv        = columnMap.ContainsKey("environment")        ? columnMap["environment"]        : 0;
+                        int colDep        = columnMap.ContainsKey("dependency")         ? columnMap["dependency"]         : 0;
+                        int colDuration   = columnMap.ContainsKey("disruptionDuration") ? columnMap["disruptionDuration"] : 0;
+                        int colImpact     = columnMap.ContainsKey("impact")             ? columnMap["impact"]             : 0;
+                        int colEmailTo      = columnMap.ContainsKey("emailTo")      ? columnMap["emailTo"]      : 0;
+                        int colEmailCc      = columnMap.ContainsKey("emailCc")      ? columnMap["emailCc"]      : 0;
+                        int colEmailSubject = columnMap.ContainsKey("emailSubject") ? columnMap["emailSubject"] : 0;
+                        int colEmailBody    = columnMap.ContainsKey("emailBody")    ? columnMap["emailBody"]    : 0;
 
+                        systemName         = colSystem   > 0 ? worksheet.Cells[row, colSystem  ].Value?.ToString()?.Trim() ?? "" : "";
+                        environment        = colEnv      > 0 ? worksheet.Cells[row, colEnv     ].Value?.ToString()?.Trim() ?? "" : "";
+                        dependency         = colDep      > 0 ? worksheet.Cells[row, colDep     ].Value?.ToString()?.Trim() ?? "" : "";
+                        disruptionDuration = colDuration > 0 ? worksheet.Cells[row, colDuration].Value?.ToString()?.Trim() ?? "" : "";
+                        impact             = colImpact   > 0 ? worksheet.Cells[row, colImpact  ].Value?.ToString()?.Trim() ?? "" : "";
+                        activityManagerName = colActMgr > 0 
+                            ? worksheet.Cells[row, colActMgr].Value?.ToString()?.Trim() ?? "" 
+                            : "";
+                        alertsToCheck = colAlerts > 0 
+                            ? worksheet.Cells[row, colAlerts].Value?.ToString()?.Trim() ?? "" 
+                            : "";
                         day                  = colDay   > 0 ? worksheet.Cells[row, colDay  ].Value?.ToString()?.Trim() ?? "" : "";
                         date                 = colDate  > 0 ? worksheet.Cells[row, colDate ].Value?.ToString()?.Trim() ?? "" : "";
                         time                 = colTime  > 0 ? worksheet.Cells[row, colTime ].Value?.ToString()?.Trim() ?? "" : "";
@@ -1560,6 +2028,11 @@ public class ActivitiesController : Controller
                         notes                = colNotes > 0 ? worksheet.Cells[row, colNotes].Value?.ToString()?.Trim() ?? "" : "";
                         priorityText         = colPrio  > 0 ? worksheet.Cells[row, colPrio ].Value?.ToString()?.Trim() ?? "" : "";
                         description          = colDesc  > 0 ? worksheet.Cells[row, colDesc ].Value?.ToString()?.Trim() ?? "" : "";
+
+                        emailTo      = colEmailTo      > 0 ? worksheet.Cells[row, colEmailTo     ].Value?.ToString()?.Trim() ?? "" : "";
+                        emailCc      = colEmailCc      > 0 ? worksheet.Cells[row, colEmailCc     ].Value?.ToString()?.Trim() ?? "" : "";
+                        emailSubject = colEmailSubject > 0 ? worksheet.Cells[row, colEmailSubject].Value?.ToString()?.Trim() ?? "" : "";
+                        emailBody    = colEmailBody    > 0 ? worksheet.Cells[row, colEmailBody   ].Value?.ToString()?.Trim() ?? "" : "";
                     }
                     else
                     {
@@ -1574,6 +2047,17 @@ public class ActivitiesController : Controller
                         notes                = worksheet.Cells[row, 8].Value?.ToString()?.Trim() ?? "";
                         priorityText         = "";
                         description          = "";
+                        activityManagerName = "";
+                        alertsToCheck       = "";
+                        emailTo = "";
+                        emailCc = "";
+                        emailSubject = "";
+                        emailBody = "";
+                        systemName        = "";
+                        environment       = "";
+                        dependency        = "";
+                        disruptionDuration = "";
+                        impact            = "";
                     }
 
                     // אם אין כותרת - דלג על השורה
@@ -1754,7 +2238,20 @@ public class ActivitiesController : Controller
                         completedByEmployees = new Dictionary<string, string>(),
                         completionTimes      = new Dictionary<string, string>(),
                         executorNames        = new Dictionary<string, string>(),
-                        order                = taskOrder++
+                        activityManager      = activityManagerName,
+                        alertsToCheck        = alertsToCheck,
+                        emailTo          = emailTo,
+                        emailCc          = emailCc,
+                        emailSubject     = emailSubject,
+                        emailBody        = emailBody,
+                        emailSent        = false,
+                        emailSentAt      = "",
+                        systemName        = systemName,
+                        environment       = environment,
+                        dependency        = dependency,
+                        disruptionDuration = disruptionDuration,
+                        impact            = impact,
+                        order            = taskOrder++
                     };
 
                     allTasks.Add(newTask);
@@ -1766,7 +2263,8 @@ public class ActivitiesController : Controller
             return Json(new { 
                 success      = true, 
                 activityId   = activityId,
-                activityName = importedActivityName
+                activityName = importedActivityName,
+                activityManager  = activityManagerFromHeader
             });
         }
         catch (Exception ex)
@@ -1787,8 +2285,140 @@ public class ActivitiesController : Controller
     }
 
     [HttpPost]
+    public async Task<IActionResult> SendTaskEmail(
+        [FromBody] SendTaskEmailRequest request)
+    {
+        if (!IsUserAuthenticated()) return RequireAuth();
+        try
+        {
+            var allTasks = ReadActivityTasksFromFile();
+            var taskIndex = -1;
+            
+            for (int i = 0; i < allTasks.Count; i++)
+            {
+                var tjson = JsonSerializer.Serialize(allTasks[i]);
+                var tobj  = JsonSerializer.Deserialize<JsonElement>(tjson);
+                if (tobj.TryGetProperty("id", out var tid) &&
+                    tid.GetString() == request.TaskId)
+                {
+                    taskIndex = i;
+                    break;
+                }
+            }
+
+            if (taskIndex == -1)
+                return Json(new { success = false, error = "משימה לא נמצאה" });
+
+            var json2 = JsonSerializer.Serialize(allTasks[taskIndex]);
+            var obj2  = JsonSerializer.Deserialize<JsonElement>(json2);
+
+            var emailTo      = obj2.TryGetProperty("emailTo",      out var et)  ? et.GetString()  : "";
+            var emailCc      = obj2.TryGetProperty("emailCc",      out var ec)  ? ec.GetString()  : "";
+            var emailSubject = obj2.TryGetProperty("emailSubject", out var es)  ? es.GetString()  : "";
+            var emailBody    = obj2.TryGetProperty("emailBody",    out var eb)  ? eb.GetString()  : "";
+            var taskTitle    = obj2.TryGetProperty("title",        out var tt)  ? tt.GetString()  : "";
+
+            if (string.IsNullOrEmpty(emailTo))
+                return Json(new { success = false, 
+                                error = "לא הוגדר כתובת מייל למשימה" });
+
+            var completedBy    = request.CompletedBy ?? 
+                                HttpContext.User?.Identity?.Name ?? "לא ידוע";
+            var completionTime = DateTime.Now.ToString("HH:mm");
+
+            var finalBody = (emailBody ?? "")
+                .Replace("{task}",        taskTitle    ?? "")
+                .Replace("{completedBy}", completedBy)
+                .Replace("{time}",        completionTime)
+                .Replace("{date}",        DateTime.Now.ToString("yyyy-MM-dd"));
+
+            var finalSubject = (emailSubject ?? "")
+                .Replace("{task}",        taskTitle    ?? "")
+                .Replace("{completedBy}", completedBy);
+
+            var (success, msg) = await _emailService.SendTaskCompletionEmailAsync(
+                toEmail:        emailTo,
+                ccEmail:        emailCc,
+                subject:        finalSubject,
+                body:           finalBody,
+                taskTitle:      taskTitle    ?? "",
+                completedBy:    completedBy,
+                completionTime: completionTime
+            );
+
+            if (success)
+            {
+                // ✅ תיקון: עדכן emailSent = true במשימה
+                var emailSentAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                
+                var updatedTask = new
+                {
+                    id                   = obj2.TryGetProperty("id",                   out var id2)   ? id2.GetString()   : "",
+                    activityId           = obj2.TryGetProperty("activityId",           out var ai2)   ? ai2.GetString()   : "",
+                    title                = obj2.TryGetProperty("title",                out var t2)    ? t2.GetString()    : "",
+                    description          = obj2.TryGetProperty("description",          out var d2)    ? d2.GetString()    : "",
+                    priority             = obj2.TryGetProperty("priority",             out var p2)    ? p2.GetString()    : "medium",
+                    taskDate             = obj2.TryGetProperty("taskDate",             out var td2)   ? td2.GetString()   : "",
+                    taskHour             = obj2.TryGetProperty("taskHour",             out var th2)   ? th2.GetString()   : "",
+                    taskMinute           = obj2.TryGetProperty("taskMinute",           out var tm2)   ? tm2.GetString()   : "",
+                    responsiblePerson    = obj2.TryGetProperty("responsiblePerson",    out var rp2)   ? rp2.GetString()   : "",
+                    secondaryResponsible = obj2.TryGetProperty("secondaryResponsible", out var sr2)   ? sr2.GetString()   : "",
+                    status               = obj2.TryGetProperty("status",               out var st2)   ? st2.GetString()   : "חדש",
+                    notes                = obj2.TryGetProperty("notes",                out var nt2)   ? nt2.GetString()   : "",
+                    createdAt            = obj2.TryGetProperty("createdAt",            out var cr2)   ? cr2.GetString()   : "",
+                    completionDates      = obj2.TryGetProperty("completionDates",      out var cd2)   
+                                        ? JsonSerializer.Deserialize<List<string>>(cd2.GetRawText()) 
+                                        : new List<string>(),
+                    skipReasons          = obj2.TryGetProperty("skipReasons",          out var srr2)  
+                                        ? JsonSerializer.Deserialize<Dictionary<string,string>>(srr2.GetRawText()) 
+                                        : new Dictionary<string,string>(),
+                    skipUserNames        = obj2.TryGetProperty("skipUserNames",        out var sun2)  
+                                        ? JsonSerializer.Deserialize<Dictionary<string,string>>(sun2.GetRawText()) 
+                                        : new Dictionary<string,string>(),
+                    completedByEmployees = obj2.TryGetProperty("completedByEmployees", out var cbe2)  
+                                        ? JsonSerializer.Deserialize<Dictionary<string,string>>(cbe2.GetRawText()) 
+                                        : new Dictionary<string,string>(),
+                    completionTimes      = obj2.TryGetProperty("completionTimes",      out var ct2)   
+                                        ? JsonSerializer.Deserialize<Dictionary<string,string>>(ct2.GetRawText()) 
+                                        : new Dictionary<string,string>(),
+                    executorNames        = obj2.TryGetProperty("executorNames",        out var en2)   
+                                        ? JsonSerializer.Deserialize<Dictionary<string,string>>(en2.GetRawText()) 
+                                        : new Dictionary<string,string>(),
+                    order                = obj2.TryGetProperty("order",                out var or2)   ? or2.GetInt32()    : 999999,
+                    hasAlarm             = obj2.TryGetProperty("hasAlarm",             out var ha2)   && ha2.GetBoolean(),
+                    activityManager      = obj2.TryGetProperty("activityManager",      out var am2)   ? am2.GetString()   : "",
+                    alertsToCheck        = obj2.TryGetProperty("alertsToCheck",        out var atc2)  ? atc2.GetString()  : "",
+                    emailTo              = emailTo,
+                    emailCc              = emailCc,
+                    emailSubject         = emailSubject,
+                    emailBody            = emailBody,
+                    emailSent            = true,          // ✅ מעודכן
+                    emailSentAt          = emailSentAt,   // ✅ מעודכן
+                    history              = obj2.TryGetProperty("history",              out var hi2)   
+                                        ? JsonSerializer.Deserialize<List<object>>(hi2.GetRawText()) 
+                                        : new List<object>()
+                };
+
+                allTasks[taskIndex] = updatedTask;
+                WriteActivityTasksToFile(allTasks);
+
+                return Json(new { success = true, message = "מייל נשלח בהצלחה" });
+            }
+            else
+            {
+                return Json(new { success = false, error = msg });
+            }
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    [HttpPost]
     public async Task<IActionResult> ImportFromWord(IFormFile wordFile)
     {
+        if (!IsUserAuthenticated()) return RequireAuth(); 
         if (wordFile == null || wordFile.Length == 0)
         {
             return Json(new { 
@@ -1809,6 +2439,8 @@ public class ActivitiesController : Controller
         string tempFilePath      = null;
         string activityId        = Guid.NewGuid().ToString();
         string importedActivityName = Path.GetFileNameWithoutExtension(wordFile.FileName);
+        if (string.IsNullOrWhiteSpace(importedActivityName))
+            importedActivityName = $"פעילות {DateTime.Now:yyyy-MM-dd HH:mm}";
 
         try
         {
@@ -1991,6 +2623,20 @@ public class ActivitiesController : Controller
                         fieldName = "description";
                     else if (header.IndexOf("description", StringComparison.OrdinalIgnoreCase) >= 0)
                         fieldName = "description";
+                    else if (header.IndexOf("מנהל פעילות",  StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "activityManager";
+                    else if (header.IndexOf("מנהל",         StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "activityManager";
+                    else if (header.IndexOf("manager",       StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "activityManager";
+                    else if (header.IndexOf("התראות",        StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "alertsToCheck";
+                    else if (header.IndexOf("התראה",         StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "alertsToCheck";
+                    else if (header.IndexOf("alerts",        StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "alertsToCheck";
+                    else if (header.IndexOf("alert",         StringComparison.OrdinalIgnoreCase) >= 0)
+                        fieldName = "alertsToCheck";
 
                     if (fieldName != null && !columnMap.ContainsKey(fieldName))
                     {
@@ -2089,7 +2735,7 @@ public class ActivitiesController : Controller
 
                     // ── קריאת ערכי עמודות ────────────────────────────
                     string title, time, responsible, secondaryResponsible,
-                        status, notes, priorityText, description;
+                        status, notes, priorityText, description,activityManagerName,alertsToCheck,systemName,environment,dependency,disruptionDuration,impact;
 
                     if (columnMap.Count > 0)
                     {
@@ -2101,7 +2747,25 @@ public class ActivitiesController : Controller
                         int colNotes = columnMap.ContainsKey("notes")                ? columnMap["notes"]                : 0;
                         int colPrio  = columnMap.ContainsKey("priority")             ? columnMap["priority"]             : 0;
                         int colDesc  = columnMap.ContainsKey("description")          ? columnMap["description"]          : 0;
+                        int colActMgr  = columnMap.ContainsKey("activityManager") ? columnMap["activityManager"] : 0;
+                        int colAlerts  = columnMap.ContainsKey("alertsToCheck")   ? columnMap["alertsToCheck"]   : 0;
 
+                        int colSystem     = columnMap.ContainsKey("system")             ? columnMap["system"]             : 0;
+                        int colEnv        = columnMap.ContainsKey("environment")        ? columnMap["environment"]        : 0;
+                        int colDep        = columnMap.ContainsKey("dependency")         ? columnMap["dependency"]         : 0;
+                        int colDuration   = columnMap.ContainsKey("disruptionDuration") ? columnMap["disruptionDuration"] : 0;
+                        int colImpact     = columnMap.ContainsKey("impact")             ? columnMap["impact"]             : 0;
+                        int colEmailTo      = columnMap.ContainsKey("emailTo")      ? columnMap["emailTo"]      : 0;
+                        int colEmailCc      = columnMap.ContainsKey("emailCc")      ? columnMap["emailCc"]      : 0;
+                        int colEmailSubject = columnMap.ContainsKey("emailSubject") ? columnMap["emailSubject"] : 0;
+                        int colEmailBody    = columnMap.ContainsKey("emailBody")    ? columnMap["emailBody"]    : 0;
+
+                        activityManagerName = colActMgr > 0 
+                            ? GetWordCellText(mainTable, row, colActMgr) 
+                            : "";
+                        alertsToCheck = colAlerts > 0 
+                            ? GetWordCellText(mainTable, row, colAlerts) 
+                            : "";
                         title                = colTitle > 0 ? GetWordCellText(mainTable, row, colTitle) : "";
                         time                 = colTime  > 0 ? GetWordCellText(mainTable, row, colTime)  : "";
                         responsible          = colResp  > 0 ? GetWordCellText(mainTable, row, colResp)  : "";
@@ -2110,6 +2774,11 @@ public class ActivitiesController : Controller
                         notes                = colNotes > 0 ? GetWordCellText(mainTable, row, colNotes) : "";
                         priorityText         = colPrio  > 0 ? GetWordCellText(mainTable, row, colPrio)  : "";
                         description          = colDesc  > 0 ? GetWordCellText(mainTable, row, colDesc)  : "";
+                        systemName         = colSystem   > 0 ? GetWordCellText(mainTable, row, colSystem)   : "";
+                        environment        = colEnv      > 0 ? GetWordCellText(mainTable, row, colEnv)      : "";
+                        dependency         = colDep      > 0 ? GetWordCellText(mainTable, row, colDep)      : "";
+                        disruptionDuration = colDuration > 0 ? GetWordCellText(mainTable, row, colDuration) : "";
+                        impact             = colImpact   > 0 ? GetWordCellText(mainTable, row, colImpact)   : "";
                     }
                     else
                     {
@@ -2122,6 +2791,13 @@ public class ActivitiesController : Controller
                         notes                = GetWordCellText(mainTable, row, 8);
                         priorityText         = "";
                         description          = "";
+                        activityManagerName = "";
+                        alertsToCheck       = "";
+                        systemName        = "";
+                        environment       = "";
+                        dependency        = "";
+                        disruptionDuration = "";
+                        impact            = "";
                     }
 
                     if (string.IsNullOrEmpty(title)) continue;
@@ -2204,6 +2880,13 @@ public class ActivitiesController : Controller
                         completedByEmployees = new Dictionary<string, string>(),
                         completionTimes      = new Dictionary<string, string>(),
                         executorNames        = new Dictionary<string, string>(),
+                        activityManager      = activityManagerName,
+                        alertsToCheck        = alertsToCheck,
+                        systemName        = systemName,
+                        environment       = environment,
+                        dependency        = dependency,
+                        disruptionDuration = disruptionDuration,
+                        impact            = impact,
                         order                = taskOrder++
                     };
 
@@ -2259,7 +2942,7 @@ public class ActivitiesController : Controller
     {
         try
         {
-            string templatesPath = _templatesPath;
+            string templatesPath = PortalPaths.UnderFiles(@"activityTemplates");
 
             // Check if directory exists
             if (!Directory.Exists(templatesPath))
@@ -2309,7 +2992,7 @@ public class ActivitiesController : Controller
                 return Json(new { success = false, error = "סוג קובץ לא נתמך" });
             }
 
-            string templatesPath = _templatesPath;
+            string templatesPath = PortalPaths.UnderFiles(@"activityTemplates");
             string filePath = Path.Combine(templatesPath, fileName);
 
             // Verify the file exists
@@ -2338,6 +3021,7 @@ public class ActivitiesController : Controller
     [HttpPost]
     public async Task<IActionResult> UploadTemplate(IFormFile templateFile)
     {
+        if (!IsUserAuthenticated()) return RequireAuth(); 
         if (templateFile == null || templateFile.Length == 0)
         {
             return Json(new { 
@@ -2373,7 +3057,8 @@ public class ActivitiesController : Controller
 
         try
         {
-            string templatesPath = _templatesPath;
+            string templatesPath = 
+                PortalPaths.UnderFiles(@"activityTemplates");
 
             // Create directory if it doesn't exist
             if (!Directory.Exists(templatesPath))
@@ -2414,6 +3099,7 @@ public class ActivitiesController : Controller
     [HttpDelete]
     public IActionResult DeleteTemplate(string fileName)
     {
+        if (!IsUserAuthenticated()) return RequireAuth(); 
         try
         {
             // Validate filename - prevent path traversal attacks
@@ -2438,7 +3124,8 @@ public class ActivitiesController : Controller
                 });
             }
 
-            string templatesPath = _templatesPath;
+            string templatesPath = 
+                PortalPaths.UnderFiles(@"activityTemplates");
             string filePath = Path.Combine(templatesPath, fileName);
 
             // Verify the file exists
@@ -2679,7 +3366,20 @@ public class ActivitiesController : Controller
                     completionTimes = new Dictionary<string, string>(),
                     executorNames = new Dictionary<string, string>(),
                     order = obj.TryGetProperty("order", out var order) ? order.GetInt32() : 999999,
-                    hasAlarm = false 
+                    activityManager      = obj.TryGetProperty("activityManager",  out var amDup)  ? amDup.GetString()  : "",
+                    alertsToCheck        = obj.TryGetProperty("alertsToCheck",    out var atcDup) ? atcDup.GetString() : "",
+                    emailTo          = obj.TryGetProperty("emailTo",      out var etDup) ? etDup.GetString() : "",
+                    emailCc          = obj.TryGetProperty("emailCc",      out var ecDup) ? ecDup.GetString() : "",
+                    emailSubject     = obj.TryGetProperty("emailSubject", out var esDup) ? esDup.GetString() : "",
+                    emailBody        = obj.TryGetProperty("emailBody",    out var ebDup) ? ebDup.GetString() : "",
+                    emailSent        = false,  // איפוס - עותק חדש
+                    emailSentAt      = "",
+                    systemName        = obj.TryGetProperty("systemName",         out var sn)  ? sn.GetString()  : "",
+                    environment       = obj.TryGetProperty("environment",        out var env) ? env.GetString() : "",
+                    dependency        = obj.TryGetProperty("dependency",         out var dep) ? dep.GetString() : "",
+                    disruptionDuration = obj.TryGetProperty("disruptionDuration", out var dd)  ? dd.GetString()  : "",
+                    impact            = obj.TryGetProperty("impact",             out var imp) ? imp.GetString() : "",
+                    hasAlarm         = false
                 };
 
                 allTasks.Add(newTask);
@@ -2697,18 +3397,20 @@ public class ActivitiesController : Controller
 // Request models
 public class ActivityRequest
 {
-    public string Name { get; set; }
-    public string Description { get; set; }
-    public string ActivityDate { get; set; }  
+    public string Name            { get; set; }
+    public string Description     { get; set; }
+    public string ActivityDate    { get; set; }
+    public string ActivityManager { get; set; }   // *** חדש ***
 }
 
 public class ActivityUpdateRequest
 {
-    public string Id { get; set; }
-    public string Name { get; set; }
-    public string Description { get; set; }
-    public bool? Archived { get; set; }
-    public string ActivityDate { get; set; }  
+    public string Id              { get; set; }
+    public string Name            { get; set; }
+    public string Description     { get; set; }
+    public bool?  Archived        { get; set; }
+    public string ActivityDate    { get; set; }
+    public string ActivityManager { get; set; }   // *** חדש ***
 }
 
 public class DuplicateActivityRequest
@@ -2722,14 +3424,28 @@ public class ActivityTaskRequest
     public string Title { get; set; }
     public string Description { get; set; }
     public string Priority { get; set; }
-    public string TaskDate { get; set; }  
-    public string TaskHour { get; set; }  
-    public string TaskMinute { get; set; }  
-    public string ResponsiblePerson { get; set; }  
-    public string SecondaryResponsible { get; set; }  
-    public string Status { get; set; } 
-    public string Notes { get; set; } 
+    public string TaskDate { get; set; }
+    public string TaskHour { get; set; }
+    public string TaskMinute { get; set; }
+    public string ResponsiblePerson { get; set; }
+    public string SecondaryResponsible { get; set; }
+    public string Status { get; set; }
+    public string Notes { get; set; }
     public bool HasAlarm { get; set; }
+    public string AlertsToCheck { get; set; }          // התראות לבדיקה (טקסט חופשי)
+    public string SystemName           { get; set; }
+    public string Environment          { get; set; }
+    public string Dependency           { get; set; }
+    public string DisruptionDuration   { get; set; }
+    public string Impact               { get; set; }
+    
+    // *** חדש: שדות מייל ***
+    public string EmailTo { get; set; }          // כתובת נמען
+    public string EmailCc { get; set; }          // כתובת CC
+    public string EmailSubject { get; set; }     // נושא המייל
+    public string EmailBody { get; set; }        // גוף המייל
+    public bool EmailSent { get; set; }          // האם נשלח מייל
+    public string EmailSentAt { get; set; }      // מתי נשלח
 }
 
 public class ActivityTaskUpdateRequest
@@ -2738,13 +3454,13 @@ public class ActivityTaskUpdateRequest
     public string Title { get; set; }
     public string Description { get; set; }
     public string Priority { get; set; }
-    public string TaskDate { get; set; } 
-    public string TaskHour { get; set; }  
-    public string TaskMinute { get; set; } 
-    public string ResponsiblePerson { get; set; }  
-    public string SecondaryResponsible { get; set; }  
-    public string Status { get; set; } 
-    public string Notes { get; set; } 
+    public string TaskDate { get; set; }
+    public string TaskHour { get; set; }
+    public string TaskMinute { get; set; }
+    public string ResponsiblePerson { get; set; }
+    public string SecondaryResponsible { get; set; }
+    public string Status { get; set; }
+    public string Notes { get; set; }
     public string ClearSkipForDate { get; set; }
     public string CompletedByEmployee { get; set; }
     public string CompletionTime { get; set; }
@@ -2754,6 +3470,17 @@ public class ActivityTaskUpdateRequest
     public string NoteTime { get; set; }
     public string Date { get; set; }
     public bool HasAlarm { get; set; }
+    public string SystemName           { get; set; }
+    public string Environment          { get; set; }
+    public string Dependency           { get; set; }
+    public string DisruptionDuration   { get; set; }
+    public string Impact               { get; set; }
+    public string EmailTo { get; set; }
+    public string EmailCc { get; set; }
+    public string EmailSubject { get; set; }
+    public string EmailBody { get; set; }
+    // *** חדש ***
+    public string AlertsToCheck { get; set; }          // התראות לבדיקה
 }
 
 public class ToggleTaskRequest
@@ -2804,4 +3531,28 @@ public class ExcelImportResult
     public string Error { get; set; }
     public string ActivityId { get; set; }
     public string ActivityName { get; set; }
+}
+
+public class ActivityPermission
+{
+    public string ActivityId { get; set; }
+    public string Username { get; set; }
+    public bool CanToggle { get; set; }
+    public string GrantedBy { get; set; }
+    public string GrantedAt { get; set; }
+    public bool   AutoGranted { get; set; } 
+}
+
+public class ActivityPermissionRequest
+{
+    public string ActivityId { get; set; }
+    public string Username { get; set; }
+    public bool CanToggle { get; set; }
+    public string GrantedBy  { get; set; } 
+}
+
+public class SendTaskEmailRequest
+{
+    public string TaskId      { get; set; }
+    public string CompletedBy { get; set; }
 }

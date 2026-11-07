@@ -11,8 +11,9 @@ using System.Threading.Tasks;
 [Route("[controller]/[action]")]
 public class SuiteConfigController : Controller
 {
-    private readonly string _csvPath;
-    private readonly string _testCaseMappingPath;
+    private readonly string _csvPath =
+        PortalPaths.UnderFiles(@"suite_config.csv");
+    private readonly string _testCaseMappingPath = PortalPaths.UnderFiles(@"test_case_mapping.csv");
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly SecretsService _secrets;
@@ -22,13 +23,10 @@ public class SuiteConfigController : Controller
     private string _elasticPassword => _secrets.ElasticPassword;
 
     public SuiteConfigController(IHttpClientFactory httpClientFactory,
-        SecretsService secrets,
-        IWebHostEnvironment env)   
+        SecretsService secrets)   
     {
         _httpClientFactory = httpClientFactory;
         _secrets           = secrets;
-        _csvPath = Path.Combine(env.WebRootPath, "assets", "files", "suite_config.csv");
-        _testCaseMappingPath = Path.Combine(env.WebRootPath, "assets", "files", "test_case_mapping.csv");
     }
 
     // ==========================================

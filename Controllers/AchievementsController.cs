@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
@@ -8,13 +7,9 @@ using System.Text.Json;
 
 public class AchievementsController : Controller
 {
-    private readonly string _filePath;
+    private readonly string _filePath =
+        PortalPaths.UnderFiles(@"achievements.txt");
     private static readonly object _lock = new object();
-
-    public AchievementsController(IWebHostEnvironment env)
-    {
-        _filePath = Path.Combine(env.WebRootPath, "assets", "files", "achievements.txt");
-    }
     private const int MaxRetries = 3;
     private const int RetryDelayMs = 100;
 

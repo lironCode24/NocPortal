@@ -14,14 +14,38 @@ class ActivityManager {
         this.isModalOpen = false;
         this.AUTO_REFRESH_MINUTES = 5;
 
+        this.currentSearchTerm = '';
         this.sortMode = 'auto';
-        this.currentSort = 'time';
+        this.currentSort = 'timeGrouped';
         this.originalTasksOrder = [];
 
         this.currentUser = null;
         this.alarmCheckInterval = null;
         this.shownAlarms = new Set();
         this.currentTaskPopup = null;
+        this.isReadOnly = false;
+        this.isAdmin = false;
+
+        this.currentActivityPermissions = []; // הרשאות לפעילות הנוכחית
+        this.currentUserHasPermission = false; // האם למשתמש יש הרשאה לפעילות הנוכחית
+    }
+
+    async checkCurrentUserPermission(activityId) {
+        try {
+            const response = await fetch(
+                `/Activities/CheckUserPermission?activityId=${activityId}`,
+                { credentials: 'include' }
+            );
+            const result = await response.json();
+            if (result.success) {
+                this.currentUserHasPermission = result.hasPermission;
+            } else {
+                this.currentUserHasPermission = false;
+            }
+        } catch (err) {
+            console.warn('Could not check permission:', err);
+            this.currentUserHasPermission = false;
+        }
     }
 
     async loadEmployees() {
@@ -59,7 +83,7 @@ class ActivityManager {
 
     // Get last selected employee from localStorage
     getLastSelectedEmployee() {
-        return localStorage.getItem('lastSelectedEmployee') || '';
+        return userSettings.getItem('lastSelectedEmployee') || '';
     }
 
     // Set default employee in select dropdown
@@ -107,6 +131,8 @@ class ActivityManager {
 
         document.querySelector('.task-controls-row').style.display = 'none';
         await this.loadActivities();
+        this.injectFiltersBar();
+
         // Auto-archive expired activities
         await this.autoArchiveExpiredActivities();
 
@@ -125,9 +151,24 @@ class ActivityManager {
         this.startAutoRefresh();
     }
 
-    isAdmin() {
+    injectFiltersBar() {
+        const placeholder = document.getElementById('taskFiltersBar');
+        if (!placeholder) {
+            console.warn('taskFiltersBar not found');
+            return;
+        }
+
+        const html = this.getFiltersBarHTML();
+
+        placeholder.insertAdjacentHTML('afterend', html);
+        placeholder.remove();
+    }
+
+    isUserAdmin() {
         if (!this.currentUser) return false;
-        return this.currentUser.role === 'Admin';
+        return this.currentUser.role === 'Admin' || 
+            this.currentUser.role === 'NOC' ||
+            this.isAdmin === true;  // ← גם הדגל מה-Dashboard
     }
 
     async loadCurrentUser() {
@@ -153,6 +194,17 @@ class ActivityManager {
             console.warn('Could not load current user:', err);
             this.currentUser = null;
         }
+    }
+
+    handleApiResponse(response) {
+        if (response && response.requireLogin === true) {
+            if (window.activitiesDashboard &&
+                typeof window.activitiesDashboard.showLoginRequired === 'function') {
+                window.activitiesDashboard.showLoginRequired();
+            }
+            return false;
+        }
+        return true;
     }
 
     // Load activities from server
@@ -184,6 +236,13 @@ class ActivityManager {
     displayEmptyState() {
 
         document.querySelector('.task-controls-row').style.display = 'none';
+
+        // הסתר כפתור סינון ושורת סינון
+        const filterBtn = document.getElementById('filterToggleBtn');
+        if (filterBtn) filterBtn.style.display = 'none';
+
+        const filterBar = document.getElementById('taskFiltersBar');
+        if (filterBar) filterBar.style.display = 'none';
 
         const container = document.getElementById('activityTasksContainer');
 
@@ -376,60 +435,41 @@ class ActivityManager {
         this.activities = originalActivities;
     }
 
+    _applySearchFilter(tasks) {
+        const term = this.currentSearchTerm.toLowerCase();
+        if (!term) return tasks;
+
+        return tasks.filter(task => {
+            return [
+                task.title,
+                task.description,
+                task.responsiblePerson,
+                task.secondaryResponsible,
+                task.notes,
+                task.systemName,
+                task.environment,
+                task.dependency,
+                task.disruptionDuration,
+                task.impact,
+                task.alertsToCheck
+            ].some(field => (field || '').toLowerCase().includes(term));
+        });
+    }
+
     // סנן את המשימות לפי מונח החיפוש
     searchTasks(searchTerm) {
-        if (!this.currentActivityId) {
-            return;
-        }
+        if (!this.currentActivityId) return;
 
-        // הצג/הסתר את כפתור הניקוי בהתאם לתוכן החיפוש
         const clearBtn = document.querySelector('.task-search .clear-search-btn');
         if (clearBtn) {
             clearBtn.style.display = searchTerm ? 'flex' : 'none';
         }
 
-        // אם אין מונח חיפוש, טען מחדש את כל המשימות
-        if (!searchTerm || searchTerm.trim() === '') {
-            this.loadActivityTasks(this.currentActivityId, this.currentDate);
-            return;
-        }
+        // שמור את מונח החיפוש ב-state
+        this.currentSearchTerm = (searchTerm || '').trim();
 
-        searchTerm = searchTerm.trim().toLowerCase();
-
-        // טען את כל המשימות ואז סנן אותן בצד הלקוח
-        fetch(`/Activities/GetActivityTasks?activityId=${this.currentActivityId}&date=${this.currentDate}`)
-            .then(response => response.json())
-            .then(tasks => {
-                if (Array.isArray(tasks)) {
-                    // סנן את המשימות לפי מונח החיפוש
-                    const filteredTasks = tasks.filter(task => {
-                        const title = task.title.toLowerCase();
-                        const description = task.description ? task.description.toLowerCase() : '';
-                        const responsible = task.responsiblePerson ? task.responsiblePerson.toLowerCase() : '';
-
-                        return title.includes(searchTerm) ||
-                            description.includes(searchTerm) ||
-                            responsible.includes(searchTerm);
-                    });
-
-                    // הצג את המשימות המסוננות
-                    this.renderActivityTasks(filteredTasks);
-
-                    // הוסף הודעה אם אין תוצאות
-                    const container = document.getElementById('activityTasksContainer');
-                    if (filteredTasks.length === 0 && container) {
-                        container.innerHTML = `
-                        <div class="tasks-empty search-no-results">
-                            <i class="fas fa-search"></i><br>
-                            לא נמצאו משימות התואמות לחיפוש "${searchTerm}"
-                        </div>
-                    `;
-                    }
-                }
-            })
-            .catch(error => {
-                console.error('Error searching tasks:', error);
-            });
+        // טען מחדש עם שניהם ביחד
+        this.loadActivityTasks(this.currentActivityId, this.currentDate);
     }
 
     // הוסף פונקציה לארכוב פעילות
@@ -440,11 +480,11 @@ class ActivityManager {
         const newStatus = !activity.archived;
 
         // *** חדש: הוצאה מארכיון רק לאדמין ***
-        if (activity.archived && !this.isAdmin()) {
+        if (activity.archived && !this.isUserAdmin()) {
             // newStatus = false = הוצאה מארכיון
         }
 
-        if (activity.archived && !this.isAdmin()) {
+        if (activity.archived && !this.isUserAdmin()) {
             NotificationManager.show(
                 'רק מנהל מערכת יכול להוציא פעילות מהארכיון',
                 'warning'
@@ -765,6 +805,14 @@ class ActivityManager {
                 await this.loadActivities();
                 this.renderActivityTabs();
 
+                // *** הענק הרשאה אוטומטית למנהל הפעילות שיובא מהאקסל ***
+                if (result.activityId && result.activityManager) {
+                    await this.grantManagerPermissionAuto(
+                        result.activityId,
+                        result.activityManager
+                    );
+                }
+
                 if (result.activityId) {
                     this.selectActivity(result.activityId);
                 }
@@ -924,50 +972,88 @@ class ActivityManager {
             }
 
             // עדכן את הטאבים
-            const tabsHTML = this.activities.map(activity => `
-            <div class="activity-tab ${activity.id === this.currentActivityId ? 'active' : ''} ${activity.archived ? 'archived' : ''}" 
-                data-activity-id="${activity.id}"
-                draggable="true"
-                onclick="activityManager.selectActivity('${activity.id}')">
-                <div class="activity-tab-content">
-                    <span class="activity-tab-name">${activity.name.length > 20 ? activity.name.substring(0, 20) + '...' : activity.name}</span>
-                    ${activity.activityDate ? `<span class="activity-tab-date"><i class="fas fa-calendar-alt"></i> ${this.formatDate(activity.activityDate)}</span>` : ''}
-                </div>
-                <div class="activity-tab-actions">
-                    ${!activity.archived ? `
-                    <button class="activity-tab-action" onclick="event.stopPropagation(); activityManager.editActivity('${activity.id}')" title="ערוך פרטי פעילות">
-                        <i class="fas fa-edit"></i>
-                    </button>
-                    ` : ''}
-                    <button class="activity-tab-action" onclick="event.stopPropagation(); activityManager.duplicateActivity('${activity.id}')" title="שכפל">
-                        <i class="fas fa-copy"></i>
-                    </button>
+            const tabsHTML = this.activities.map(activity => {
+                const isAdmin = this.isUserAdmin();
+
+                return `
+                <div class="activity-tab 
+                            ${activity.id === this.currentActivityId ? 'active' : ''} 
+                            ${activity.archived ? 'archived' : ''}" 
+                    data-activity-id="${activity.id}"
+                    draggable="true"
+                    onclick="activityManager.selectActivity('${activity.id}')">
+
+                    <div class="activity-tab-content">
+                        <span class="activity-tab-name">
+                            ${activity.name.length > 30
+                                ? activity.name.substring(0, 30) + '...'
+                                : activity.name}
+                        </span>
+
+                        <!-- *** שורה תחתונה: תאריך + כפתורים זה ליד זה *** -->
+                        <div class="activity-tab-bottom-row">
+
+                            ${activity.activityDate
+                                ? `<span class="activity-tab-date">
+                                    <i class="fas fa-calendar-alt"></i>
+                                    ${this.formatDate(activity.activityDate)}
+                                </span>`
+                                : '<span></span>'}
+
+                            ${isAdmin ? `
+                            <div class="activity-tab-actions">
+                                ${!activity.archived ? `
+                                <button class="activity-tab-action"
+                                        onclick="event.stopPropagation();
+                                                activityManager.editActivity('${activity.id}')"
+                                        title="ערוך">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button class="activity-tab-action"
+                                        onclick="event.stopPropagation();
+                                                activityManager.openPermissionsModal('${activity.id}')"
+                                        title="הרשאות">
+                                    <i class="fas fa-user-shield"></i>
+                                </button>
+                                ` : ''}
+                                <button class="activity-tab-action"
+                                        onclick="event.stopPropagation();
+                                                activityManager.duplicateActivity('${activity.id}')"
+                                        title="שכפל">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                                ${activity.archived
+                                    ? `<button class="activity-tab-action archive"
+                                                onclick="event.stopPropagation();
+                                                        activityManager.archiveActivity('${activity.id}')"
+                                                title="הוצא מארכיון">
+                                        <i class="fas fa-box-open"></i>
+                                    </button>`
+                                    : `<button class="activity-tab-action archive"
+                                                onclick="event.stopPropagation();
+                                                        activityManager.archiveActivity('${activity.id}')"
+                                                title="ארכיון">
+                                        <i class="fas fa-archive"></i>
+                                    </button>`
+                                }
+                                <button class="activity-tab-action delete"
+                                        onclick="event.stopPropagation();
+                                                activityManager.deleteActivity('${activity.id}')"
+                                        title="מחק">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                            ` : ''}
+
+                        </div>
+                    </div>
+
                     ${activity.archived
-                    ? (this.isAdmin()
-                        ? `<button class="activity-tab-action archive" 
-                                    onclick="event.stopPropagation(); activityManager.archiveActivity('${activity.id}')" 
-                                    title="הוצא מארכיון">
-                                <i class="fas fa-box-open"></i>
-                            </button>`
-                        : `<button class="activity-tab-action archive" 
-                                    disabled
-                                    style="opacity:0.3;cursor:not-allowed"
-                                    title="רק מנהל מערכת יכול להוציא מארכיון">
-                                <i class="fas fa-box-open"></i>
-                            </button>`)
-                    : `<button class="activity-tab-action archive" 
-                                onclick="event.stopPropagation(); activityManager.archiveActivity('${activity.id}')" 
-                                title="העבר לארכיון">
-                            <i class="fas fa-archive"></i>
-                        </button>`
-                }
-                    <button class="activity-tab-action delete" onclick="event.stopPropagation(); activityManager.deleteActivity('${activity.id}')" title="מחק">
-                        <i class="fas fa-trash"></i>
-                    </button>
+                        ? '<span class="archived-badge">ארכיון</span>'
+                        : ''}
                 </div>
-                ${activity.archived ? '<span class="archived-badge">ארכיון</span>' : ''}
-            </div>
-        `).join('');
+                `;
+            }).join('');
 
             tabsWrapper.innerHTML = tabsHTML;
         }
@@ -1145,14 +1231,24 @@ class ActivityManager {
 
     // Select activity
     async selectActivity(activityId) {
-        // Get the selected activity
+        
         const activity = this.activities.find(a => a.id === activityId);
         if (!activity) return;
+
+        this.currentSearchTerm = '';
+        const searchInput = document.getElementById('taskSearchInput');
+        if (searchInput) searchInput.value = '';
+        const clearBtn = document.querySelector('.task-search .clear-search-btn');
+        if (clearBtn) clearBtn.style.display = 'none';
 
         // אם הפעילות בארכיון - הצג הודעה ואפשר צפייה בלבד
         if (activity && activity.archived) {
             NotificationManager.show('פעילות זו נמצאת בארכיון - מצב צפייה בלבד', 'info');
         }
+
+        // הצג כפתור סינון
+        const filterBtn = document.getElementById('filterToggleBtn');
+        if (filterBtn) filterBtn.style.display = '';
 
         const searchTask = document.querySelector('.task-search-container');
         if (searchTask) {
@@ -1161,27 +1257,40 @@ class ActivityManager {
 
         this.currentActivityId = activityId;
 
+        // *** הוסף אחרי שמוצאת הפעילות ***
+        // בדוק הרשאת סימון למשתמש הנוכחי
+        await this.checkCurrentUserPermission(activityId);
+
+        // *** חדש: בדוק אם המשתמש הוא מנהל הפעילות ***
+        await this.checkIfUserIsActivityManager(activityId, activity);
 
         const nameDisplay = document.getElementById('activityNameDisplay');
-        if (nameDisplay) {
-            nameDisplay.textContent = activity.name;
-        }
+        if (nameDisplay) nameDisplay.textContent = activity.name;
 
-        // Update the date display with activity date
         const dateDisplay = document.getElementById('activityDateDisplay');
         if (dateDisplay) {
             if (activity && activity.activityDate) {
                 this.currentDate = activity.activityDate;
-                const formattedDate = this.formatDate(activity.activityDate);
-                dateDisplay.textContent = formattedDate;
+                dateDisplay.textContent = this.formatDate(activity.activityDate);
             } else {
-                // If no activity date, show current date
                 this.currentDate = new Date().toISOString().split('T')[0];
                 dateDisplay.textContent = this.formatDate(this.currentDate);
             }
         }
 
-        document.querySelector('.task-controls-row').style.display = 'block';
+        // *** חדש: הצגת מנהל הפעילות ברמת הפעילות ***
+        const managerDisplay = document.getElementById('activityManagerDisplay');
+        if (managerDisplay) {
+            if (activity.activityManager) {
+                managerDisplay.textContent =
+                    `מנהל פעילות: ${activity.activityManager}`;
+                managerDisplay.style.display = '';
+            } else {
+                managerDisplay.style.display = 'none';
+            }
+        }
+
+        document.querySelector('.task-controls-row').style.display = 'flex';
 
         // אפס את כפתור הוספת המשימה במקרה שהיה נעול
         const addTaskBtn = document.querySelector('[onclick*="activityManager.openAddTaskModal"]'); if (addTaskBtn) {
@@ -1191,8 +1300,520 @@ class ActivityManager {
             addTaskBtn.title = '';
         }
 
+        if (window.activitiesDashboard){
+            activityManager.toggleFiltersBar(); // פותח את הסינונים
+
+            const filterBtn = document.getElementById('filterToggleBtn');
+            if (filterBtn) {
+                filterBtn.style.display = 'none';
+            }
+        }
+
+
+
         this.renderActivityTabs();
         await this.loadActivityTasks(activityId, this.currentDate);
+    }
+
+    async checkIfUserIsActivityManager(activityId, activity) {
+        if (!this.currentUser) return;
+
+        // קבל שם משתמש נוכחי בכל הפורמטים האפשריים
+        const currentUserName = (
+            this.currentUser.displayName ||
+            this.currentUser.username ||
+            this.currentUser.name ||
+            ''
+        ).trim().toLowerCase();
+
+        if (!currentUserName) return;
+
+        // בדוק אם המשתמש הוא מנהל הפעילות ברמת הפעילות
+        const activityManagerName = (activity.activityManager || '').trim().toLowerCase();
+        if (activityManagerName && activityManagerName === currentUserName) {
+            this.currentUserHasPermission = true;
+            return;
+        }
+
+        // בדוק אם המשתמש הוא מנהל פעילות ברמת אחת המשימות
+        try {
+            const response = await fetch(
+                `/Activities/GetActivityTasks?activityId=${activityId}&date=${this.currentDate}`
+            );
+            const tasks = await response.json();
+            if (!Array.isArray(tasks)) return;
+
+            const isManagerInTask = tasks.some(task => {
+                const taskManagerName = (task.activityManager || '').trim().toLowerCase();
+                return taskManagerName && taskManagerName === currentUserName;
+            });
+
+            if (isManagerInTask) {
+                this.currentUserHasPermission = true;
+            }
+        } catch (err) {
+            console.warn('Could not check task managers:', err);
+        }
+    }
+
+    // הצגת/הסתרת שורת הסינונים
+    toggleFiltersBar() {
+        let bar = document.getElementById('taskFiltersBar');
+        const btn = document.getElementById('filterToggleBtn');
+
+        //  אם ה-HTML עדיין לא הוזרק (למקרה קצה) - הזרק אותו עכשיו
+        if (!bar) {
+            const placeholder = document.getElementById('taskFiltersBar');
+            if (placeholder) {
+                placeholder.outerHTML = this.getFiltersBarHTML();
+            } else {
+                // אין placeholder ואין bar - הוסף אחרי act-task-controls
+                const controls = document.querySelector('.act-task-controls');
+                if (controls) {
+                    controls.insertAdjacentHTML(
+                        'afterend',
+                        this.getFiltersBarHTML()
+                    );
+                }
+            }
+            // קבל reference חדש אחרי ההזרקה
+            bar = document.getElementById('taskFiltersBar');
+            if (!bar) return;
+        }
+
+        const isVisible = bar.style.display !== 'none';
+
+        if (isVisible) {
+            bar.style.display = 'none';
+            if (btn) btn.classList.remove('active');
+        } else {
+            bar.style.display = 'flex';
+            if (btn) btn.classList.add('active');
+            // מלא אחראים בכל פתיחה (ייתכן שהמשימות השתנו)
+            this.populateResponsibleFilter();
+        }
+    }
+
+    // מלא את רשימת האחראים מהמשימות הקיימות
+    async populateResponsibleFilter() {
+        if (!this.currentActivityId) return;
+
+        const response = await fetch(
+            `/Activities/GetActivityTasks` +
+            `?activityId=${this.currentActivityId}&date=${this.currentDate}`
+        );
+        const tasks = await response.json();
+        if (!Array.isArray(tasks)) return;
+
+        // ── פונקציית עזר: מלא select מ-Set ──
+        const fillSelect = (selectId, values) => {
+            const select = document.getElementById(selectId);
+            if (!select) return;
+            const currentVal = select.value;
+            select.innerHTML = '<option value="">הכל</option>';
+            [...values].sort().forEach(val => {
+                const opt = document.createElement('option');
+                opt.value = val;
+                opt.textContent = val;
+                select.appendChild(opt);
+            });
+            // שמור ערך נוכחי אם עדיין קיים
+            if ([...values].includes(currentVal)) {
+                select.value = currentVal;
+            }
+        };
+
+        // ── אסוף ערכים ייחודיים לכל שדה ──
+        const responsibles   = new Set();
+        const systems        = new Set();
+        const environments   = new Set();
+        const dependencies   = new Set();
+        const disruptions    = new Set();
+        const impacts        = new Set();
+
+        tasks.forEach(t => {
+            if (t.responsiblePerson)    responsibles.add(t.responsiblePerson);
+            if (t.secondaryResponsible) responsibles.add(t.secondaryResponsible);
+            if (t.systemName)           systems.add(t.systemName);
+            if (t.environment)          environments.add(t.environment);
+            if (t.dependency)           dependencies.add(t.dependency);
+            if (t.disruptionDuration)   disruptions.add(t.disruptionDuration);
+            if (t.impact)               impacts.add(t.impact);
+        });
+
+        fillSelect('taskResponsibleFilter',  responsibles);
+        fillSelect('taskSystemFilter',       systems);
+        fillSelect('taskEnvironmentFilter',  environments);
+        fillSelect('taskDependencyFilter',   dependencies);
+        fillSelect('taskDisruptionFilter',   disruptions);
+        fillSelect('taskImpactFilter',       impacts);
+    }
+
+    // ─── מחזיר את ה-HTML של שורת הסינון ───
+    getFiltersBarHTML() {
+        return `
+            <div class="task-filters-bar" id="taskFiltersBar" style="display:none;">
+
+                <div class="filters-title">
+                    <i class="fas fa-filter"></i>
+                    סינונים:
+                </div>
+
+                <div class="filter-group">
+                    <label>
+                        <i class="fas fa-circle" style="font-size:0.6rem;"></i>
+                        סטטוס:
+                    </label>
+                    <select id="taskStatusFilter"
+                            onchange="activityManager.applyFiltersAndRefresh()">
+                        <option value="">הכל</option>
+                        <option value="חדש">חדש</option>
+                        <option value="ממתין">ממתין</option>
+                        <option value="בביצוע">בביצוע</option>
+                        <option value="בוצע">בוצע</option>
+                        <option value="מבוטלת">מבוטלת</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label>
+                        <i class="fas fa-user" style="font-size:0.7rem;"></i>
+                        אחראי:
+                    </label>
+                    <select id="taskResponsibleFilter"
+                            onchange="activityManager.applyFiltersAndRefresh()">
+                        <option value="">הכל</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label>
+                        <i class="fas fa-server" style="font-size:0.7rem;"></i>
+                        מערכת:
+                    </label>
+                    <select id="taskSystemFilter"
+                            onchange="activityManager.applyFiltersAndRefresh()">
+                        <option value="">הכל</option>
+                    </select>
+                </div>
+
+                <div class="filter-group">
+                    <label>
+                        <i class="fas fa-layer-group" style="font-size:0.7rem;"></i>
+                        סביבה:
+                    </label>
+                    <select id="taskEnvironmentFilter"
+                            onchange="activityManager.applyFiltersAndRefresh()">
+                        <option value="">הכל</option>
+                    </select>
+                </div>
+
+                <button class="filter-clear-btn"
+                        onclick="activityManager.clearAllFilters()"
+                        title="נקה כל הסינונים">
+                    <i class="fas fa-times"></i>
+                    נקה
+                </button>
+
+                <span class="filter-results-count"
+                    id="filterResultsCount"
+                    style="display:none;">
+                </span>
+
+            </div>
+        `;
+    }
+
+    // החל סינונים ורענן תצוגה
+    async applyFiltersAndRefresh() {
+        await this.loadActivityTasks(
+            this.currentActivityId,
+            this.currentDate
+        );
+        this.updateFilterResultsCount();
+        this.updateFilterActiveIndicator();
+    }
+
+    // פונקציה חדשה - עדכן אינדיקטור סינון פעיל
+    updateFilterActiveIndicator() {
+        const filters = [
+            'taskStatusFilter',
+            'taskResponsibleFilter',
+            'taskSystemFilter',
+            'taskEnvironmentFilter',
+            'taskDependencyFilter',
+            'taskDisruptionFilter',
+            'taskImpactFilter'
+        ];
+
+        const isActive = filters.some(id => 
+            !!(document.getElementById(id)?.value)
+        );
+
+        const indicator = document.getElementById('filterActiveIndicator');
+        const btn       = document.getElementById('filterToggleBtn');
+
+        if (indicator) {
+            indicator.style.display = isActive ? 'inline' : 'none';
+        }
+
+        if (btn) {
+            if (isActive) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        }
+    }
+
+    // עדכן מונה תוצאות
+    updateFilterResultsCount(count) {
+        if(count==undefined)
+            count=0;
+        const countEl = document.getElementById('filterResultsCount');
+        if (!countEl) return;
+
+        const hasFilters = [
+            'taskStatusFilter',
+            'taskResponsibleFilter',
+            'taskSystemFilter',
+            'taskEnvironmentFilter',
+            'taskDependencyFilter',
+            'taskDisruptionFilter',
+            'taskImpactFilter'
+        ].some(id => !!document.getElementById(id)?.value);
+
+        const hasSearch = !!this.currentSearchTerm;
+
+        if (hasFilters || hasSearch) {
+            const parts = [];
+            if (hasSearch)  parts.push(`חיפוש: "${this.currentSearchTerm}"`);
+            if (hasFilters) parts.push('סינון פעיל');
+
+            countEl.textContent = `מציג ${count} משימות · ${parts.join(' + ')}`;
+            countEl.style.display = 'inline';
+        } else {
+            countEl.style.display = 'none';
+        }
+    }
+
+    // נקה כל הסינונים
+    clearAllFilters() {
+        [
+            'taskStatusFilter',
+            'taskResponsibleFilter',
+            'taskSystemFilter',
+            'taskEnvironmentFilter',
+            'taskDependencyFilter',
+            'taskDisruptionFilter',
+            'taskImpactFilter'
+        ].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+
+        // נקה גם את שדה החיפוש
+        this.currentSearchTerm = '';
+        const searchInput = document.getElementById('taskSearchInput');
+        if (searchInput) searchInput.value = '';
+
+        const clearBtn = document.querySelector('.task-search .clear-search-btn');
+        if (clearBtn) clearBtn.style.display = 'none';
+
+        this.applyFiltersAndRefresh();
+    }
+
+    renderActivityTasksGroupedByDate(tasks) {
+        const container = document.getElementById('activityTasksContainer');
+        if (!container) return;
+
+        if (tasks.length === 0) {
+            container.innerHTML = `
+                <div class="tasks-empty">
+                    <i class="fas fa-clipboard-list"></i><br>
+                    אין משימות בפעילות זו
+                </div>`;
+            return;
+        }
+
+        // קבץ משימות לפי תאריך
+        const groups = {};
+        const noDateKey = '__nodate__';
+
+        tasks.forEach(task => {
+            const key = task.taskDate || noDateKey;
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(task);
+        });
+
+        // מיין קבוצות לפי תאריך
+        const sortedKeys = Object.keys(groups).sort((a, b) => {
+            if (a === noDateKey) return 1;
+            if (b === noDateKey) return -1;
+            return new Date(a) - new Date(b);
+        });
+
+        // שמות ימים עברית
+        const hebrewDays = [
+            'ראשון', 'שני', 'שלישי', 'רביעי', 
+            'חמישי', 'שישי', 'שבת'
+        ];
+
+        let html = `<div class="tasks-grouped-list">`;
+
+        sortedKeys.forEach((dateKey, index) => {
+            const groupTasks = groups[dateKey];
+            const isToday = dateKey === new Date().toISOString().split('T')[0];
+            // היום תמיד פתוח, שאר הימים פתוחים כברירת מחדל
+            const isOpen = true; 
+            const groupId = `date-group-${dateKey.replace(/_/g, '-')}`;
+            
+            // ─── כותרת קבוצה ───
+            if (dateKey === noDateKey) {
+                html += `
+                    <div class="task-date-group-header no-date-header collapsible-header"
+                        onclick="activityManager.toggleDateGroup('${groupId}')"
+                        data-group-id="${groupId}">
+                        <div class="date-group-line"></div>
+                        <div class="date-group-label">
+                            <i class="fas fa-calendar-times"></i>
+                            <span>ללא תאריך</span>
+                            <span class="date-group-count">${groupTasks.length}</span>
+                            <i class="fas fa-chevron-up date-group-chevron"></i>
+                        </div>
+                        <div class="date-group-line"></div>
+                    </div>`;
+            } else {
+                const d = new Date(dateKey);
+                const dayName = hebrewDays[d.getDay()];
+                const formattedDate = this.formatDate(dateKey);
+                const isPast = d < new Date(new Date().toDateString());
+
+                const completedCount = groupTasks.filter(t => 
+                    t.completionDates && t.completionDates.includes(this.currentDate)
+                ).length;
+                
+                html += `
+                    <div class="task-date-group-header 
+                                ${isToday ? 'today-header' : ''} 
+                                ${isPast && !isToday ? 'past-header' : ''}
+                                collapsible-header"
+                        onclick="activityManager.toggleDateGroup('${groupId}')"
+                        data-group-id="${groupId}">
+                        <div class="date-group-line"></div>
+                        <div class="date-group-label">
+                            <i class="fas fa-calendar-day"></i>
+                            <span class="date-group-day">יום ${dayName}</span>
+                            <span class="date-group-date">${formattedDate}</span>
+                            ${isToday ? '<span class="today-badge">היום</span>' : ''}
+                            <span class="date-group-count">${groupTasks.length}</span>
+                            ${completedCount > 0 
+                                ? `<span class="date-group-completed-count">
+                                    <i class="fas fa-check"></i>${completedCount}/${groupTasks.length}
+                                </span>` 
+                                : ''}
+                            <i class="fas fa-chevron-up date-group-chevron"></i>
+                        </div>
+                        <div class="date-group-line"></div>
+                    </div>`;
+            }
+
+            // ─── משימות בקבוצה ───
+            html += `<div class="date-group-tasks" id="${groupId}">`;
+            groupTasks.forEach(task => {
+                html += this.createTaskHTML(task);
+            });
+            html += `</div>`;
+        });
+
+        html += '</div>';
+        container.innerHTML = html;
+
+        this.updateActivityProgress(tasks);
+        this.initializeTaskDragAndDrop();
+    }
+
+    // ─── פתח/סגור קבוצת תאריך ───
+    toggleDateGroup(groupId) {
+        const groupEl  = document.getElementById(groupId);
+        const headerEl = document.querySelector(
+            `.collapsible-header[data-group-id="${groupId}"]`
+        );
+        if (!groupEl || !headerEl) return;
+
+        const isOpen = !groupEl.classList.contains('collapsed');
+
+        if (isOpen) {
+            groupEl.classList.add('collapsed');
+            headerEl.classList.add('group-collapsed');
+        } else {
+            groupEl.classList.remove('collapsed');
+            headerEl.classList.remove('group-collapsed');
+        }
+
+        // ─── עדכן את הכפתור הראשי לפי המצב החדש ───
+        this._syncToggleBtn();
+    }
+
+    // ─── סנכרן טקסט/אייקון של הכפתור לפי מצב הקבוצות ───
+    _syncToggleBtn() {
+        const btn    = document.getElementById('dateGroupsToggleBtn');
+        if (!btn) return;
+
+        const groups  = document.querySelectorAll('.date-group-tasks');
+        const anyOpen = [...groups].some(g => !g.classList.contains('collapsed'));
+
+        if (anyOpen) {
+            btn.innerHTML = `<i class="fas fa-compress-alt"></i><span>סגור הכל</span>`;
+            btn.title = 'סגור הכל';
+        } else {
+            btn.innerHTML = `<i class="fas fa-expand-alt"></i><span>פתח הכל</span>`;
+            btn.title = 'פתח הכל';
+        }
+    }
+
+    // ─── פתח הכל / סגור הכל ───
+    toggleAllDateGroups(forceOpen) {
+        const groups  = document.querySelectorAll('.date-group-tasks');
+        const headers = document.querySelectorAll('.collapsible-header');
+        const btn     = document.getElementById('dateGroupsToggleBtn');
+
+        // אם forceOpen הוגדר מבחוץ - השתמש בו,
+        // אחרת בדוק אם לפחות קבוצה אחת פתוחה
+        const anyOpen = forceOpen !== undefined
+            ? !forceOpen
+            : [...groups].some(g => !g.classList.contains('collapsed'));
+
+        // anyOpen=true  → יש פתוחים → צריך לסגור הכל
+        // anyOpen=false → הכל סגור   → צריך לפתוח הכל
+        const shouldClose = anyOpen;
+
+        groups.forEach(g => {
+            if (shouldClose) {
+                g.classList.add('collapsed');
+            } else {
+                g.classList.remove('collapsed');
+            }
+        });
+
+        headers.forEach(h => {
+            if (shouldClose) {
+                h.classList.add('group-collapsed');
+            } else {
+                h.classList.remove('group-collapsed');
+            }
+        });
+
+        // עדכן טקסט ואייקון הכפתור
+        if (btn) {
+            if (shouldClose) {
+                btn.innerHTML = `<i class="fas fa-expand-alt"></i><span>פתח הכל</span>`;
+                btn.title = 'פתח הכל';
+            } else {
+                btn.innerHTML = `<i class="fas fa-compress-alt"></i><span>סגור הכל</span>`;
+                btn.title = 'סגור הכל';
+            }
+        }
     }
 
     // Load tasks for activity
@@ -1204,17 +1825,52 @@ class ActivityManager {
             const data = await response.json();
 
             if (data.error) {
-                console.error('Error loading tasks:', data.error);
                 this.renderActivityTasks([]);
             } else {
                 this.originalTasksOrder = [...data];
                 let tasksToRender = [...data];
 
-                if (this.currentSort === 'time') {
-                    tasksToRender = this.sortTasksByTime(tasksToRender);
+                // ── מיון ──
+                switch (this.currentSort) {
+                    case 'timeGrouped':
+                        tasksToRender = this.sortTasksByDateAndTime(tasksToRender);
+                        break;
+                    case 'status':
+                        tasksToRender = this.sortTasksByStatus(tasksToRender);
+                        break;
+                    case 'responsible':
+                        tasksToRender = this.sortTasksByResponsible(tasksToRender);
+                        break;
+                    case 'priority':
+                        tasksToRender = this.sortTasksByPriority(tasksToRender);
+                        break;
+                    case 'selfOrder':
+                    default:
+                        tasksToRender = tasksToRender.sort(
+                            (a, b) => (a.order || 0) - (b.order || 0)
+                        );
+                        break;
                 }
 
-                this.renderActivityTasks(tasksToRender);
+                // ── סינון dropdowns ──
+                tasksToRender = this.filterTasks(tasksToRender);
+
+                // ── חיפוש טקסט ── ← הוסף שורה זו
+                tasksToRender = this._applySearchFilter(tasksToRender);
+
+                // ── הצג/הסתר כפתורי פתח-סגור הכל ──
+                this._updateDateGroupControls(
+                    this.currentSort === 'timeGrouped'
+                );
+
+                if (this.currentSort === 'timeGrouped') {
+                    this.renderActivityTasksGroupedByDate(tasksToRender);
+                } else {
+                    this.renderActivityTasks(tasksToRender);
+                }
+
+                // ── הצג מונה תוצאות ──
+                this.updateFilterResultsCount(tasksToRender.length); // ← עדכן
 
                 const activity = this.activities.find(a => a.id === activityId);
                 if (activity && activity.archived) {
@@ -1222,9 +1878,33 @@ class ActivityManager {
                 }
             }
         } catch (error) {
-            console.error('Error fetching tasks:', error);
             this.renderActivityTasks([]);
         }
+    }
+
+    // ─── הצג/הסתר כפתורי פתח הכל / סגור הכל בתוך task-controls-row ───
+    _updateDateGroupControls(show) {
+        const row = document.querySelector('.task-controls-row');
+        if (!row) return;
+
+        const existing = row.querySelector('.date-groups-controls');
+        if (existing) existing.remove();
+
+        if (!show) return;
+
+        const controls = document.createElement('div');
+        controls.className = 'date-groups-controls';
+        controls.innerHTML = `
+            <button class="date-groups-toggle-btn"
+                    id="dateGroupsToggleBtn"
+                    onclick="activityManager.toggleAllDateGroups()"
+                    title="פתח/סגור הכל">
+                <i class="fas fa-compress-alt"></i>
+                <span>סגור הכל</span>
+            </button>
+        `;
+
+        row.appendChild(controls);
     }
 
     // נעילת כל הכפתורים והאינטראקציות במשימות של פעילות בארכיון
@@ -1473,6 +2153,7 @@ class ActivityManager {
 
             const result = await response.json();
 
+            if (!this.handleApiResponse(result)) return;
             if (result.success) {
                 NotificationManager.show('סדר המשימות עודכן בהצלחה', 'success');
             } else {
@@ -1634,6 +2315,7 @@ class ActivityManager {
 
             const result = await response.json();
 
+            if (!this.handleApiResponse(result)) return;
             if (result.success) {
                 // Add a note about who completed the task
                 const noteResponse = await fetch('/Activities/UpdateTask', {
@@ -1764,6 +2446,67 @@ class ActivityManager {
                         <strong>אחראי משנה:</strong> ${task.secondaryResponsible}
                     </span>
                 ` : ''}
+
+                ${task.systemName ? `
+                    <span class="task-meta-item">
+                        <i class="fas fa-server"></i>
+                        <strong>מערכת:</strong> ${task.systemName}
+                    </span>
+                ` : ''}
+
+                ${task.environment ? `
+                    <span class="task-meta-item">
+                        <i class="fas fa-layer-group"></i>
+                        <strong>סביבה:</strong> ${task.environment}
+                    </span>
+                ` : ''}
+
+                ${task.dependency ? `
+                    <span class="task-meta-item">
+                        <i class="fas fa-project-diagram"></i>
+                        <strong>תלות:</strong>
+                        ${task.dependency.length > 50
+                            ? task.dependency.substring(0, 50) + '...'
+                            : task.dependency}
+                    </span>
+                ` : ''}
+
+                ${task.disruptionDuration ? `
+                    <span class="task-meta-item">
+                        <i class="fas fa-hourglass-half"></i>
+                        <strong>זמן שיבוע:</strong> ${task.disruptionDuration}
+                    </span>
+                ` : ''}
+
+                ${task.impact ? `
+                    <span class="task-meta-item">
+                        <i class="fas fa-bolt"></i>
+                        <strong>השפעה:</strong>
+                        ${task.impact.length > 50
+                            ? task.impact.substring(0, 50) + '...'
+                            : task.impact}
+                    </span>
+                ` : ''}
+
+                ${task.emailTo ? `
+                    <span class="task-meta-item task-email-indicator ${task.emailSent ? 'email-sent' : 'email-pending'}"
+                        title="${task.emailSent 
+                                    ? 'מייל נשלח בהצלחה ב-' + (task.emailSentAt || '') 
+                                    : 'מוגדר לשליחת מייל עם הביצוע'}">
+                        <i class="fas fa-envelope"></i>
+                        <span>${task.emailSent 
+                                ? 'מייל נשלח' + (task.emailSentAt ? ' · ' + task.emailSentAt.substring(0,16) : '')
+                                : 'ממתין לשליחה'}</span>
+                        ${task.emailSent ? `
+                            <button class="resend-email-btn" 
+                                    onclick="event.stopPropagation(); 
+                                            activityManager.resendTaskEmail('${task.id}')"
+                                    title="שלח מייל שוב">
+                                <i class="fas fa-redo"></i>
+                            </button>
+                        ` : ''}
+                    </span>
+                ` : ''}
             </div>
             
             ${isCompleted && completedByEmployee ? `
@@ -1779,6 +2522,20 @@ class ActivityManager {
                 <div class="task-notes-display">
                     <i class="fas fa-sticky-note"></i>
                     <span>${task.notes}</span>
+                </div>
+            ` : ''}
+
+            ${task.alertsToCheck ? `
+                <div class="task-alerts-display">
+                    <i class="fas fa-satellite-dish"></i>
+                    <div style="display:flex; flex-direction:column; gap:2px;">
+                        <strong style="font-size:0.78rem;">התראות לבדיקה:</strong>
+                        <span style="font-size:0.78rem;">
+                            ${task.alertsToCheck.length > 60
+                                ? task.alertsToCheck.substring(0, 60) + '...'
+                                : task.alertsToCheck}
+                        </span>
+                    </div>
                 </div>
             ` : ''}
             
@@ -1811,15 +2568,15 @@ class ActivityManager {
         </div>
         
         <div class="task-actions">
-            ${!isCompleted && !skipReason ? `
-                <button class="task-action-btn skip" 
+            ${!isCompleted && !skipReason && (this.isUserAdmin() || this.currentUserHasPermission) ? `
+                <button class="task-action-btn skip"
                         onclick="activityManager.openSkipModal('${task.id}')">
                     <i class="fas fa-ban"></i>
                 </button>
             ` : ''}
-            ${skipReason ? `
-                <button class="task-action-btn clear-skip" 
-                        onclick="activityManager.clearSkipReason('${task.id}')" 
+            ${skipReason && (this.isUserAdmin() || this.currentUserHasPermission) ? `
+                <button class="task-action-btn clear-skip"
+                        onclick="activityManager.clearSkipReason('${task.id}')"
                         title="בטל סיבת אי ביצוע">
                     <i class="fas fa-undo"></i>
                 </button>
@@ -1831,15 +2588,386 @@ class ActivityManager {
                     <i class="fas fa-bell"></i>
                 </button>
             ` : ''}
-            <button class="task-action-btn edit" onclick="activityManager.editTask('${task.id}')">
+            <button class="task-action-btn check-alert"
+                    id="alertBtn_${task.id}"
+                    onclick="activityManager.checkTaskOpenAlert('${task.id}')"
+                    title="בדוק התראה פתוחה"
+                    style="color:#6b7280;">
+                <i class="fas fa-satellite-dish"></i>
+            </button>
+            ${this.isUserAdmin() ? `
+            <button class="task-action-btn edit"
+                    onclick="activityManager.editTask('${task.id}')">
                 <i class="fas fa-edit"></i>
             </button>
-            <button class="task-action-btn delete" onclick="activityManager.deleteTask('${task.id}')">
+            <button class="task-action-btn delete"
+                    onclick="activityManager.deleteTask('${task.id}')">
                 <i class="fas fa-trash"></i>
             </button>
+            ` : ''}
         </div>
     </div>
 `;
+    }
+
+
+    _escHtml(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // בדיקת התראה פתוחה למשימה
+    // ─────────────────────────────────────────────────────────
+    async checkTaskOpenAlert(taskId) {
+        try {
+            const taskResponse = await fetch(
+                `/Activities/GetTask?taskId=${taskId}` +
+                `&activityId=${this.currentActivityId}`
+            );
+            const taskResult = await taskResponse.json();
+            if (!taskResult.success || !taskResult.task) return;
+
+            const task = taskResult.task;
+
+            if (!task.alertsToCheck || !task.alertsToCheck.trim()) {
+                this._showTaskAlertCheckResult(task, [], false);
+                return;
+            }
+
+            // כל שורה = חיפוש נפרד
+            const searchLines = task.alertsToCheck
+                .split(/[\n]+/)           // *** שורה חדשה = מחיצה ***
+                .map(l => l.trim())
+                .filter(Boolean);
+
+            if (searchLines.length === 0) {
+                this._showTaskAlertCheckResult(task, [], false);
+                return;
+            }
+
+            // טען התראות פתוחות
+            let openAlerts = [];
+            let alertsFetched = false;
+
+            try {
+                const alertsResponse = await fetch('/Alerts/GetAlerts', {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' },
+                    credentials: 'include'
+                });
+
+                if (alertsResponse.ok) {
+                    const alertsData = await alertsResponse.json();
+                    const allAlerts = alertsData.alerts !== undefined
+                        ? alertsData.alerts
+                        : (Array.isArray(alertsData) ? alertsData : []);
+
+                    openAlerts = allAlerts.filter(a =>
+                        ['OPEN', 'ACK', 'ASSIGN'].includes(a.status)
+                    );
+                    alertsFetched = true;
+                }
+            } catch (alertErr) {
+                console.warn('GetAlerts failed:', alertErr);
+            }
+
+            if (!alertsFetched) {
+                this._showTaskAlertCheckResult(task, [], alertsFetched);
+                return;
+            }
+
+            // *** חפש כל שורה בנפרד ***
+            const results = [];
+
+            for (const line of searchLines) {
+                const lineTrimmed = line.trim();
+                if (!lineTrimmed) continue;
+
+                // *** בדוק אם יש מקף - לפני המקף = HOST, אחרי = הודעה ***
+                let searchHost    = null;
+                let searchMessage = null;
+
+                if (lineTrimmed.includes(' - ')) {
+                    const dashIdx = lineTrimmed.indexOf(' - ');
+                    searchHost    = lineTrimmed.substring(0, dashIdx).trim();
+                    searchMessage = lineTrimmed.substring(dashIdx + 1).trim();
+                } else {
+                    searchMessage = lineTrimmed;
+                }
+
+                let matchedAlert = null;
+
+                for (const alert of openAlerts) {
+                    const alertMessage = (alert.message || '').toLowerCase();
+                    const alertHost    = (alert.host    || '').toLowerCase();
+
+                    if (searchHost && searchMessage) {
+                        // *** חיפוש עם HOST + הודעה ***
+                        const hostMatch    = alertHost.includes(searchHost.toLowerCase()) ||
+                                            searchHost.toLowerCase().includes(alertHost);
+                        const messageMatch = alertMessage.includes(searchMessage.toLowerCase()) ||
+                                            searchMessage.toLowerCase().includes(alertMessage);
+
+                        if (hostMatch && messageMatch) {
+                            matchedAlert = alert;
+                            break;
+                        }
+                    } else {
+                        // *** חיפוש רגיל - רק הודעה ***
+                        const msgLower = searchMessage.toLowerCase();
+                        if (alertMessage.includes(msgLower) ||
+                            msgLower.includes(alertMessage)) {
+                            matchedAlert = alert;
+                            break;
+                        }
+                    }
+                }
+
+                results.push({
+                    line:         lineTrimmed,
+                    searchHost,
+                    searchMessage,
+                    matchedAlert
+                });
+            }
+
+            this._showTaskAlertCheckResult(task, results, alertsFetched);
+
+        } catch (error) {
+            console.error('Error checking task alert:', error);
+            NotificationManager.show('שגיאה בבדיקת התראה', 'error');
+        }
+    }
+
+    // ─── פונקציית עזר: קבל שורות חיפוש מהמשימה ───
+    _getSearchLinesFromTask(task) {
+        const lines = [];
+        
+        if (task.alertsToCheck && task.alertsToCheck.trim()) {
+            const alertLines = task.alertsToCheck
+                .split(/[\n,;]+/)
+                .map(l => l.trim())
+                .filter(Boolean);
+            lines.push(...alertLines);
+        } else {
+            // fallback לשדות המשימה
+            if (task.title)             lines.push(task.title);
+            if (task.description)       lines.push(task.description);
+            if (task.notes)             lines.push(task.notes);
+            if (task.responsiblePerson) lines.push(task.responsiblePerson);
+        }
+        
+        return lines;
+    }
+
+    // ─── פונקציית עזר: קבל טקסט מאוחד מהמשימה ───
+    _getSearchTextFromTask(task) {
+        if (task.alertsToCheck && task.alertsToCheck.trim()) {
+            return task.alertsToCheck;
+        }
+        return [
+            task.title,
+            task.description,
+            task.notes,
+            task.responsiblePerson
+        ].filter(Boolean).join(' ');
+    }
+
+   _showTaskAlertCheckResult(task, results = [], alertsFetched = false) {
+        const existing = document.getElementById('taskAlertCheckPopup');
+        if (existing) existing.remove();
+
+        const popup = document.createElement('div');
+        popup.id = 'taskAlertCheckPopup';
+        popup.style.cssText = `
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 20000;
+            display: flex; align-items: center; justify-content: center;
+            padding: 16px;
+            backdrop-filter: blur(3px);
+        `;
+
+        const noApiHTML = !alertsFetched ? `
+            <div style="background:#f8f9fa;border:1px dashed #dee2e6;
+                        border-radius:8px;padding:10px 12px;margin-bottom:12px;
+                        font-size:0.8rem;color:#6c757d;
+                        display:flex;align-items:center;gap:8px;">
+                <i class="fas fa-info-circle" style="color:#adb5bd;"></i>
+                <span>מערכת ההתראות לא זמינה כרגע</span>
+            </div>
+        ` : '';
+
+        // בנה תצוגה לכל שורת חיפוש
+        const hasAnyMatch = results.some(r => r.matchedAlert);
+
+        const resultsHTML = results.map(r => {
+            if (r.matchedAlert) {
+                const alert = r.matchedAlert;
+                return `
+                <div style="border:2px solid #ffd54f;border-radius:10px;
+                            padding:12px 14px;margin-bottom:10px;
+                            background:#fff8e1;">
+
+                    <!-- שורת החיפוש -->
+                    <div style="font-size:0.78rem;color:#555;margin-bottom:8px;
+                                display:flex;align-items:center;gap:6px;">
+                        <i class="fas fa-search" style="color:#667eea;"></i>
+                        <span>חיפוש:</span>
+                        <code style="background:#e8eaf6;padding:1px 6px;
+                                    border-radius:4px;font-size:0.78rem;">
+                            ${this._escHtml(r.line)}
+                        </code>
+                        ${r.searchHost ? `
+                            <span style="font-size:0.72rem;color:#888;">
+                                (host: <strong>${this._escHtml(r.searchHost)}</strong>)
+                            </span>
+                        ` : ''}
+                    </div>
+
+                    <!-- ההתראה שנמצאה -->
+                    <div style="font-size:0.85rem;font-weight:700;
+                                color:#e65100;margin-bottom:8px;
+                                display:flex;align-items:center;gap:6px;">
+                        <i class="fas fa-exclamation-circle"></i>
+                        נמצאה התראה פתוחה!
+                    </div>
+                    <div style="background:#fff;border:1px solid #ffe082;
+                                border-radius:6px;padding:8px 10px;
+                                font-family:monospace;font-size:0.8rem;
+                                color:#333;word-break:break-word;
+                                direction:ltr;text-align:left;
+                                margin-bottom:8px;">
+                        ${this._escHtml(alert.message || '')}
+                    </div>
+                    <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:0.82rem;">
+                        ${alert.host ? `
+                        <span>
+                            <i class="fas fa-server" style="color:#667eea;"></i>
+                            <strong>Host:</strong> ${this._escHtml(alert.host)}
+                        </span>` : ''}
+                        ${alert.severity ? `
+                        <span>
+                            <i class="fas fa-exclamation-triangle" style="color:#dc3545;"></i>
+                            <strong>חומרה:</strong> ${this._escHtml(alert.severity)}
+                        </span>` : ''}
+                        ${alert.status ? `
+                        <span>
+                            <i class="fas fa-info-circle" style="color:#667eea;"></i>
+                            <strong>סטטוס:</strong> ${this._escHtml(alert.status)}
+                        </span>` : ''}
+                    </div>
+                </div>`;
+            } else {
+                return `
+                <div style="border:1px solid #e9ecef;border-radius:8px;
+                            padding:10px 12px;margin-bottom:8px;
+                            background:#f8f9fa;
+                            display:flex;align-items:center;gap:8px;">
+                    <i class="fas fa-check-circle" style="color:#28a745;"></i>
+                    <div style="flex:1;font-size:0.82rem;">
+                        <code style="background:#e8eaf6;padding:1px 6px;
+                                    border-radius:4px;font-size:0.78rem;">
+                            ${this._escHtml(r.line)}
+                        </code>
+                        ${r.searchHost ? `
+                            <span style="font-size:0.72rem;color:#888;margin-right:6px;">
+                                (host: <strong>${this._escHtml(r.searchHost)}</strong>)
+                            </span>
+                        ` : ''}
+                    </div>
+                    <span style="font-size:0.78rem;color:#28a745;font-weight:600;
+                                white-space:nowrap;">
+                        אין התראה פתוחה
+                    </span>
+                </div>`;
+            }
+        }).join('');
+
+        popup.innerHTML = `
+            <div style="background:#fff;border-radius:14px;
+                        width:100%;max-width:600px;max-height:80vh;
+                        overflow:hidden;display:flex;flex-direction:column;
+                        box-shadow:0 20px 60px rgba(0,0,0,0.3);direction:rtl;">
+
+                <!-- Header -->
+                <div style="padding:16px 20px;border-bottom:2px solid #f0f0f0;
+                            display:flex;align-items:center;
+                            justify-content:space-between;flex-shrink:0;
+                            background:${hasAnyMatch ? '#fff3e0' : '#f3f4f6'};">
+                    <h3 style="margin:0;font-size:1rem;font-weight:700;
+                                color:${hasAnyMatch ? '#e65100' : '#374151'};
+                                display:flex;align-items:center;gap:8px;">
+                        <i class="fas fa-satellite-dish"
+                        style="color:${hasAnyMatch ? '#f59e0b' : '#6b7280'};"></i>
+                        בדיקת התראות פתוחות
+                        ${hasAnyMatch
+                            ? `<span style="background:#ef4444;color:#fff;
+                                            border-radius:10px;padding:2px 8px;
+                                            font-size:0.72rem;">
+                                ${results.filter(r => r.matchedAlert).length} נמצאו
+                            </span>`
+                            : ''}
+                    </h3>
+                    <button onclick="document.getElementById(
+                                        'taskAlertCheckPopup').remove()"
+                            style="background:none;border:none;
+                                font-size:1.4rem;cursor:pointer;
+                                color:#888;line-height:1;">
+                        &times;
+                    </button>
+                </div>
+
+                <!-- Body -->
+                <div style="padding:16px 20px;overflow-y:auto;flex:1;">
+
+                    <!-- שורת החיפוש -->
+                    <div style="background:#f8f9fa;border:1px solid #e9ecef;
+                                border-radius:8px;padding:8px 12px;
+                                margin-bottom:12px;font-size:0.82rem;color:#555;">
+                        <i class="fas fa-tasks" style="color:#667eea;"></i>
+                        <strong>משימה:</strong> ${this._escHtml(task.title)}
+                        <span style="color:#aaa;margin-right:8px;">
+                            (${results.length} שורות לחיפוש)
+                        </span>
+                    </div>
+
+                    ${noApiHTML}
+                    ${results.length > 0 ? resultsHTML : `
+                        <div style="text-align:center;padding:30px;">
+                            <i class="fas fa-search" style="font-size:2rem;
+                                                            color:#aaa;
+                                                            display:block;
+                                                            margin-bottom:10px;"></i>
+                            <p style="color:#666;">אין שורות חיפוש מוגדרות</p>
+                        </div>
+                    `}
+                </div>
+
+                <!-- Footer -->
+                <div style="padding:12px 20px;border-top:1px solid #f0f0f0;
+                            display:flex;justify-content:flex-end;flex-shrink:0;">
+                    <button onclick="document.getElementById(
+                                        'taskAlertCheckPopup').remove()"
+                            style="padding:9px 20px;
+                                background:linear-gradient(135deg,#667eea,#764ba2);
+                                color:#fff;border:none;border-radius:8px;
+                                cursor:pointer;font-size:0.88rem;font-weight:600;">
+                        סגור
+                    </button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(popup);
+        popup.addEventListener('click', e => {
+            if (e.target === popup) popup.remove();
+        });
     }
 
     // Update progress
@@ -1877,9 +3005,20 @@ class ActivityManager {
     openAddActivityModal() {
         this.isModalOpen = true;
         document.getElementById('activityModalTitle').textContent = 'צור פעילות חדשה';
-        document.getElementById('activitySubmitBtn').textContent = 'צור פעילות';
+        document.getElementById('activitySubmitBtn').textContent  = 'צור פעילות';
         document.getElementById('activityForm').reset();
         document.getElementById('activityId').value = '';
+
+        // ── תאריך ──
+        const hiddenDateInput    = document.getElementById('activityDateInputHidden');
+        const formattedDateInput = document.getElementById('activityDateInput');
+        if (hiddenDateInput)    hiddenDateInput.value    = '';
+        if (formattedDateInput) formattedDateInput.value = '';
+
+        // ── מנהל פעילות ──
+        const managerInput = document.getElementById('activityManagerInput');
+        if (managerInput) managerInput.value = '';
+
         document.getElementById('addActivityModal').style.display = 'block';
         document.body.style.overflow = 'hidden';
     }
@@ -1889,12 +3028,21 @@ class ActivityManager {
         document.getElementById('addActivityModal').style.display = 'none';
         document.body.style.overflow = 'auto';
         document.getElementById('activityForm').reset();
-        document.getElementById('activityDateInput').value = '';
-        document.getElementById('activityDateInputHidden').value = '';
+
+        // ── נקה תאריך ──
+        const hiddenDateInput    = document.getElementById('activityDateInputHidden');
+        const formattedDateInput = document.getElementById('activityDateInput');
+        if (hiddenDateInput)    hiddenDateInput.value    = '';
+        if (formattedDateInput) formattedDateInput.value = '';
+
+        // ── נקה מנהל פעילות ──
+        const managerInput = document.getElementById('activityManagerInput');
+        if (managerInput) managerInput.value = '';
     }
 
     async saveActivity(activityData, isEditing = false) {
         try {
+            
             // Get the date from the hidden input (ISO format)
             const dateInput = document.getElementById('activityDateInputHidden');
             if (dateInput && dateInput.value) {
@@ -1915,6 +3063,20 @@ class ActivityManager {
             const result = await response.json();
 
             if (result.success) {
+                // *** חדש: הענק הרשאה אוטומטית למנהל הפעילות ***
+                const savedActivityId = isEditing
+                    ? activityData.id
+                    : result.activity?.id;
+
+                if (savedActivityId && activityData.activityManager) {
+                    await this.grantManagerPermissionAuto(
+                        savedActivityId,
+                        activityData.activityManager
+                    );
+                }
+
+                activityData.activityManager = document.getElementById('activityManagerInput')?.value || '';
+
                 await this.loadActivities();
                 this.renderActivityTabs();
 
@@ -1946,25 +3108,42 @@ class ActivityManager {
 
         // מניעת עריכת פעילות בארכיון
         if (activity.archived) {
-            NotificationManager.show('לא ניתן לערוך פעילות שנמצאת בארכיון', 'warning');
+            NotificationManager.show(
+                'לא ניתן לערוך פעילות שנמצאת בארכיון', 
+                'warning'
+            );
             return;
         }
 
+        // ── עדכן כותרות מודל ──
         document.getElementById('activityModalTitle').textContent = 'ערוך פעילות';
-        document.getElementById('activitySubmitBtn').textContent = 'עדכן פעילות';
-        document.getElementById('activityId').value = activity.id;
-        document.getElementById('activityName').value = activity.name;
-        document.getElementById('activityDescription').value = activity.description || '';
+        document.getElementById('activitySubmitBtn').textContent  = 'עדכן פעילות';
+        document.getElementById('activityId').value               = activity.id;
+        document.getElementById('activityName').value             = activity.name;
+        document.getElementById('activityDescription').value      = activity.description || '';
 
-        // Set both hidden and visible date fields
-        if (activity.activityDate) {
-            document.getElementById('activityDateInputHidden').value = activity.activityDate;
-            document.getElementById('activityDateInput').value = this.formatDate(activity.activityDate);
-        } else {
-            document.getElementById('activityDateInputHidden').value = '';
-            document.getElementById('activityDateInput').value = '';
+        // ── שדה מנהל פעילות (בדוק קיום לפני גישה) ──
+        const managerInput = document.getElementById('activityManagerInput');
+        if (managerInput) {
+            managerInput.value = activity.activityManager || '';
         }
 
+        // ── תאריך: בדוק קיום שניהם לפני גישה ──
+        const hiddenDateInput    = document.getElementById('activityDateInputHidden');
+        const formattedDateInput = document.getElementById('activityDateInput');
+
+        if (hiddenDateInput && formattedDateInput) {
+            if (activity.activityDate) {
+                hiddenDateInput.value    = activity.activityDate;
+                formattedDateInput.value = this.formatDate(activity.activityDate);
+            } else {
+                hiddenDateInput.value    = '';
+                formattedDateInput.value = '';
+            }
+        }
+
+        // ── פתח מודל ──
+        this.isModalOpen = true;
         document.getElementById('addActivityModal').style.display = 'block';
         document.body.style.overflow = 'hidden';
     }
@@ -2000,6 +3179,10 @@ class ActivityManager {
 
     // Delete activity
     async deleteActivity(activityId) {
+        if (!this.isUserAdmin()) {
+            NotificationManager.show('רק מנהל מערכת יכול למחוק פעילויות', 'warning');
+            return;
+        }
         const activity = this.activities.find(a => a.id === activityId);
         if (!activity) return;
 
@@ -2056,7 +3239,6 @@ class ActivityManager {
     // *** פונקציה חדשה - הוסף אחרי toggleTask ***
     async markTaskAsCompletedByCurrentUser(taskId, task) {
         try {
-            console.log(this.currentUser)
             // קבל את שם היוזר המחובר
             const employeeName = this.currentUser
                 ? (this.currentUser.displayName || this.currentUser.username || this.currentUser.name || 'משתמש')
@@ -2130,6 +3312,30 @@ class ActivityManager {
     // Toggle task completion
     async toggleTask(taskId) {
         try {
+            // *** תיקון הלוגיקה: Admin/NOC תמיד יכולים ***
+            if (this.isUserAdmin()) {
+                // ממשיך ללא בדיקה נוספת
+            } else if (this.isReadOnly || !this.currentUser) {
+                // לא מחובר כלל
+                if (window.activitiesDashboard?.showLoginRequired) {
+                    window.activitiesDashboard.showLoginRequired();
+                }
+                return;
+            } else if (!this.currentUserHasPermission) {
+                // מחובר אבל אין הרשאה ספציפית לפעילות
+                NotificationManager.show(
+                    'אין לך הרשאה לסמן משימות בפעילות זו',
+                    'warning'
+                );
+                return;
+            }
+            if (this.isReadOnly) {
+                if (window.activitiesDashboard &&
+                    typeof window.activitiesDashboard.showLoginRequired === 'function') {
+                    window.activitiesDashboard.showLoginRequired();
+                }
+                return;
+            }
             const taskResponse = await fetch(
                 `/Activities/GetTask?taskId=${taskId}&activityId=${this.currentActivityId}`
             );
@@ -2211,8 +3417,504 @@ class ActivityManager {
         }
     }
 
+    async openPermissionsModal(activityId) {
+        if (!this.isUserAdmin()) {
+            NotificationManager.show('רק מנהל מערכת יכול לנהל הרשאות', 'warning');
+            return;
+        }
+
+        const activity = this.activities.find(a => a.id === activityId);
+        if (!activity) return;
+
+        // טען הרשאות קיימות
+        const permResponse = await fetch(
+            `/Activities/GetActivityPermissions?activityId=${activityId}`
+        );
+        const permResult  = await permResponse.json();
+        const permissions = permResult.success ? permResult.permissions : [];
+
+        // טען משתמשים
+        let allUsers = [];
+        try {
+            const usersResponse = await fetch(
+                '/Auth/GetAllUsersForPermissions',
+                { credentials: 'include' }
+            );
+            if (usersResponse.ok) {
+                const usersData = await usersResponse.json();
+                if (usersData.success) allUsers = usersData.users || [];
+            }
+        } catch (err) {
+            console.warn('Could not load users:', err);
+            allUsers = this.employees.map(e => ({
+                username:    e.name,
+                displayName: e.name,
+                role:        'unknown'
+            }));
+        }
+
+        // בנה options לרשימה
+        const roleEmoji = {
+            'Admin': '👑', 'NOC': '🖥️',
+            'Dashboard': '👤', 'Viewer': '👁️'
+        };
+
+        const usersOptionsHTML = allUsers.map(u => {
+            const hasPerm = permissions.some(p => p.username === u.username);
+            const emoji   = roleEmoji[u.role] || '👤';
+            const label   = (u.displayName && u.displayName !== u.username)
+                ? `${emoji} ${u.displayName} (${u.username})`
+                : `${emoji} ${u.username}`;
+            return `<option value="${u.username}" ${hasPerm ? 'disabled' : ''}>` +
+                `${label}${hasPerm ? ' ✓' : ''}` +
+                `</option>`;
+        }).join('');
+
+        const modeText = permissions.length === 0 ? 'מוגבל לכולם' : 'מוגבל';
+
+        // הסר מודל קיים
+        const existing = document.getElementById('activityPermissionsModal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id            = 'activityPermissionsModal';
+        modal.className     = 'permissions-modal';
+
+        // *** שינוי עיקרי: עיצוב inline במקום הסתמכות על CSS חיצוני ***
+        modal.style.cssText = `
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.55);
+            z-index: 19000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            backdrop-filter: blur(3px);
+        `;
+
+        modal.innerHTML = `
+            <div style="
+                background: var(--card-bg, #1e2433);
+                border-radius: 16px;
+                width: 100%;
+                max-width: 600px;
+                max-height: 85vh;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+                direction: rtl;
+            ">
+                <!-- ── Header ── -->
+                <div style="
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    padding: 18px 20px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    flex-shrink: 0;
+                ">
+                    <h3 style="
+                        margin: 0;
+                        color: #fff;
+                        font-size: 0.95rem;
+                        font-weight: 700;
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                    ">
+                        <span style="
+                            background: rgba(255,255,255,0.2);
+                            width: 32px; height: 32px;
+                            border-radius: 50%;
+                            display: flex; align-items: center;
+                            justify-content: center;
+                            font-size: 0.9rem;
+                            flex-shrink: 0;
+                        "><i class="fas fa-user-shield"></i></span>
+                        הרשאות סימון — ${activity.name}
+                    </h3>
+                    <button onclick="
+                        document.getElementById('activityPermissionsModal').remove();
+                        document.body.style.overflow='auto';"
+                        style="
+                            background: rgba(255,255,255,0.15);
+                            border: 1px solid rgba(255,255,255,0.3);
+                            color: #fff;
+                            width: 30px; height: 30px;
+                            border-radius: 50%;
+                            cursor: pointer;
+                            font-size: 1rem;
+                            display: flex; align-items: center;
+                            justify-content: center;
+                            transition: background 0.2s;
+                            flex-shrink: 0;
+                        "
+                        onmouseover="this.style.background='rgba(255,255,255,0.3)'"
+                        onmouseout="this.style.background='rgba(255,255,255,0.15)'"
+                    >&times;</button>
+                </div>
+
+                <!-- ── Body ── -->
+                <div style="
+                    padding: 18px 18px 20px;
+                    overflow-y: auto;
+                    flex: 1;
+                    min-height: 0;
+                    background: var(--card-bg, #1e2433);
+                ">
+                    <!-- Stats -->
+                    <div style="display:flex; gap:10px; margin-bottom:16px;">
+                        <div style="
+                            flex:1; border-radius:10px; padding:11px 10px;
+                            text-align:center;
+                            background: rgba(102,126,234,0.1);
+                            border: 1px solid rgba(102,126,234,0.22);
+                        ">
+                            <div style="font-size:1.5rem; font-weight:800; color:#667eea; line-height:1.1; margin-bottom:3px;">
+                                ${allUsers.length}
+                            </div>
+                            <div style="font-size:0.7rem; color:var(--text-secondary,#9ca3af); font-weight:500;">
+                                משתמשים
+                            </div>
+                        </div>
+                        <div style="
+                            flex:1; border-radius:10px; padding:11px 10px;
+                            text-align:center;
+                            background: rgba(40,167,69,0.1);
+                            border: 1px solid rgba(40,167,69,0.22);
+                        ">
+                            <div style="font-size:1.5rem; font-weight:800; color:#28a745; line-height:1.1; margin-bottom:3px;">
+                                ${permissions.length}
+                            </div>
+                            <div style="font-size:0.7rem; color:var(--text-secondary,#9ca3af); font-weight:500;">
+                                עם הרשאה
+                            </div>
+                        </div>
+                        <div style="
+                            flex:1; border-radius:10px; padding:11px 10px;
+                            text-align:center;
+                            background: rgba(245,158,11,0.1);
+                            border: 1px solid rgba(245,158,11,0.22);
+                        ">
+                            <div style="font-size:0.85rem; font-weight:700; color:#d97706; line-height:1.3; margin-bottom:3px;">
+                                ${modeText}
+                            </div>
+                            <div style="font-size:0.7rem; color:var(--text-secondary,#9ca3af); font-weight:500;">
+                                מצב גישה
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Add section -->
+                    <div style="
+                        background: rgba(102,126,234,0.06);
+                        border: 1px solid rgba(102,126,234,0.16);
+                        border-radius: 11px;
+                        padding: 14px;
+                        margin-bottom: 16px;
+                    ">
+                        <p style="
+                            font-size: 0.87rem; font-weight: 700;
+                            color: #667eea; margin: 0 0 11px;
+                            display: flex; align-items: center; gap: 7px;
+                        ">
+                            <i class="fas fa-user-plus"></i> הוספת הרשאה
+                        </p>
+                        <div style="position:relative; margin-bottom:9px;">
+                            <input type="text" id="permUserSearch"
+                                placeholder="חיפוש משתמש..."
+                                style="
+                                    width: 100%; padding: 8px 34px 8px 11px;
+                                    border-radius: 7px;
+                                    border: 1px solid var(--border-color, #3d4a5c);
+                                    background: var(--input-bg, #2a3347);
+                                    color: var(--text-primary, #e0e0e0);
+                                    font-size: 0.86rem;
+                                    font-family: inherit;
+                                    box-sizing: border-box;
+                                    direction: rtl;
+                                    outline: none;
+                                "
+                                oninput="
+                                    var t=this.value.toLowerCase();
+                                    document.querySelectorAll('#permUsernameSelect option')
+                                    .forEach(function(o){
+                                        o.style.display=(!t||o.textContent.toLowerCase().includes(t))?'':'none';
+                                    });">
+                            <i class="fas fa-search" style="
+                                position:absolute; right:10px; top:50%;
+                                transform:translateY(-50%);
+                                color:#667eea; font-size:0.8rem;
+                                pointer-events:none;
+                            "></i>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:stretch;">
+                            <select id="permUsernameSelect" size="4" style="
+                                flex: 1;
+                                border-radius: 7px;
+                                border: 1px solid var(--border-color, #3d4a5c);
+                                background: var(--input-bg, #2a3347);
+                                color: var(--text-primary, #e0e0e0);
+                                font-size: 0.84rem;
+                                font-family: inherit;
+                                padding: 5px 9px;
+                                direction: rtl;
+                                min-height: 150px;
+                                outline: none;
+                            ">
+                                <option value="">— בחר משתמש —</option>
+                                ${usersOptionsHTML}
+                            </select>
+                            <button onclick="
+                                var s=document.getElementById('permUsernameSelect');
+                                activityManager.grantPermission('${activityId}',s.value);"
+                                style="
+                                    padding: 0 16px;
+                                    background: linear-gradient(135deg, #667eea, #764ba2);
+                                    color: #fff; border: none;
+                                    border-radius: 8px; cursor: pointer;
+                                    font-size: 0.86rem; font-weight: 600;
+                                    font-family: inherit;
+                                    display: flex; align-items: center;
+                                    justify-content: center; gap: 6px;
+                                    white-space: nowrap;
+                                    align-self: stretch;
+                                    transition: all 0.2s;height: 50px;
+                                "
+                                onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 12px rgba(102,126,234,0.38)'"
+                                onmouseout="this.style.transform='';this.style.boxShadow=''"
+                            >
+                                <i class="fas fa-plus"></i> הוסף
+                            </button>
+                        </div>
+                        <p style="
+                            font-size: 0.72rem;
+                            color: var(--text-secondary, #9ca3af);
+                            margin: 8px 0 0;
+                            display: flex; align-items: center; gap: 5px;
+                        ">
+                            <i class="fas fa-info-circle" style="color:#667eea;"></i>
+                            Admin ו-NOC יכולים לסמן תמיד ללא הגדרה
+                        </p>
+                    </div>
+
+                    <!-- Divider -->
+                    <div style="
+                        display: flex; align-items: center; gap: 10px;
+                        margin-bottom: 12px;
+                        font-size: 0.74rem; font-weight: 700;
+                        color: var(--text-secondary, #9ca3af);
+                        text-transform: uppercase; letter-spacing: 0.05em;
+                    ">
+                        <div style="flex:1; height:1px; background:var(--border-color, rgba(255,255,255,0.08));"></div>
+                        <span>הרשאות פעילות</span>
+                        <div style="flex:1; height:1px; background:var(--border-color, rgba(255,255,255,0.08));"></div>
+                    </div>
+
+                    <!-- List -->
+                    <div id="permissionsList">
+                        ${this._renderPermissionsList(permissions, activityId)}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+        document.body.style.overflow = 'hidden';
+
+        // סגירה בלחיצה על הרקע
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                modal.remove();
+                document.body.style.overflow = 'auto';
+            }
+        });
+    }
+
+    _renderPermissionsList(permissions, activityId) {
+        if (!permissions || permissions.length === 0) {
+            return '<div style="' +
+                'text-align:center; padding:26px 18px; border-radius:10px;' +
+                'background:var(--card-item-bg,rgba(255,255,255,0.03));' +
+                'border:1.5px dashed var(--border-color,rgba(255,255,255,0.1));' +
+            '">' +
+                '<i class="fas fa-users-slash" style="' +
+                    'font-size:2rem; display:block; margin-bottom:9px;' +
+                    'color:var(--text-secondary,#9ca3af); opacity:0.55;' +
+                '"></i>' +
+                '<p style="margin:0 0 5px; font-weight:600; font-size:0.88rem;' +
+                    'color:var(--text-primary,#e0e0e0);">אין הרשאות מוגדרות</p>' +
+                '<small style="color:var(--text-secondary,#9ca3af); font-size:0.76rem; line-height:1.5;">' +
+                    'כאשר אין הרשאות — כל משתמש מחובר יכול לסמן משימות' +
+                '</small>' +
+            '</div>';
+        }
+
+        var itemsHTML = '';
+
+        for (var i = 0; i < permissions.length; i++) {
+            var p         = permissions[i];
+            var isAuto = p.autoGranted === true || 
+                        p.AutoGranted === true ||
+                        p.grantedBy === 'מערכת' || 
+                        p.GrantedBy === 'מערכת';
+            var initial   = (p.username || '?').charAt(0).toUpperCase();
+            var grantedBy = p.grantedBy || p.GrantedBy || '';
+            var grantedByDisplay = (isAuto || grantedBy === 'מערכת' || 
+                        grantedBy === 'ע"י מערכת') ? '' : 
+                       (grantedBy ? 'ע"י ' + grantedBy : '');
+            var grantedAt = p.grantedAt || p.GrantedAt || '';
+
+
+            var autoBadgeHTML = isAuto ? (
+                '<span style="' +
+                    'display:inline-flex; align-items:center; gap:3px;' +
+                    'background:rgba(245,158,11,0.12); color:#d97706;' +
+                    'border:1px solid rgba(245,158,11,0.25);' +
+                    'border-radius:8px; font-size:0.67rem; font-weight:600;' +
+                    'padding:1px 6px;' +
+                '">' +
+                    '<i class="fas fa-magic"></i> מנהל פעילות' +
+                '</span>'
+            ) : '';
+
+            // *** הצג grantedBy אלא אם כן זה "מערכת" (כבר מצוין ב-badge) ***
+            var grantedByDisplay = (isAuto || grantedBy === 'ע"י מערכת') ? '' : grantedBy;
+
+            itemsHTML +=
+                '<div style="' +
+                    'display:flex; align-items:center;' +
+                    'justify-content:space-between; gap:10px;' +
+                    'padding:10px 12px; border-radius:10px;' +
+                    'margin-bottom:7px;' +
+                    'background:var(--card-item-bg,rgba(255,255,255,0.04));' +
+                    'border:1px solid var(--border-color,rgba(255,255,255,0.07));' +
+                    'transition:all 0.2s;' +
+                '"' +
+                ' onmouseover="this.style.borderColor=\'rgba(102,126,234,0.3)\';this.style.background=\'rgba(102,126,234,0.06)\'"' +
+                ' onmouseout="this.style.borderColor=\'var(--border-color,rgba(255,255,255,0.07))\';this.style.background=\'var(--card-item-bg,rgba(255,255,255,0.04))\'"' +
+                '>' +
+                    '<div style="display:flex; align-items:center; gap:10px; min-width:0;">' +
+                        '<div style="' +
+                            'width:36px; height:36px; border-radius:50%;' +
+                            'background:linear-gradient(135deg,#667eea,#764ba2);' +
+                            'display:flex; align-items:center; justify-content:center;' +
+                            'color:#fff; font-size:0.88rem; font-weight:700;' +
+                            'flex-shrink:0;' +
+                            'box-shadow:0 2px 7px rgba(102,126,234,0.28);' +
+                        '">' + initial + '</div>' +
+                        '<div style="min-width:0;">' +
+                            '<div style="' +
+                                'font-weight:600; font-size:0.88rem;' +
+                                'color:var(--text-primary,#e0e0e0);' +
+                                'white-space:nowrap; overflow:hidden; text-overflow:ellipsis;' +
+                            '">' + p.username + '</div>' +
+                            '<div style="' +
+                                'font-size:0.71rem;' +
+                                'color:var(--text-secondary,#9ca3af);' +
+                                'display:flex; gap:7px; margin-top:2px;' +
+                                'flex-wrap:wrap; align-items:center;' +
+                            '">' +
+                                (grantedByDisplay ? '<span>' + grantedByDisplay + '</span>' : '') +
+                                (grantedAt ? '<span>' + grantedAt + '</span>' : '') +
+                                autoBadgeHTML +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+                    '<button onclick="activityManager.revokePermission(\'' + activityId + '\',\'' + p.username + '\');"' +
+                        ' style="' +
+                            'flex-shrink:0; padding:5px 13px;' +
+                            'background:rgba(220,53,69,0.08);' +
+                            'border:1px solid rgba(220,53,69,0.2);' +
+                            'color:#dc3545; border-radius:7px; cursor:pointer;' +
+                            'font-size:0.79rem; font-weight:600;' +
+                            'font-family:inherit; transition:all 0.2s;' +
+                            'display:flex; align-items:center; gap:5px;' +
+                            'white-space:nowrap;' +
+                        '"' +
+                        ' onmouseover="this.style.background=\'rgba(220,53,69,0.17)\';this.style.borderColor=\'rgba(220,53,69,0.38)\'"' +
+                        ' onmouseout="this.style.background=\'rgba(220,53,69,0.08)\';this.style.borderColor=\'rgba(220,53,69,0.2)\'"' +
+                    '>' +
+                        '<i class="fas fa-times"></i> הסר' +
+                    '</button>' +
+                '</div>';
+        }
+
+        return '<div style="display:flex; flex-direction:column; gap:0;">' + itemsHTML + '</div>';
+    }
+
+    async grantPermission(activityId, username) {
+        if (!username) {
+            NotificationManager.show('יש לבחור משתמש', 'warning');
+            return;
+        }
+        try {
+            const response = await fetch('/Activities/SetActivityPermission', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    activityId,
+                    username,
+                    canToggle: true
+                })
+            });
+            const result = await response.json();
+            if (result.success) {
+                NotificationManager.show(
+                    `הרשאה ניתנה ל-${username}`, 'success');
+                // רענן את המודל
+                await this.openPermissionsModal(activityId);
+            } else {
+                NotificationManager.show(result.error || 'שגיאה', 'error');
+            }
+        } catch (err) {
+            NotificationManager.show('שגיאת רשת', 'error');
+        }
+    }
+
+    async revokePermission(activityId, username) {
+        if (!confirm(`להסיר הרשאה מ-${username}?`)) return;
+        try {
+            const response = await fetch(
+                `/Activities/RemoveActivityPermission` +
+                `?activityId=${activityId}&username=${encodeURIComponent(username)}`,
+                { method: 'DELETE' }
+            );
+            const result = await response.json();
+            if (result.success) {
+                NotificationManager.show(
+                    `הרשאה הוסרה מ-${username}`, 'success');
+                await this.openPermissionsModal(activityId);
+            } else {
+                NotificationManager.show(result.error || 'שגיאה', 'error');
+            }
+        } catch (err) {
+            NotificationManager.show('שגיאת רשת', 'error');
+        }
+    }
+
     async updateTaskStatus(taskId, newStatus, showNotification = true) {
         try {
+            if (this.isReadOnly) {
+                if (window.activitiesDashboard &&
+                    typeof window.activitiesDashboard.showLoginRequired === 'function') {
+                    window.activitiesDashboard.showLoginRequired();
+                }
+                // החזר את ה-select לערך הקודם
+                const taskResponse = await fetch(
+                    `/Activities/GetTask?taskId=${taskId}&activityId=${this.currentActivityId}`
+                );
+                const taskResult = await taskResponse.json();
+                if (taskResult.success && taskResult.task) {
+                    const select = document.querySelector(
+                        `.task-item[data-task-id="${taskId}"] .status-select`
+                    );
+                    if (select) select.value = taskResult.task.status || 'חדש';
+                }
+                return false;
+            }
             // *** קבל את שם המשתמש המחובר ***
             const currentUserName = this.currentUser
                 ? (this.currentUser.displayName ||
@@ -2421,10 +4123,20 @@ class ActivityManager {
 
     // Add task to activity
     openAddTaskModal() {
-        if (!this.isAdmin()) {
-            NotificationManager.show('אין הרשאה להוסיף משימות', 'warning');
+        const canAdd = this.isAdmin || this.isUserAdmin();
+        
+        if (!canAdd) {
+            if (this.isReadOnly) {
+                if (window.activitiesDashboard &&
+                    typeof window.activitiesDashboard.showLoginRequired === 'function') {
+                    window.activitiesDashboard.showLoginRequired();
+                }
+            } else {
+                NotificationManager.show('אין הרשאה להוסיף משימות', 'warning');
+            }
             return;
         }
+
         this.isModalOpen = true;
         if (!this.currentActivityId) {
             NotificationManager.show('יש לבחור פעילות תחילה', 'warning');
@@ -2432,15 +4144,39 @@ class ActivityManager {
         }
 
         document.getElementById('activityTaskModalTitle').textContent = 'הוסף משימה לפעילות';
-        document.getElementById('activityTaskSubmitBtn').textContent = 'הוסף משימה';
+        document.getElementById('activityTaskSubmitBtn').textContent  = 'הוסף משימה';
         document.getElementById('activityTaskForm').reset();
-        document.getElementById('activityTaskId').value = '';
+        document.getElementById('activityTaskId').value          = '';
+        document.getElementById('activityTaskDateHidden').value  = '';
+        document.getElementById('activityTaskDate').value        = '';
 
-        // אפס את שדות התאריך
-        document.getElementById('activityTaskDateHidden').value = '';
-        document.getElementById('activityTaskDate').value = '';
+        // *** חדש: איפוס שדות מייל ***
+        const emailFields = [
+            'activityTaskEmailTo',
+            'activityTaskEmailCc', 
+            'activityTaskEmailSubject',
+            'activityTaskEmailBodyText'
+        ];
+        emailFields.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
 
-        // אתחל את מאזיני השעה
+        // *** איפוס שדות חדשים ***
+        ['activityTaskSystemName', 'activityTaskEnvironment',
+        'activityTaskDependency', 'activityTaskDisruptionDuration',
+        'activityTaskImpact'
+        ].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+
+        // *** סגור קטע מייל בפתיחה ***
+        const emailBody = document.getElementById('emailConfigBody');
+        if (emailBody) emailBody.style.display = 'none';
+        const emailIcon = document.getElementById('emailToggleIcon');
+        if (emailIcon) emailIcon.className = 'fas fa-chevron-down';
+
         this.initializeTaskTimeInputListeners();
         this.updateTaskTimeClearButton();
 
@@ -2453,31 +4189,72 @@ class ActivityManager {
         document.getElementById('addActivityTaskModal').style.display = 'none';
         document.body.style.overflow = 'auto';
         document.getElementById('activityTaskForm').reset();
-        document.getElementById('activityTaskDateHidden').value = '';
-        document.getElementById('activityTaskDate').value = '';
+
+        // ── תאריך ──
+        const hiddenDate = document.getElementById('activityTaskDateHidden');
+        const visDate    = document.getElementById('activityTaskDate');
+        if (hiddenDate) hiddenDate.value = '';
+        if (visDate)    visDate.value    = '';
+
+        // ── שדות קיימים ──
+        ['activityTaskManager', 'activityTaskAlertsToCheck',
+        'activityTaskEmailTo', 'activityTaskEmailCc',
+        'activityTaskEmailSubject', 'activityTaskEmailBodyText'
+        ].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+
+        // ── שדות חדשים ──
+        ['activityTaskSystemName', 'activityTaskEnvironment',
+        'activityTaskDependency', 'activityTaskDisruptionDuration',
+        'activityTaskImpact'
+        ].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+
+        // ── סגור קטע מייל ──
+        const emailBody = document.getElementById('emailConfigBody');
+        if (emailBody) emailBody.style.display = 'none';
+        const emailIcon = document.getElementById('emailToggleIcon');
+        if (emailIcon) emailIcon.className = 'fas fa-chevron-down';
     }
 
     async saveTask(taskData, isEditing = false) {
         try {
             taskData.activityId = this.currentActivityId;
 
-            // טיפול בתאריך
+            // ── תאריך ──
             const taskDateHidden = document.getElementById('activityTaskDateHidden');
             if (taskDateHidden && taskDateHidden.value) {
                 taskData.taskDate = taskDateHidden.value;
             }
 
-            // טיפול בשעת ביצוע - הוסף שדות שעה ודקה
-            const taskHour = document.getElementById('activityTaskHour')?.value || '';
-            const taskMinute = document.getElementById('activityTaskMinute')?.value || '';
-            taskData.taskHour = taskHour;
-            taskData.taskMinute = taskMinute;
+            // ── שעה ──
+            taskData.taskHour   = document.getElementById('activityTaskHour')?.value   || '';
+            taskData.taskMinute = document.getElementById('activityTaskMinute')?.value || '';
 
-            const url = isEditing ? '/Activities/UpdateTask' : '/Activities/AddTask';
+            // ── שדות טקסט קיימים ──
+            taskData.alertsToCheck = document.getElementById('activityTaskAlertsToCheck')?.value || '';
+            taskData.notes         = document.getElementById('activityTaskNotes')?.value         ?? '';
+            taskData.emailTo       = document.getElementById('activityTaskEmailTo')?.value       || '';
+            taskData.emailCc       = document.getElementById('activityTaskEmailCc')?.value       || '';
+            taskData.emailSubject  = document.getElementById('activityTaskEmailSubject')?.value  || '';
+            taskData.emailBody     = document.getElementById('activityTaskEmailBodyText')?.value || '';
+
+            // ── שדות חדשים - טקסט חופשי ──
+            taskData.systemName         = document.getElementById('activityTaskSystemName')?.value         || '';
+            taskData.environment        = document.getElementById('activityTaskEnvironment')?.value        || '';
+            taskData.dependency         = document.getElementById('activityTaskDependency')?.value         || '';
+            taskData.disruptionDuration = document.getElementById('activityTaskDisruptionDuration')?.value || '';
+            taskData.impact             = document.getElementById('activityTaskImpact')?.value             || '';
+
+            const url    = isEditing ? '/Activities/UpdateTask' : '/Activities/AddTask';
             const method = isEditing ? 'PUT' : 'POST';
 
             const response = await fetch(url, {
-                method: method,
+                method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(taskData)
             });
@@ -2500,47 +4277,201 @@ class ActivityManager {
         }
     }
 
+    async grantManagerPermissionAuto(activityId, managerName) {
+        if (!managerName || !managerName.trim()) return;
+
+        try {
+            // חפש את המשתמש לפי שם תצוגה / username
+            const usersResponse = await fetch(
+                '/Auth/GetAllUsersForPermissions',
+                { credentials: 'include' }
+            );
+
+            if (!usersResponse.ok) return;
+
+            const usersData = await usersResponse.json();
+            if (!usersData.success) return;
+
+            const allUsers = usersData.users || [];
+            const managerLower = managerName.trim().toLowerCase();
+
+            // מצא התאמה לפי displayName או username
+            const matchedUser = allUsers.find(u =>
+                (u.displayName || '').toLowerCase() === managerLower ||
+                (u.username    || '').toLowerCase() === managerLower
+            );
+
+            if (!matchedUser) {
+                console.log(`Manager "${managerName}" not found in system users - skipping auto-grant`);
+                return;
+            }
+
+            // בדוק אם כבר יש הרשאה
+            const permResponse = await fetch(
+                `/Activities/GetActivityPermissions?activityId=${activityId}`
+            );
+            const permResult = await permResponse.json();
+            const permissions = permResult.success ? permResult.permissions : [];
+
+            const alreadyHasPermission = permissions.some(
+                p => p.username === matchedUser.username
+            );
+
+            if (alreadyHasPermission) return; // כבר יש הרשאה
+
+            // *** הוסף grantedBy: "מערכת" כדי לסמן כאוטומטי ***
+            const grantResponse = await fetch('/Activities/SetActivityPermission', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    activityId,
+                    username:  matchedUser.username,
+                    canToggle: true,
+                    grantedBy: 'מערכת'   // *** חדש: מסמן כהרשאה אוטומטית ***
+                })
+            });
+
+            const grantResult = await grantResponse.json();
+
+            if (grantResult.success) {
+                NotificationManager.show(
+                    `הרשאת סימון ניתנה אוטומטית ל-${matchedUser.username} (מנהל פעילות)`,
+                    'info'
+                );
+            }
+        } catch (err) {
+            console.warn('Auto-grant permission failed:', err);
+        }
+    }
+
     // Edit task
     async editTask(taskId) {
         try {
-            const response = await fetch(`/Activities/GetTask?taskId=${taskId}&activityId=${this.currentActivityId}`);
+            const response = await fetch(
+                `/Activities/GetTask?taskId=${taskId}` +
+                `&activityId=${this.currentActivityId}`
+            );
             const result = await response.json();
 
-            if (result.success && result.task) {
-                const task = result.task;
+            if (!result.success || !result.task) {
+                NotificationManager.show('משימה לא נמצאה', 'error');
+                return;
+            }
 
-                document.getElementById('activityTaskModalTitle').textContent = 'ערוך משימה';
-                document.getElementById('activityTaskSubmitBtn').textContent = 'עדכן משימה';
-                document.getElementById('activityTaskId').value = task.id;
-                document.getElementById('activityTaskTitle').value = task.title;
-                document.getElementById('activityTaskDescription').value = task.description || '';
-                document.getElementById('activityTaskPriority').value = task.priority;
+            const task = result.task;
 
-                if (task.taskDate) {
-                    document.getElementById('activityTaskDateHidden').value = task.taskDate;
-                    document.getElementById('activityTaskDate').value = this.formatDate(task.taskDate);
+            // *** פונקציית עזר פנימית - setBySafeId ***
+            const setVal = (id, value) => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.value = value ?? '';
+                } else {
+                    console.warn(`editTask: element #${id} not found in DOM`);
                 }
+            };
 
-                // מילוי שדות שעה ודקה
-                document.getElementById('activityTaskHour').value = task.taskHour || '';
-                document.getElementById('activityTaskMinute').value = task.taskMinute || '';
+            const setText = (id, value) => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.textContent = value ?? '';
+                } else {
+                    console.warn(`editTask: element #${id} not found in DOM`);
+                }
+            };
 
-                document.getElementById('activityTaskResponsible').value = task.responsiblePerson || '';
-                document.getElementById('activityTaskSecondary').value = task.secondaryResponsible || '';
-                document.getElementById('activityTaskStatus').value = task.status || 'חדש';
-                document.getElementById('activityTaskNotes').value = task.notes || '';
+            // *** עדכן כותרת מודל ***
+            setText('activityTaskModalTitle', 'ערוך משימה');
 
-                // עדכון כפתור ניקוי שעה
-                this.updateTaskTimeClearButton();
+            const submitBtn = document.getElementById('activityTaskSubmitBtn');
+            if (submitBtn) submitBtn.textContent = 'עדכן משימה';
 
-                document.getElementById('addActivityTaskModal').style.display = 'block';
+            // *** מלא שדות ***
+            setVal('activityTaskId',          task.id);
+            setVal('activityTaskTitle',       task.title);
+            setVal('activityTaskDescription', task.description || '');
+            setVal('activityTaskPriority',    task.priority    || 'medium');
+            setVal('activityTaskStatus',      task.status      || 'חדש');
+            setVal('activityTaskResponsible', task.responsiblePerson    || '');
+            setVal('activityTaskSecondary',   task.secondaryResponsible || '');
+            setVal('activityTaskNotes',       task.notes       || '');
+            setVal('activityTaskHour',        task.taskHour    || '');
+            setVal('activityTaskMinute',      task.taskMinute  || '');
+
+            // *** שדות שאולי חדשים/אופציונליים ***
+            setVal('activityTaskAlertsToCheck',  task.alertsToCheck    || '');
+            setVal('activityTaskEmailTo',       task.emailTo      || '');
+            setVal('activityTaskEmailCc',       task.emailCc      || '');
+            setVal('activityTaskEmailSubject',  task.emailSubject || '');
+            setVal('activityTaskEmailBodyText', task.emailBody    || '');
+            setVal('activityTaskSystemName',         task.systemName         || '');
+            setVal('activityTaskEnvironment',        task.environment        || '');
+            setVal('activityTaskDependency',         task.dependency         || '');
+            setVal('activityTaskDisruptionDuration', task.disruptionDuration || '');
+            setVal('activityTaskImpact',             task.impact             || '');
+
+
+            // *** תאריך ***
+            if (task.taskDate) {
+                setVal('activityTaskDateHidden', task.taskDate);
+                setVal('activityTaskDate',       this.formatDate(task.taskDate));
+            } else {
+                setVal('activityTaskDateHidden', '');
+                setVal('activityTaskDate',       '');
+            }
+
+            // *** עדכון כפתור ניקוי שעה ***
+            this.updateTaskTimeClearButton();
+
+            // *** פתח מודל ***
+            const modal = document.getElementById('addActivityTaskModal');
+            if (modal) {
+                modal.style.display = 'block';
                 document.body.style.overflow = 'hidden';
             } else {
-                NotificationManager.show('משימה לא נמצאה', 'error');
+                console.error('editTask: modal #addActivityTaskModal not found!');
             }
+
         } catch (error) {
             console.error('Error loading task:', error);
             NotificationManager.show('שגיאה בטעינת המשימה', 'error');
+        }
+    }
+
+    async resendTaskEmail(taskId) {
+        if (!confirm('לשלוח את המייל שוב?')) return;
+        try {
+            const currentUserName = this.currentUser
+                ? (this.currentUser.displayName || 
+                this.currentUser.username    || 
+                this.currentUser.name        || 
+                'מערכת')
+                : 'מערכת';
+
+            const response = await fetch('/Activities/SendTaskEmail', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    taskId:      taskId,
+                    completedBy: currentUserName
+                })
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                NotificationManager.show('מייל נשלח בהצלחה!', 'success');
+                await this.loadActivityTasks(
+                    this.currentActivityId, 
+                    this.currentDate
+                );
+            } else {
+                NotificationManager.show(
+                    result.error || 'שגיאה בשליחת מייל', 
+                    'error'
+                );
+            }
+        } catch (error) {
+            console.error('Error resending email:', error);
+            NotificationManager.show('שגיאה בחיבור לשרת', 'error');
         }
     }
 
@@ -2555,6 +4486,7 @@ class ActivityManager {
 
             const result = await response.json();
 
+            if (!this.handleApiResponse(result)) return;
             if (result.success) {
                 await this.loadActivityTasks(this.currentActivityId, this.currentDate);
                 NotificationManager.show('המשימה נמחקה בהצלחה', 'success');
@@ -2569,6 +4501,13 @@ class ActivityManager {
 
     // Skip reason modal
     async openSkipModal(taskId) {
+        if (this.isReadOnly) {
+            if (window.activitiesDashboard &&
+                typeof window.activitiesDashboard.showLoginRequired === 'function') {
+                window.activitiesDashboard.showLoginRequired();
+            }
+            return;
+        }
         this.isModalOpen = true;
         document.getElementById('activitySkipTaskId').value = taskId;
         document.getElementById('activitySkipReasonSelect').value = '';
@@ -2613,7 +4552,7 @@ class ActivityManager {
     // Save last selected employee to localStorage
     saveLastSelectedEmployee(employeeName) {
         if (employeeName && employeeName !== '') {
-            localStorage.setItem('lastSelectedEmployee', employeeName);
+            userSettings.setItem('lastSelectedEmployee', employeeName);
         }
     }
 
@@ -2656,6 +4595,7 @@ class ActivityManager {
 
             const result = await response.json();
 
+            if (!this.handleApiResponse(result)) return;
             if (result.success) {
                 // Update task status to "מבוטלת" while preserving all fields
                 const updateResponse = await fetch('/Activities/UpdateTask', {
@@ -2732,6 +4672,7 @@ class ActivityManager {
 
             const result = await response.json();
 
+            if (!this.handleApiResponse(result)) return;
             if (result.success) {
                 // Reload tasks to reflect changes
                 await this.loadActivityTasks(this.currentActivityId, this.currentDate);
@@ -2924,6 +4865,70 @@ class ActivityManager {
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
+                    ${(task.systemName || task.environment || 
+                        task.dependency || task.disruptionDuration || task.impact) ? `
+                            <div class="task-view-section">
+                                <div class="task-view-section-label">
+                                    <i class="fas fa-server" style="color:#667eea;"></i>
+                                    פרטי מערכת ותשתית
+                                </div>
+                                <div style="
+                                    display: flex;
+                                    flex-direction: column;
+                                    gap: 6px;
+                                    background: rgba(102,126,234,0.04);
+                                    border: 1px solid rgba(102,126,234,0.15);
+                                    border-radius: 8px;
+                                    padding: 10px 12px;
+                                    font-size: 0.84rem;
+                                ">
+                                    ${task.systemName ? `
+                                    <div style="display:flex; gap:8px; align-items:flex-start;">
+                                        <span style="color:#667eea; font-weight:600; 
+                                                    min-width:120px; flex-shrink:0;">
+                                            <i class="fas fa-server"></i> מערכת:
+                                        </span>
+                                        <span>${task.systemName}</span>
+                                    </div>` : ''}
+
+                                    ${task.environment ? `
+                                    <div style="display:flex; gap:8px; align-items:flex-start;">
+                                        <span style="color:#667eea; font-weight:600; 
+                                                    min-width:120px; flex-shrink:0;">
+                                            <i class="fas fa-layer-group"></i> סביבה:
+                                        </span>
+                                        <span>${task.environment}</span>
+                                    </div>` : ''}
+
+                                    ${task.dependency ? `
+                                    <div style="display:flex; gap:8px; align-items:flex-start;">
+                                        <span style="color:#667eea; font-weight:600; 
+                                                    min-width:120px; flex-shrink:0;">
+                                            <i class="fas fa-project-diagram"></i> תלות:
+                                        </span>
+                                        <span>${task.dependency}</span>
+                                    </div>` : ''}
+
+                                    ${task.disruptionDuration ? `
+                                    <div style="display:flex; gap:8px; align-items:flex-start;">
+                                        <span style="color:#f59e0b; font-weight:600; 
+                                                    min-width:120px; flex-shrink:0;">
+                                            <i class="fas fa-hourglass-half"></i> זמן שיבוש:
+                                        </span>
+                                        <span>${task.disruptionDuration}</span>
+                                    </div>` : ''}
+
+                                    ${task.impact ? `
+                                    <div style="display:flex; gap:8px; align-items:flex-start;">
+                                        <span style="color:#dc3545; font-weight:600; 
+                                                    min-width:120px; flex-shrink:0;">
+                                            <i class="fas fa-bolt"></i> השפעה:
+                                        </span>
+                                        <span>${task.impact}</span>
+                                    </div>` : ''}
+                                </div>
+                            </div>
+                        ` : ''}
                     <div class="task-view-badges">
                         <span class="task-view-badge"
                               style="background:${statusColor}20;
@@ -3034,6 +5039,17 @@ class ActivityManager {
                                        </div>
                                    </div>`
                     : ''}
+                    ${task.activityManager ? `
+                        <div class="task-view-info-item">
+                            <i class="fas fa-user-tie" style="color:#667eea;"></i>
+                            <div>
+                                <div class="info-label">מנהל פעילות</div>
+                                <div class="info-value">
+                                    ${task.activityManager}
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
                         </div>
 
                         ${task.notes
@@ -3046,6 +5062,107 @@ class ActivityManager {
                                    </div>
                                </div>`
                     : ''}
+
+                    ${task.alertsToCheck ? `
+                        <div class="task-view-section">
+                            <div class="task-view-section-label">
+                                <i class="fas fa-satellite-dish"
+                                style="color:#f59e0b;"></i>
+                                התראות לבדיקה
+                            </div>
+                            <div class="task-view-section-value" style="
+                                background:rgba(245,158,11,0.06);
+                                border:1px solid rgba(245,158,11,0.2);
+                                border-right:3px solid #f59e0b;
+                                border-radius:8px;
+                                padding:10px 12px;
+                                font-size:0.88rem;
+                                line-height:1.6;
+                            ">
+                                ${task.alertsToCheck}
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    ${task.emailTo ? `
+                        <div class="task-view-section">
+                            <div class="task-view-section-label">
+                                <i class="fas fa-envelope"
+                                style="color:#667eea;"></i>
+                                הגדרות מייל
+                            </div>
+                            <div style="
+                                border-radius: 8px;
+                                padding: 10px 12px;
+                                background: rgba(102,126,234,0.06);
+                                border: 1px solid rgba(102,126,234,0.2);
+                                font-size: 0.82rem;
+                                display: flex;
+                                flex-direction: column;
+                                gap: 5px;
+                            ">
+                                <div style="display:flex; gap:8px; align-items:center;">
+                                    <span style="color:#667eea; font-weight:600; 
+                                                min-width:50px;">TO:</span>
+                                    <span style="direction:ltr;">${task.emailTo}</span>
+                                </div>
+                                ${task.emailCc ? `
+                                <div style="display:flex; gap:8px; align-items:center;">
+                                    <span style="color:#667eea; font-weight:600;
+                                                min-width:50px;">CC:</span>
+                                    <span style="direction:ltr;">${task.emailCc}</span>
+                                </div>
+                                ` : ''}
+                                ${task.emailSent ? `
+                                <div style="
+                                    display:flex; align-items:center; gap:6px;
+                                    margin-top:4px;
+                                    padding: 4px 8px;
+                                    background: rgba(40,167,69,0.1);
+                                    border-radius: 5px;
+                                    color: #28a745;
+                                    font-size: 0.78rem;
+                                    font-weight: 600;
+                                ">
+                                    <i class="fas fa-check-circle"></i>
+                                    מייל נשלח
+                                    ${task.emailSentAt 
+                                        ? `<span style="font-weight:400;color:#555;">
+                                            · ${task.emailSentAt.substring(0,16)}
+                                        </span>` 
+                                        : ''}
+                                    <button onclick="activityManager.resendTaskEmail('${task.id}')"
+                                            style="
+                                                margin-right: auto;
+                                                background: rgba(40,167,69,0.12);
+                                                border: 1px solid rgba(40,167,69,0.3);
+                                                color: #28a745;
+                                                border-radius: 5px;
+                                                padding: 3px 8px;
+                                                cursor: pointer;
+                                                font-size: 0.75rem;
+                                                font-weight: 600;
+                                            ">
+                                        <i class="fas fa-redo"></i> שלח שוב
+                                    </button>
+                                </div>
+                                ` : `
+                                <div style="
+                                    display:flex; align-items:center; gap:6px;
+                                    margin-top:4px;
+                                    padding: 4px 8px;
+                                    background: rgba(102,126,234,0.08);
+                                    border-radius: 5px;
+                                    color: #667eea;
+                                    font-size: 0.78rem;
+                                ">
+                                    <i class="fas fa-clock"></i>
+                                    ממתין לשליחה עם ביצוע המשימה
+                                </div>
+                                `}
+                            </div>
+                        </div>
+                    ` : ''}
 
                         ${isCompleted && task.completedByEmployees
                     ? (() => {
@@ -3228,8 +5345,10 @@ class ActivityManager {
         }
     }
 
-    showActivityAlarmNotification(task, diffMinutes) {
-        const resolvedActivityId = task.activityId || this.currentActivityId;
+    showActivityAlarmNotification(task, diffMinutes, activityId = null) {
+    const resolvedActivityId = activityId || 
+                               task.activityId || 
+                               this.currentActivityId;
         const currentActivity = this.activities.find(a => a.id === resolvedActivityId);
         const activityName = currentActivity ? currentActivity.name : '';
 
@@ -3494,23 +5613,30 @@ class ActivityManager {
 
     // Add sort controls to the UI
     addSortControls() {
-
-        const container = document.querySelector('.activity-filters');
+        const container = document.querySelector('.task-controls-row');
         if (!container) return;
-
         // בדוק אם כבר קיימים פקדי מיון
         if (container.querySelector('.sort-options')) return;
 
         const sortOptions = document.createElement('div');
         sortOptions.className = 'sort-options';
         sortOptions.innerHTML = `
-        <label for="activityTasksSort">מיון משימות:</label>
-        <select id="activityTasksSort" 
-                onchange="activityManager.changeSortMode(this.value)">
-            <option value="time">לפי שעה</option>
-            <option value="selfOrder">סידור חופשי</option>
-        </select>
-    `;
+            <label for="activityTasksSort">
+                <i class="fas fa-sort"></i> מיון:
+            </label>
+            <select id="activityTasksSort" 
+                    onchange="activityManager.changeSortMode(this.value)">
+                <option value="timeGrouped">📅 לפי תאריך</option>
+                <option value="status">🔖 לפי סטטוס</option>
+                <option value="responsible">👤 לפי אחראי</option>
+                <option value="priority">🚨 לפי עדיפות</option>
+                <option value="selfOrder">✋ סידור חופשי</option>
+            </select>
+            <button class="filter-toggle-btn" id="filterToggleBtn"
+                    onclick="activityManager.toggleFiltersBar()"
+                    title="סינון">
+                <i class="fas fa-filter"></i>
+            </button>`;
 
         container.appendChild(sortOptions);
     }
@@ -3518,64 +5644,109 @@ class ActivityManager {
     // Change sort mode
     changeSortMode(sortMode) {
         this.currentSort = sortMode;
+        this.sortMode    = sortMode === 'selfOrder' ? 'manual' : 'auto';
 
-        if (sortMode === 'time') {
-            this.sortMode = 'auto';
-            // עדכן את הממשק המשתמש
-            document.querySelectorAll('.task-item').forEach(item => {
-                item.setAttribute('draggable', 'false');
-                const dragHandle = item.querySelector('.drag-handle');
-                if (dragHandle) dragHandle.style.display = 'none';
-            });
+        // הסתר כפתורים אם לא timeGrouped
+        this._updateDateGroupControls(sortMode === 'timeGrouped');
 
-            NotificationManager.show('המשימות ממוינות לפי שעה', 'info');
-        } else if (sortMode === 'selfOrder') {
-            this.sortMode = 'manual';
-            // עדכן את הממשק המשתמש רק אם התאריך אינו בעבר
-            if (!this.isDateInPast(this.currentDate)) {
-                document.querySelectorAll('.task-item').forEach(item => {
-                    item.setAttribute('draggable', 'true');
-                    const dragHandle = item.querySelector('.drag-handle');
-                    if (dragHandle) dragHandle.style.display = 'flex';
-                });
+        const messages = {
+            'timeGrouped': 'ממוין לפי שעה',
+            'status':      'ממוין לפי סטטוס',
+            'responsible': 'ממוין לפי אחראי',
+            'priority':    'ממוין לפי עדיפות',
+            'selfOrder':   'סידור חופשי - גרור להזזה'
+        };
 
-                NotificationManager.show('ניתן לגרור משימות לסידור חופשי', 'info');
-            } else {
-                NotificationManager.show('לא ניתן לסדר משימות בתאריך שעבר', 'warning');
-            }
-        }
+        NotificationManager.show(messages[sortMode] || '', 'info');
 
-        // טען מחדש את המשימות עם המיון החדש
         if (this.currentActivityId) {
             this.loadActivityTasks(this.currentActivityId, this.currentDate);
         }
     }
 
-    // Sort tasks by scheduled time
-    sortTasksByTime(tasks) {
-        if (!tasks || !Array.isArray(tasks)) return tasks;
+    sortTasksByDateAndTime(tasks) {
+        return [...tasks].sort((a, b) => {
+            // מיין קודם לפי תאריך
+            const dateA = a.taskDate || '9999-99-99';
+            const dateB = b.taskDate || '9999-99-99';
+            if (dateA !== dateB) return dateA.localeCompare(dateB);
+            // אז לפי שעה
+            const timeA = (parseInt(a.taskHour || 99) * 60) + 
+                        parseInt(a.taskMinute || 0);
+            const timeB = (parseInt(b.taskHour || 99) * 60) + 
+                        parseInt(b.taskMinute || 0);
+            return timeA - timeB;
+        });
+    }
 
-        return tasks.sort((a, b) => {
-            // Tasks with time come before tasks without time
-            const aHasTime = a.taskHour && a.taskMinute;
-            const bHasTime = b.taskHour && b.taskMinute;
+    sortTasksByStatus(tasks) {
+        const statusOrder = {
+            'בביצוע': 0, 'ממתין': 1, 'חדש': 2, 
+            'בוצע': 3, 'מבוטלת': 4
+        };
+        return [...tasks].sort((a, b) => {
+            const oA = statusOrder[a.status] ?? 9;
+            const oB = statusOrder[b.status] ?? 9;
+            return oA - oB;
+        });
+    }
 
-            if (aHasTime && !bHasTime) return -1;
-            if (!aHasTime && bHasTime) return 1;
-            if (!aHasTime && !bHasTime) return 0;
+    sortTasksByResponsible(tasks) {
+        return [...tasks].sort((a, b) => {
+            const rA = (a.responsiblePerson || 'תתת').toLowerCase();
+            const rB = (b.responsiblePerson || 'תתת').toLowerCase();
+            return rA.localeCompare(rB, 'he');
+        });
+    }
 
-            // Convert to minutes from 07:00 (not 00:00)
-            const aHour = parseInt(a.taskHour);
-            const bHour = parseInt(b.taskHour);
+    sortTasksByPriority(tasks) {
+        const priorityOrder = { 'high': 0, 'medium': 1, 'low': 2 };
+        return [...tasks].sort((a, b) => {
+            const pA = priorityOrder[a.priority] ?? 1;
+            const pB = priorityOrder[b.priority] ?? 1;
+            return pA - pB;
+        });
+    }
 
-            // Adjust hours: treat 00:00-06:59 as end of day (after 23:59)
-            const aAdjustedHour = aHour < 7 ? aHour + 24 : aHour;
-            const bAdjustedHour = bHour < 7 ? bHour + 24 : bHour;
+    filterTasks(tasks) {
+        const statusFilter      = document.getElementById('taskStatusFilter')?.value      || '';
+        const responsibleFilter = document.getElementById('taskResponsibleFilter')?.value || '';
+        const systemFilter      = document.getElementById('taskSystemFilter')?.value      || '';
+        const environmentFilter = document.getElementById('taskEnvironmentFilter')?.value || '';
+        const dependencyFilter  = document.getElementById('taskDependencyFilter')?.value  || '';
+        const disruptionFilter  = document.getElementById('taskDisruptionFilter')?.value  || '';
+        const impactFilter      = document.getElementById('taskImpactFilter')?.value      || '';
 
-            const aTime = aAdjustedHour * 60 + parseInt(a.taskMinute);
-            const bTime = bAdjustedHour * 60 + parseInt(b.taskMinute);
+        return tasks.filter(task => {
+            const matchStatus = !statusFilter ||
+                task.status === statusFilter;
 
-            return aTime - bTime;
+            const matchResponsible = !responsibleFilter ||
+                task.responsiblePerson === responsibleFilter ||
+                task.secondaryResponsible === responsibleFilter;
+
+            const matchSystem = !systemFilter ||
+                task.systemName === systemFilter;
+
+            const matchEnvironment = !environmentFilter ||
+                task.environment === environmentFilter;
+
+            const matchDependency = !dependencyFilter ||
+                task.dependency === dependencyFilter;
+
+            const matchDisruption = !disruptionFilter ||
+                task.disruptionDuration === disruptionFilter;
+
+            const matchImpact = !impactFilter ||
+                task.impact === impactFilter;
+
+            return matchStatus      &&
+                matchResponsible &&
+                matchSystem      &&
+                matchEnvironment &&
+                matchDependency  &&
+                matchDisruption  &&
+                matchImpact;
         });
     }
 
@@ -3656,7 +5827,7 @@ class ActivityManager {
                         <i class="fas fa-download"></i>
                         הורד
                     </button>
-                    ${this.isAdmin() ? `
+                    ${this.isUserAdmin() ? `
                     <button class="template-delete-btn" 
                             onclick="activityManager.deleteTemplate('${template.fileName}')"
                             title="מחק טמפלייט">

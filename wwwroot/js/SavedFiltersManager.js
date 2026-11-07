@@ -51,10 +51,10 @@ class SavedFiltersManager {
         try {
             const userKey = this._getUserStorageKey();
             const userFilters = JSON.parse(
-                localStorage.getItem(userKey) || '[]'
+                userSettings.getItem(userKey) || '[]'
             );
             const globalFilters = JSON.parse(
-                localStorage.getItem(this.globalStorageKey) || '[]'
+                userSettings.getItem(this.globalStorageKey) || '[]'
             );
 
             // מיזוג - סינונים גלובליים + אישיים
@@ -103,7 +103,7 @@ class SavedFiltersManager {
         try {
             if (filter.isGlobal) {
                 const globalFilters = JSON.parse(
-                    localStorage.getItem(this.globalStorageKey) || '[]'
+                    userSettings.getItem(this.globalStorageKey) || '[]'
                 );
                 const idx = globalFilters.findIndex(f => f.id === filter.id);
                 if (idx >= 0) {
@@ -111,14 +111,14 @@ class SavedFiltersManager {
                 } else {
                     globalFilters.push(filter);
                 }
-                localStorage.setItem(
+                userSettings.setItem(
                     this.globalStorageKey,
                     JSON.stringify(globalFilters)
                 );
             } else {
                 const userKey = this._getUserStorageKey();
                 const userFilters = JSON.parse(
-                    localStorage.getItem(userKey) || '[]'
+                    userSettings.getItem(userKey) || '[]'
                 );
                 const idx = userFilters.findIndex(f => f.id === filter.id);
                 if (idx >= 0) {
@@ -126,7 +126,7 @@ class SavedFiltersManager {
                 } else {
                     userFilters.push(filter);
                 }
-                localStorage.setItem(userKey, JSON.stringify(userFilters));
+                userSettings.setItem(userKey, JSON.stringify(userFilters));
             }
         } catch (error) {
             console.error('Error saving filter to localStorage:', error);
@@ -153,15 +153,15 @@ class SavedFiltersManager {
         // מחק מסינונים אישיים
         const userKey = this._getUserStorageKey();
         const userFilters = JSON.parse(
-            localStorage.getItem(userKey) || '[]'
+            userSettings.getItem(userKey) || '[]'
         ).filter(f => f.id !== filterId);
-        localStorage.setItem(userKey, JSON.stringify(userFilters));
+        userSettings.setItem(userKey, JSON.stringify(userFilters));
 
         // מחק מסינונים גלובליים
         const globalFilters = JSON.parse(
-            localStorage.getItem(this.globalStorageKey) || '[]'
+            userSettings.getItem(this.globalStorageKey) || '[]'
         ).filter(f => f.id !== filterId);
-        localStorage.setItem(
+        userSettings.setItem(
             this.globalStorageKey,
             JSON.stringify(globalFilters)
         );
@@ -263,8 +263,8 @@ class SavedFiltersManager {
 
         // *** שמור ב-localStorage ***
         try {
-            localStorage.setItem('alertsActiveFilterId', filterId);
-            localStorage.setItem(
+            userSettings.setItem('alertsActiveFilterId', filterId);
+            userSettings.setItem(
                 'alertsActiveFilterCache',
                 JSON.stringify({
                     id: filterId,
@@ -302,15 +302,15 @@ class SavedFiltersManager {
             }
 
             // אם לא, בדוק ב-localStorage
-            const cachedId = localStorage.getItem('alertsActiveFilterId');
+            const cachedId = userSettings.getItem('alertsActiveFilterId');
             if (!cachedId) return;
 
             // בדוק שהסינון עדיין קיים ברשימה
             const filter = this.savedFilters.find(f => f.id === cachedId);
             if (!filter) {
                 // הסינון נמחק - נקה קאש
-                localStorage.removeItem('alertsActiveFilterId');
-                localStorage.removeItem('alertsActiveFilterCache');
+                userSettings.removeItem('alertsActiveFilterId');
+                userSettings.removeItem('alertsActiveFilterCache');
                 return;
             }
 
@@ -329,7 +329,7 @@ class SavedFiltersManager {
         this._previousFiltersSnapshot = null;
 
         try {
-            const cachedId = localStorage.getItem('alertsActiveFilterId');
+            const cachedId = userSettings.getItem('alertsActiveFilterId');
             if (!cachedId) return;
 
             const filter = this.savedFilters.find(f => f.id === cachedId);
@@ -382,8 +382,8 @@ class SavedFiltersManager {
                 }
             } else {
                 // הסינון נמחק - נקה קאש
-                localStorage.removeItem('alertsActiveFilterId');
-                localStorage.removeItem('alertsActiveFilterCache');
+                userSettings.removeItem('alertsActiveFilterId');
+                userSettings.removeItem('alertsActiveFilterCache');
             }
         } catch (e) {
             console.warn('Could not restore active filter:', e);
@@ -1345,7 +1345,7 @@ class SavedFiltersManager {
 
             if (this.activeFilterId === originalFilter.id) {
                 try {
-                    localStorage.setItem('alertsActiveFilterCache', JSON.stringify({
+                    userSettings.setItem('alertsActiveFilterCache', JSON.stringify({
                         id: updatedFilter.id,
                         name: updatedFilter.name,
                         appliedAt: new Date().toISOString(),
@@ -1420,8 +1420,8 @@ class SavedFiltersManager {
         this._previousFiltersSnapshot = null;
 
         this.activeFilterId = null;
-        localStorage.removeItem('alertsActiveFilterId');
-        localStorage.removeItem('alertsActiveFilterCache');
+        userSettings.removeItem('alertsActiveFilterId');
+        userSettings.removeItem('alertsActiveFilterCache');
 
         this.alertsManager.applyFilters?.();
         this._updateActiveIndication();
@@ -1534,8 +1534,8 @@ class SavedFiltersManager {
 
         if (this.activeFilterId === filterId) {
             this.activeFilterId = null;
-            localStorage.removeItem('alertsActiveFilterId');
-            localStorage.removeItem('alertsActiveFilterCache');
+            userSettings.removeItem('alertsActiveFilterId');
+            userSettings.removeItem('alertsActiveFilterCache');
             this._previousFiltersSnapshot = null;
             this._updateActiveIndication();
             this._updateClearButtonVisibility();
@@ -1917,8 +1917,8 @@ class SavedFiltersManager {
         if (this._isFilterModified()) {
             // הסינון שונה - בטל אינדיקציה בלבד (אל תאפס את הסינונים!)
             this.activeFilterId = null;
-            localStorage.removeItem('alertsActiveFilterId');
-            localStorage.removeItem('alertsActiveFilterCache');
+            userSettings.removeItem('alertsActiveFilterId');
+            userSettings.removeItem('alertsActiveFilterCache');
             this._previousFiltersSnapshot = null;
 
             this._updateActiveIndication();

@@ -21,6 +21,7 @@ class OrgTreeDashboard {
         this.focusedEmployeeId = null;
         this.focusedNodes = new Set();
         this.activeNodeId = null; // הצומת שהכפופים שלו מוצגים
+        this.pathNodes = new Set();
     }
 
     async initialize() {
@@ -29,9 +30,6 @@ class OrgTreeDashboard {
             console.error(`Container #${this.containerId} not found`);
             return;
         }
-
-        // ── אתחל pathNodes ────────────────────────────────────────
-        this.pathNodes = new Set();
 
         this.addStyles();
         this.renderShell();
@@ -86,11 +84,8 @@ class OrgTreeDashboard {
             // בנה עץ
             this.treeData = this._buildTree(this.employees);
 
-            // ── התחל ממנהל אגף מערכות מידע ──────────────────────────
-            this.treeData = this.treeData[0].children; // העץ מתחיל מכאן
-
-            // פתח את כל הצמתים ברמה הראשונה
-            this._expandFirstLevels(this.treeData, 2);
+            // ── נסה למצוא את היוזר המחובר בעץ ──────────────
+            this._initActiveNodeForCurrentUser();
 
             this.showLoading(false);
             this.renderContent();
@@ -100,6 +95,99 @@ class OrgTreeDashboard {
             console.error('loadData error:', err);
             this.showLoading(false);
             this.showError('שגיאה בטעינת הנתונים: ' + err.message);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // חדש: אתחל צומת פעיל לפי יוזר מחובר
+    // ══════════════════════════════════════════════════════════
+    _initActiveNodeForCurrentUser() {
+        // ── נסה למצוא לפי מייל ────────────────────────────────
+        const userEmail = (
+            this.currentUser?.email ||
+            this.currentUser?.mail ||
+            this.currentUser?.userEmail ||
+            ''
+        ).toLowerCase().trim();
+
+        // ── נסה למצוא לפי שם ──────────────────────────────────
+        const userName = (
+            this.currentUser?.name ||
+            this.currentUser?.fullName ||
+            this.currentUser?.displayName ||
+            ''
+        ).toLowerCase().trim();
+
+        // ── נסה למצוא לפי employeeId ──────────────────────────
+        const userId = (
+            this.currentUser?.employeeId ||
+            this.currentUser?.id ||
+            this.currentUser?.userId ||
+            ''
+        ).toLowerCase().trim();
+
+        let foundNode = null;
+
+        // ── שטח את העץ לחיפוש ─────────────────────────────────
+        const allNodes = [];
+        const flatten = (nodes) => {
+            nodes.forEach(n => {
+                allNodes.push(n);
+                flatten(n.children);
+            });
+        };
+        flatten(this.treeData);
+
+        // ── חפש לפי מייל בספר הטלפונים ────────────────────────
+        if (userEmail) {
+            foundNode = allNodes.find(n => {
+                const nodeEmail = (n.phoneInfo?.email || '').toLowerCase().trim();
+                return nodeEmail && nodeEmail === userEmail;
+            });
+        }
+
+        // ── חפש לפי שם אם לא נמצא מייל ───────────────────────
+        if (!foundNode && userName) {
+            foundNode = allNodes.find(n => {
+                const nodeName = (n.employeeName || '').toLowerCase().trim();
+                return nodeName === userName;
+            });
+
+            // חיפוש חלקי אם לא נמצאה התאמה מדויקת
+            if (!foundNode) {
+                foundNode = allNodes.find(n => {
+                    const nodeName = (n.employeeName || '').toLowerCase().trim();
+                    return nodeName.includes(userName) ||
+                        userName.includes(nodeName);
+                });
+            }
+        }
+
+        // ── חפש לפי employeeId ────────────────────────────────
+        if (!foundNode && userId) {
+            foundNode = allNodes.find(n => {
+                const nodeId = (n.employeeId || '').toLowerCase().trim();
+                return nodeId === userId;
+            });
+        }
+
+        if (foundNode) {
+            // ── נמצא! הגדר כצומת פעיל ─────────────────────────
+            this.activeNodeId = foundNode.employeeId;
+
+            // ── פתח את הנתיב מהשורש עד היוזר ─────────────────
+            this.pathNodes.clear();
+            this.expandedNodes.clear();
+            this._collectPathToRoot(foundNode.employeeId, this.treeData);
+            this.pathNodes.forEach(id => this.expandedNodes.add(id));
+
+        } else {
+            // ── לא נמצא - הצג ראש העץ ─────────────────────────
+            console.warn(
+                '[OrgTree] לא נמצא יוזר מחובר בעץ, מציג ראש העץ.',
+                { userEmail, userName, userId }
+            );
+            this._expandFirstLevels(this.treeData);
         }
     }
 
@@ -152,7 +240,8 @@ class OrgTreeDashboard {
         }) || null;
     }
 
-    _expandFirstLevels(nodes, maxLevel) {
+    // ── הסרת פרמטר maxLevel שלא היה בשימוש ──────────────
+    _expandFirstLevels(nodes) {
         // פתח רק את השורש - רמה אחת בלבד
         nodes.forEach(node => {
             if (node.children.length > 0) {
@@ -184,7 +273,6 @@ class OrgTreeDashboard {
         node.children.forEach(collect);
         return ids;
     }
-
 
     _expandParentsOf(targetId, nodes, path = []) {
         for (const node of nodes) {
@@ -327,12 +415,19 @@ class OrgTreeDashboard {
         const isSearchMode = this.searchTerm &&
             this.searchTerm.trim().length >= 2;
 
-        // ── מצב חיפוש עם activeNodeId - הצג נתיב + כפופים ישירים ──
+        // ── מצב חיפוש עם activeNodeId ─────────────────────────
         if (isSearchMode && this.activeNodeId) {
+            // ── שמור searchTerm זמנית כדי ש-_renderVerticalPath
+            //        לא יכנס ללולאה אינסופית ─────────────────────
+            const savedSearchTerm = this.searchTerm;
+            this.searchTerm = '';
+
             const fullPath = this._getPathToNode(
                 this.activeNodeId,
                 this.treeData
             );
+
+            this.searchTerm = savedSearchTerm;
 
             container.innerHTML = `
 <div class="ot-tree-wrap">
@@ -343,7 +438,7 @@ class OrgTreeDashboard {
             return;
         }
 
-        // ── מצב חיפוש חופשי (ללא בחירה) - הצג עץ מסונן ──────────
+        // ── מצב חיפוש חופשי (ללא בחירה) ──────────────────────
         if (isSearchMode) {
             container.innerHTML = `
 <div class="ot-tree-wrap ot-search-mode">
@@ -354,7 +449,7 @@ class OrgTreeDashboard {
             return;
         }
 
-        // ── מצב רגיל - הצג נתיב לצומת הפעיל ─────────────────────
+        // ── מצב רגיל ──────────────────────────────────────────
         const fullPath = this._getPathToNode(
             this.activeNodeId,
             this.treeData
@@ -370,7 +465,6 @@ class OrgTreeDashboard {
 
     // ── רנדור צמתים - עץ אנכי ─────────────────────────────────────
     _renderTreeNodes(nodes, level) {
-
         const isSearchMode = this.searchTerm &&
             this.searchTerm.trim().length >= 2;
         // ── סנן צמתים גלויים במצב חיפוש ──────────────────────────
@@ -540,17 +634,13 @@ class OrgTreeDashboard {
     }
 
     // ══════════════════════════════════════════════════════════════
-    // חיפוש - מציג רק נתיב
+    // חיפוש
     // ══════════════════════════════════════════════════════════════
     _search(term) {
         this.searchTerm = term;
         this.highlightedNodes.clear();
-
-        // אתחל pathNodes אם לא קיים
-        if (!this.pathNodes) this.pathNodes = new Set();
         this.pathNodes.clear();
 
-        // ── נקה count אם חיפוש קצר ───────────────────────────────
         const countEl = document.getElementById('otSearchCount');
 
         if (!term || term.trim().length < 2) {
@@ -561,10 +651,8 @@ class OrgTreeDashboard {
 
         const termLower = term.toLowerCase().trim();
 
-        // ── שלב 1: מצא את כל הצמתים שמתאימים ────────────────────
         const findMatches = (nodes) => {
             nodes.forEach(node => {
-
                 const nameMatch = (node.employeeName || '')
                     .toLowerCase().includes(termLower);
                 const idMatch = (node.employeeId || '')
@@ -1585,15 +1673,26 @@ class OrgTreeDashboard {
             <span class="ot-sp-label"><i class="fas fa-briefcase"></i> תפקיד</span>
             <span class="ot-sp-value">${this._esc(phone.role)}</span>
         </div>` : ''}
+        ${phone.team ? `
+        <div class="ot-sp-row">
+            <span class="ot-sp-label"><i class="fas fa-users"></i> צוות</span>
+            <span class="ot-sp-value">${this._esc(phone.team)}</span>
+        </div>` : ''}
         ${phone.department ? `
         <div class="ot-sp-row">
             <span class="ot-sp-label"><i class="fas fa-building"></i> מחלקה</span>
             <span class="ot-sp-value">${this._esc(phone.department)}</span>
         </div>` : ''}
-        ${phone.team ? `
+        ${phone.domain ? `
         <div class="ot-sp-row">
-            <span class="ot-sp-label"><i class="fas fa-users"></i> צוות</span>
-            <span class="ot-sp-value">${this._esc(phone.team)}</span>
+            <span class="ot-sp-label"><i class="fas fa-sitemap"></i> תחום</span>
+            <span class="ot-sp-value">${this._esc(phone.domain)}</span>
+        </div>` : ''}
+
+        ${phone.division ? `
+        <div class="ot-sp-row">
+            <span class="ot-sp-label"><i class="fas fa-project-diagram"></i> אגף</span>
+            <span class="ot-sp-value">${this._esc(phone.division)}</span>
         </div>` : ''}
     </div>
 

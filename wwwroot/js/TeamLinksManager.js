@@ -387,13 +387,13 @@ class TeamLinksManager {
                 this.updateActiveFiltersDisplay();
             }
 
-            localStorage.setItem('teamLinksFiltersSectionCollapsed', content.classList.contains('collapsed'));
+            userSettings.setItem('teamLinksFiltersSectionCollapsed', content.classList.contains('collapsed'));
         }
     }
 
     // Restore filter section collapsed state
     restoreFilterSectionState() {
-        const filtersCollapsed = localStorage.getItem('teamLinksFiltersSectionCollapsed');
+        const filtersCollapsed = userSettings.getItem('teamLinksFiltersSectionCollapsed');
         const content = document.getElementById('teamLinksFiltersContent');
         const btn = document.getElementById('teamLinksFiltersCollapseBtn');
 

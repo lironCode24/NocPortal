@@ -446,10 +446,14 @@ class ProceduresManager {
         }
 
         const term = searchTerm.trim().toLowerCase();
-        const matches = this.quickProcedures.filter(proc =>
-            proc.title.toLowerCase().includes(term) ||
-            (proc.content || '').toLowerCase().includes(term)
-        );
+        const matches = this.quickProcedures.filter(proc => {
+            // חיפוש בכותרת
+            if (proc.title.toLowerCase().includes(term)) return true;
+
+            // *** תיקון: הסר תמונות base64 ותגי HTML לפני החיפוש ***
+            const cleanContent = this._getCleanTextForSearch(proc.content || '');
+            return cleanContent.toLowerCase().includes(term);
+        });
 
         if (matches.length > 0) {
             // שנה כפתור - הצג תוצאות
@@ -474,6 +478,29 @@ class ProceduresManager {
             // שחזר onclick מקורי
             btn.onclick = () => this.openQuickProceduresModal();
         }
+    }
+
+    // הסר תמונות base64 ותגי HTML לצורך חיפוש נקי
+    _getCleanTextForSearch(htmlContent) {
+        if (!htmlContent) return '';
+
+        // *** שלב 1: הסר תמונות base64 לגמרי (הן מכילות תווים אקראיים) ***
+        let clean = htmlContent.replace(
+            /<img[^>]*src=["']data:[^"']*["'][^>]*>/gi,
+            ''
+        );
+
+        // *** שלב 2: הסר תמונות עם URL רגיל (src="...") ***
+        clean = clean.replace(
+            /<img[^>]*>/gi,
+            ''
+        );
+
+        // *** שלב 3: הסר את כל תגי ה-HTML שנותרו ***
+        const temp = document.createElement('div');
+        temp.innerHTML = clean;
+
+        return temp.textContent || temp.innerText || '';
     }
 
     // View procedure in modal
@@ -2321,7 +2348,8 @@ class ProceduresManager {
             const color = colors[index % colors.length];
 
             const titleMatch = term && proc.title.toLowerCase().includes(term);
-            const contentMatch = term && (proc.content || '').toLowerCase().includes(term);
+            const cleanContent = this._getCleanTextForSearch(proc.content || '');
+            const contentMatch = term && cleanContent.toLowerCase().includes(term);
             const isMatch = !term || titleMatch || contentMatch;
             if (!isMatch) return;
             visibleCount++;
@@ -3349,13 +3377,13 @@ class ProceduresManager {
     // Save last selected employee to localStorage
     saveLastSelectedEmployee(employeeName) {
         if (employeeName && employeeName !== '') {
-            localStorage.setItem('lastSelectedEmployee', employeeName);
+            userSettings.setItem('lastSelectedEmployee', employeeName);
         }
     }
 
     // Get last selected employee from localStorage
     getLastSelectedEmployee() {
-        return localStorage.getItem('lastSelectedEmployee') || '';
+        return userSettings.getItem('lastSelectedEmployee') || '';
     }
 
     // Set default employee in select dropdown

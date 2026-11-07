@@ -33,7 +33,7 @@ class SectionDragManager {
 
     saveDefaultOrder() {
         // Check if we already have a saved default in localStorage
-        const savedDefault = localStorage.getItem('noc-sections-default-order');
+        const savedDefault = userSettings.getItem('noc-sections-default-order');
         if (savedDefault) {
             try {
                 this.defaultOrder = JSON.parse(savedDefault);
@@ -57,7 +57,7 @@ class SectionDragManager {
 
         this.defaultOrder = order;
         // Save to localStorage so it persists across refreshes
-        localStorage.setItem('noc-sections-default-order', JSON.stringify(order));
+        userSettings.setItem('noc-sections-default-order', JSON.stringify(order));
     }
 
     setupDragAndDrop() {
@@ -164,11 +164,11 @@ class SectionDragManager {
             }
         });
 
-        localStorage.setItem('noc-sections-order', JSON.stringify(order));
+        userSettings.setItem('noc-sections-order', JSON.stringify(order));
     }
 
     loadSavedOrder() {
-        const savedOrder = localStorage.getItem('noc-sections-order');
+        const savedOrder = userSettings.getItem('noc-sections-order');
         if (!savedOrder) {
             return;
         }
@@ -229,7 +229,7 @@ class SectionDragManager {
     }
 
     hasCustomOrder() {
-        const savedOrder = localStorage.getItem('noc-sections-order');
+        const savedOrder = userSettings.getItem('noc-sections-order');
         if (!savedOrder) return false;
 
         try {
@@ -272,7 +272,7 @@ class SectionDragManager {
 
     resetToDefault() {
         // Remove only the custom order
-        localStorage.removeItem('noc-sections-order');
+        userSettings.removeItem('noc-sections-order');
         location.reload();
     }
 
@@ -295,7 +295,7 @@ class SectionDragManager {
         this.allSectionsOpen = !this.allSectionsOpen;
 
         // Load current section states from localStorage
-        const sectionStates = JSON.parse(localStorage.getItem('sectionStates') || '{}');
+        const sectionStates = JSON.parse(userSettings.getItem('sectionStates') || '{}');
 
         sections.forEach(sectionId => {
             const content = document.getElementById(`${sectionId}Content`);
@@ -319,7 +319,7 @@ class SectionDragManager {
         });
 
         // Save updated states to localStorage
-        localStorage.setItem('sectionStates', JSON.stringify(sectionStates));
+        userSettings.setItem('sectionStates', JSON.stringify(sectionStates));
 
         // Update button text and icon
         this.updateToggleAllButton();

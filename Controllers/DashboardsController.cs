@@ -15,32 +15,36 @@ public class DashboardsController : Controller
     // ─────────────────────────────────────────────
     // הגדרות
     // ─────────────────────────────────────────────
-    private readonly string _metricsCacheFilePath;
+    private readonly string _metricsCacheFilePath =
+        PortalPaths.UnderFiles(@"rack_metrics_cache.json");
 
     private static readonly object _fileLock = new object();
-
-    public DashboardsController(IWebHostEnvironment env)
-    {
-        _metricsCacheFilePath = Path.Combine(env.WebRootPath, "assets", "files", "rack_metrics_cache.json");
-    }
 
     // ─── דשבורדים ציבוריים - ללא Login ───────────────────────
     private static readonly HashSet<string> _publicDashboards =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "systems-catalog"
+            "systems-catalog",
+            "activities" ,
+            "changes"
         };
 
     // ─────────────────────────────────────────────
     // Views
     // ─────────────────────────────────────────────
 
-    // ─── Index: ציבורי לקטלוג, מוגן לשאר ────────────────────
+    // ─── Index: ציבורי לדף הראשי ולדשבורדים ציבוריים ────────────────────
     public IActionResult Index(string dashboard)
     {
+        // ─── דף ראשי ללא פרמטר - תמיד ציבורי ───
+        // (הדשבורדים שיוצגו יסוננו בצד הלקוח לפי הרשאות)
+        if (string.IsNullOrEmpty(dashboard))
+        {
+            return View();
+        }
+
         // ─── אם הדשבורד ציבורי - אפשר גישה ───
-        if (!string.IsNullOrEmpty(dashboard) &&
-            _publicDashboards.Contains(dashboard))
+        if (_publicDashboards.Contains(dashboard))
         {
             return View();
         }

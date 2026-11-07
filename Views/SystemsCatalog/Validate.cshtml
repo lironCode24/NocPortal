@@ -6,11 +6,12 @@
 <html dir="rtl" lang="he">
 <head>
     <meta charset="UTF-8"/>
-    <link rel="icon" type="image/x-icon" href="https://www.menoramivt.co.il/customers-homepage/static/img/favicon.ico">
+    <link rel="icon" type="image/x-icon"
+          href="https://www.menoramivt.co.il/customers-homepage/static/img/favicon.ico">
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>תיקוף נתוני מערכת</title>
-    <link rel="stylesheet"
-          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+    <link rel="stylesheet" href="https://cdn.menoramivt.co.il/public/fonts/fonts.css">
+    <link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -498,6 +499,279 @@
             .vld-field, .vld-field-wide { min-width: 100%; }
             .vld-system-badge { display: none; }
         }
+        
+        /* ══ Required Fields ══ */
+        .vld-field[data-required="true"] .vld-label {
+            color: #e0e0e0;
+        }
+        
+        .vld-required-star {
+            color: #ef4444;
+            margin-right: 3px;
+            font-weight: 700;
+        }
+        
+        /* הדגש שדה חובה ריק */
+        .vld-field[data-required="true"] .vld-input:invalid,
+        .vld-field[data-required="true"] .vld-input[data-empty="true"] {
+            border-color: rgba(239,68,68,0.4);
+        }
+        
+        /* אינדיקטור חובה בפינה */
+        .vld-field[data-required="true"] {
+            position: relative;
+        }
+
+        /* ══ Multi-Select Field (Validation Page) ══ */
+        .vld-multiselect-wrap {
+            position: relative;
+            width: 100%;
+        }
+
+        .vld-multiselect-display {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 42px;
+            padding: 6px 12px;
+            background: #252535;
+            border: 1px solid #3a3a5a;
+            border-radius: 7px;
+            cursor: pointer;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            flex-wrap: wrap;
+            position: relative;
+        }
+
+        .vld-multiselect-display:hover {
+            border-color: #6366f1;
+            box-shadow: 0 0 0 2px rgba(99,102,241,0.1);
+        }
+
+        /* ── תווית "בחירה מרובה" ── */
+        .vld-multiselect-hint {
+            position: absolute;
+            top: -9px;
+            left: 10px;
+            background: #1e1e2e;
+            padding: 0 6px;
+            font-size: 0.62rem;
+            font-weight: 700;
+            color: #6366f1;
+            border: 1px solid rgba(99,102,241,0.3);
+            border-radius: 4px;
+            letter-spacing: 0.03em;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+
+        .vld-multiselect-display-text {
+            flex: 1;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            min-width: 0;
+        }
+
+        .vld-multiselect-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 8px;
+            background: rgba(99,102,241,0.18);
+            border: 1px solid rgba(99,102,241,0.4);
+            border-radius: 8px;
+            color: #a5b4fc;
+            font-size: 0.75rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .vld-multiselect-tag i {
+            font-size: 0.55rem;
+            opacity: 0.7;
+        }
+
+        .vld-multiselect-chevron {
+            color: #6366f1;
+            font-size: 0.7rem;
+            flex-shrink: 0;
+            transition: transform 0.2s;
+            padding: 3px 5px;
+        }
+
+        /* ── Dropdown ── */
+        .vld-multiselect-dropdown {
+            position: absolute;
+            top: calc(100% + 4px);
+            right: 0;
+            left: 0;
+            z-index: 9999;
+            background: #1e1e2e;
+            border: 1px solid rgba(99,102,241,0.35);
+            border-radius: 10px;
+            box-shadow: 0 8px 28px rgba(0,0,0,0.6),
+                        0 0 0 1px rgba(99,102,241,0.1);
+            overflow: hidden;
+            max-height: 260px;
+        }
+
+        /* ── כותרת ה-dropdown ── */
+        .vld-multiselect-dropdown-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            background: rgba(99,102,241,0.08);
+            border-bottom: 1px solid rgba(99,102,241,0.2);
+            font-size: 0.72rem;
+            color: #888;
+            flex-shrink: 0;
+        }
+
+        .vld-multiselect-dropdown-header span {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: #a5b4fc;
+            font-weight: 600;
+        }
+
+        .vld-multiselect-dropdown-header span i {
+            color: #6366f1;
+        }
+
+        /* כפתור "בחר הכל / נקה" */
+        .vld-multi-ctrl-btn {
+            background: none;
+            border: 1px solid rgba(99,102,241,0.3);
+            border-radius: 4px;
+            color: #6366f1;
+            font-size: 0.68rem;
+            padding: 2px 7px;
+            cursor: pointer;
+            transition: all 0.15s;
+            font-family: inherit;
+        }
+
+        .vld-multi-ctrl-btn:hover {
+            background: rgba(99,102,241,0.15);
+            border-color: rgba(99,102,241,0.55);
+            color: #a5b4fc;
+        }
+
+        /* ── רשימת אפשרויות ── */
+        .vld-multiselect-options-list {
+            max-height: 200px;
+            overflow-y: auto;
+            padding: 4px;
+        }
+
+        .vld-multiselect-options-list::-webkit-scrollbar { width: 5px; }
+        .vld-multiselect-options-list::-webkit-scrollbar-track { background: #111; }
+        .vld-multiselect-options-list::-webkit-scrollbar-thumb {
+            background: #333; border-radius: 3px;
+        }
+
+        .vld-multiselect-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 9px 12px;
+            border-radius: 7px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            color: #ccc;
+            transition: all 0.12s;
+            user-select: none;
+            border: 1px solid transparent;
+            margin-bottom: 2px;
+        }
+
+        .vld-multiselect-option:last-child {
+            margin-bottom: 0;
+        }
+
+        .vld-multiselect-option:hover {
+            background: rgba(99,102,241,0.1);
+            color: #e0e0e0;
+            border-color: rgba(99,102,241,0.2);
+        }
+
+        /* ── תיבת סימון מותאמת ── */
+        .vld-multi-checkbox {
+            width: 18px;
+            height: 18px;
+            border: 2px solid #444;
+            border-radius: 4px;
+            background: #252535;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: all 0.15s;
+        }
+
+        .vld-multi-checkbox i {
+            font-size: 0.6rem;
+            color: transparent;
+            transition: all 0.15s;
+        }
+
+        /* מצב נבחר */
+        .vld-multiselect-selected {
+            background: rgba(99,102,241,0.12) !important;
+            color: #c4b5fd !important;
+            border-color: rgba(99,102,241,0.3) !important;
+            font-weight: 600;
+        }
+
+        .vld-multiselect-selected .vld-multi-checkbox {
+            background: #6366f1;
+            border-color: #6366f1;
+            box-shadow: 0 0 6px rgba(99,102,241,0.5);
+        }
+
+        .vld-multiselect-selected .vld-multi-checkbox i {
+            color: white;
+        }
+
+        /* ── Footer: מונה ── */
+        .vld-multiselect-dropdown-footer {
+            padding: 6px 12px;
+            background: rgba(0,0,0,0.2);
+            border-top: 1px solid rgba(255,255,255,0.05);
+            font-size: 0.72rem;
+            color: #555;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .vld-multi-count-badge {
+            background: rgba(99,102,241,0.15);
+            border: 1px solid rgba(99,102,241,0.3);
+            color: #a5b4fc;
+            padding: 1px 8px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.72rem;
+        }
+
+        /* ── placeholder כשריק ── */
+        .vld-multiselect-placeholder {
+            color: #444;
+            font-size: 0.82rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .vld-multiselect-placeholder i {
+            color: #555;
+            font-size: 0.75rem;
+        }
+
     </style>
 </head>
 <body>
@@ -560,8 +834,16 @@
                             data-tooltip="מספר קטלוג של המערכת">
                             <i class="fas fa-hashtag"></i> מספר
                         </label>
+                        
                         <input type="text" id="vldNumber"
-                            class="vld-input" placeholder="מספר מערכת"/>
+                            class="vld-input" 
+                            placeholder="מספר מערכת"
+                            readonly
+                            style="background:rgba(255,255,255,0.02);
+                                border-color:#2a2a3e;
+                                color:#777;
+                                cursor:not-allowed;
+                                opacity:0.7;"/>
                     </div>
                     <div class="vld-field vld-field-wide">
                         <label class="vld-label"
@@ -606,15 +888,10 @@
                         </label>
                         <select id="vldStatus" class="vld-select">
                             <option value="">— לא הוגדר —</option>
-                            <option value="פעיל">פעיל</option>
                             <option value="פעילה">פעילה</option>
-                            <option value="לא פעיל">לא פעיל</option>
                             <option value="לא פעילה">לא פעילה</option>
-                            <option value="בפיתוח">בפיתוח</option>
                             <option value="בהקמה">בהקמה</option>
                             <option value="פיילוט">פיילוט</option>
-                            <option value="בהקפאה">בהקפאה</option>
-                            <option value="מיועד לסגירה">מיועד לסגירה</option>
                             <option value="מבוטלת">מבוטלת</option>
                         </select>
                     </div>
@@ -626,7 +903,7 @@
                                     id="vldAutoFillBtn"
                                     class="vld-autofill-btn"
                                     title="מלא אוטומטית צוות/מחלקה/תחום לפי שם המנהל">
-                                <i class="fas fa-magic"></i>
+                                <i class="fas fa-magic"></i>מלא אוטומטית שיוך
                             </button>
                         </label>
                         <input type="text" id="vldManager"
@@ -780,10 +1057,9 @@
                             data-tooltip="האם קיימות בדיקות אוטומטיות למערכת זו">
                             <i class="fas fa-robot"></i> בדיקות אוטומטיות
                         </label>
-                        <select id="vldHasAutomation" class="vld-select">
-                            <option value="לא קיימות">לא קיימות</option>
-                            <option value="קיימות">קיימות</option>
-                            <option value="לא רלוונטי">לא רלוונטי</option>
+                        <select id="vldHasAutomation" class="vld-select vld-dynamic-select"
+                                data-field="hasAutomation">
+                            <option value="">— בחר האם קיימות בדיקות אוטומטיות —</option>
                         </select>
                     </div>
                     <div class="vld-field vld-field-wide" id="vldAutomationNoteWrap">
@@ -796,6 +1072,11 @@
                             placeholder="פרטים על הבדיקות האוטומטיות..."/>
                     </div>
                 </div>
+                <!-- אחרי שורת האוטומציה -->
+                <div class="vld-section-title" id="vldDynamicSection" style="display:none">
+                    <i class="fas fa-layer-group"></i> שדות נוספים
+                </div>
+                <div class="vld-row" id="vldDynamicFields"></div>
             </div><!-- /vld-form -->
 
             <!-- Footer -->
@@ -824,6 +1105,7 @@
 
     <script>
         const SYSTEM_ID = '@systemId';
+        const VALIDATION_TOKEN = '@Context.Request.RouteValues["id"]'; // הטוקן מה-URL
         let _toastTimer = null;
         let _originalData = null; // ← שמירת נתוני המקור לביטול שינויים
 
@@ -841,9 +1123,18 @@
         // ── קרא ערך משדה (input או select) ──────────────────
         function _getFieldValue(elId) {
             const el = document.getElementById(elId);
-            if (!el) return null;
-            const val = el.value ? el.value.trim() : '';
-            return val || null;
+            if (!el) return undefined; // undefined = לא קיים, שונה מ-null = ריק
+            return el.value ? el.value.trim() : '';
+        }
+
+        function escAttr(str) {
+            if (!str) return '';
+            return str
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
         }
 
         function escHtml(str) {
@@ -855,43 +1146,213 @@
                 .replace(/"/g, '&quot;');
         }
 
+        // ══ Multi-Select helpers (Validation Page) ══
+        function _toggleVldMultiDropdown(key) {
+            const dropdown = document.getElementById(`vldMultiDropdown_${key}`);
+
+            const rect = dropdown.parentElement.getBoundingClientRect();
+            const spaceBelow = window.innerHeight - rect.bottom;
+
+            if (spaceBelow < 250) {
+                dropdown.style.top = 'auto';
+                dropdown.style.bottom = 'calc(100% + 4px)';
+            } else {
+                dropdown.style.bottom = 'auto';
+                dropdown.style.top = 'calc(100% + 4px)';
+            }
+
+            dropdown.style.display =
+                dropdown.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function _toggleVldMultiOption(optionEl, key) {
+               if (!optionEl) return;
+
+                const value = optionEl.dataset.value;
+                const wrap = document.getElementById(`vldMultiWrap_${key}`)
+                        || optionEl.closest('.vld-multiselect-wrap');
+                
+                // ─── חפש hidden input בתוך ה-wrap ───
+                const hidden = wrap
+                    ? wrap.querySelector('input[type="hidden"]')
+                    : document.getElementById(`vldDynamic_${key}`);
+            const displayEl = document.getElementById(`vldMultiDisplay_${key}`);
+            const dropdown  = document.getElementById(`vldMultiDropdown_${key}`);
+            const countEl   = document.getElementById(`vldMultiCount_${key}`);
+
+            if (!hidden || !dropdown) return;
+
+            // ── טוגל מצב נבחר ──
+            const isSelected = optionEl.classList.contains('vld-multiselect-selected');
+            optionEl.classList.toggle('vld-multiselect-selected', !isSelected);
+
+            // ── עדכן hidden input ──
+            const allSelected = [
+                ...dropdown.querySelectorAll('.vld-multiselect-selected')
+            ].map(el => el.dataset.value);
+
+            hidden.value = allSelected.join(', ');
+
+            // ── עדכן מונה ──
+            if (countEl) {
+                countEl.textContent = `${allSelected.length} נבחרו`;
+                countEl.style.color = allSelected.length > 0
+                    ? '#a5b4fc'
+                    : '#555';
+            }
+
+            // ── עדכן תצוגה ──
+            if (displayEl) {
+                if (allSelected.length > 0) {
+                    displayEl.innerHTML = allSelected.map(v => `
+                        <span class="vld-multiselect-tag">
+                            <i class="fas fa-check" style="font-size:0.5rem"></i>
+                            ${escHtml(v)}
+                        </span>
+                    `).join('');
+                } else {
+                    displayEl.innerHTML = `
+                        <span class="vld-multiselect-placeholder">
+                            <i class="fas fa-mouse-pointer"></i>
+                            לחץ לבחירת ערכים
+                        </span>`;
+                }
+            }
+        }
+
+        // ── בחר הכל ──
+        function _vldMultiSelectAll(key) {
+            const dropdown  = document.getElementById(`vldMultiDropdown_${key}`);
+            const hidden    = document.getElementById(`vldDynamic_${key}`);
+            const displayEl = document.getElementById(`vldMultiDisplay_${key}`);
+            const countEl   = document.getElementById(`vldMultiCount_${key}`);
+            if (!dropdown || !hidden) return;
+
+            const allOptions = dropdown.querySelectorAll('.vld-multiselect-option');
+            const allAlreadySelected = [...allOptions]
+                .every(o => o.classList.contains('vld-multiselect-selected'));
+
+            // ── טוגל: אם הכל נבחר - בטל הכל, אחרת בחר הכל ──
+            allOptions.forEach(opt => {
+                opt.classList.toggle(
+                    'vld-multiselect-selected', !allAlreadySelected
+                );
+            });
+
+            const allSelected = allAlreadySelected
+                ? []
+                : [...allOptions].map(o => o.dataset.value);
+
+            hidden.value = allSelected.join(', ');
+
+            // ── עדכן כפתור ──
+            const btn = dropdown.querySelector('.vld-multi-ctrl-btn');
+            if (btn) {
+                btn.innerHTML = allAlreadySelected
+                    ? '<i class="fas fa-check-double"></i> בחר הכל'
+                    : '<i class="fas fa-times"></i> נקה הכל';
+            }
+
+            // ── עדכן מונה ──
+            if (countEl) {
+                countEl.textContent = `${allSelected.length} נבחרו`;
+            }
+
+            // ── עדכן תצוגה ──
+            if (displayEl) {
+                if (allSelected.length > 0) {
+                    displayEl.innerHTML = allSelected.map(v => `
+                        <span class="vld-multiselect-tag">
+                            <i class="fas fa-check" style="font-size:0.5rem"></i>
+                            ${escHtml(v)}
+                        </span>
+                    `).join('');
+                } else {
+                    displayEl.innerHTML = `
+                        <span class="vld-multiselect-placeholder">
+                            <i class="fas fa-mouse-pointer"></i>
+                            לחץ לבחירת ערכים
+                        </span>`;
+                }
+            }
+        }
+
+        // ── סגור בלחיצה מחוץ ──
+        document.addEventListener('click', e => {
+            if (!e.target.closest('.vld-multiselect-wrap')) {
+                document.querySelectorAll('.vld-multiselect-dropdown').forEach(d => {
+                    d.style.display = 'none';
+                    const k = d.id.replace('vldMultiDropdown_', '');
+                    const c = document.getElementById(`vldMultiChevron_${k}`);
+                    if (c) c.style.transform = 'rotate(0deg)';
+                });
+            }
+        });
+
+        document.addEventListener('click', function(e) {
+            const opt = e.target.closest('.vld-multiselect-option');
+            if (!opt) return;
+            
+            const wrap = opt.closest('.vld-multiselect-wrap');
+            if (!wrap) return;
+            
+            // קבל את ה-key מה-dropdown
+            const dropdown = opt.closest('.vld-multiselect-dropdown');
+            if (!dropdown) return;
+            
+            const key = dropdown.id.replace('vldMultiDropdown_', '');
+            _toggleVldMultiOption(opt, key);
+        });
+
         // ── טען ערכים דינמיים לכל ה-select ──────────────────
         async function loadDynamicOptions() {
             try {
-                const res = await fetch(
-                    '/SystemsCatalog/GetSystems',
-                    { credentials: 'include' }
-                );
+                const res = await fetch('/SystemsCatalog/GetSystemsPublic', { credentials: 'include' });
                 const data = await res.json();
                 if (!data.success || !data.systems) return;
 
                 const systems = data.systems;
 
-                // ─── בנה ערכים ייחודיים לכל שדה ───
                 const fieldMap = {
-                    'environment':            'vldEnv',
-                    'domain':                 'vldDomain',
-                    'department':             'vldDept',
-                    'team':                   'vldTeam',
-                    'businessDivision':       'vldBizDiv',
-                    'appClassification':      'vldAppClass',
-                    'appType':                'vldAppType',
-                    'businessCriticality':    'vldCriticality',
-                    'availabilityRequirement':'vldAvailability',
+                    'environment':             'vldEnv',
+                    'domain':                  'vldDomain',
+                    'department':              'vldDept',
+                    'team':                    'vldTeam',
+                    'businessDivision':        'vldBizDiv',
+                    'appClassification':       'vldAppClass',
+                    'appType':                 'vldAppType',
+                    'businessCriticality':     'vldCriticality',
+                    'availabilityRequirement': 'vldAvailability',
                 };
 
                 Object.entries(fieldMap).forEach(([field, elId]) => {
                     const selectEl = document.getElementById(elId);
                     if (!selectEl) return;
 
-                    // ─── אסוף ערכים ייחודיים ───
+                    // ─── דלג אם כבר הומר ל-input ע"י _applyServerSettingsToBuiltInFields ───
+                    if (selectEl.tagName !== 'SELECT') return;
+
+                    // ─── דלג אם כבר יש options מהשרת (allowedValues) ───
+                    // (יותר מ-1 option = placeholder + לפחות ערך אחד מהשרת)
+                    if (selectEl.options.length > 1) {
+                        // ─── יש ערכים מהשרת - רק ודא שהערך הנוכחי מוגדר ───
+                        const currentVal = selectEl.dataset.currentValue || '';
+                        if (currentVal && selectEl.value !== currentVal) {
+                            const exists = [...selectEl.options]
+                                .some(o => o.value === currentVal);
+                            if (exists) {
+                                selectEl.value = currentVal;
+                            }
+                        }
+                        return;
+                    }
+
+                    // ─── אסוף ערכים ייחודיים מהמערכות ───
                     const uniqueValues = [...new Set(
                         systems
                             .map(s => s[field])
                             .filter(v => v && String(v).trim() !== '')
-                    )].sort((a, b) =>
-                        String(a).localeCompare(String(b), 'he')
-                    );
+                    )].sort((a, b) => String(a).localeCompare(String(b), 'he'));
 
                     // ─── שמור ערך נוכחי לפני בניית האפשרויות ───
                     const currentVal = selectEl.dataset.currentValue || '';
@@ -913,16 +1374,15 @@
 
             } catch (err) {
                 console.warn('loadDynamicOptions error:', err);
-                // ─── fallback: המר select חזרה ל-input ───
-                document.querySelectorAll('.vld-dynamic-select')
-                    .forEach(sel => {
-                        const input = document.createElement('input');
-                        input.type = 'text';
-                        input.id = sel.id;
-                        input.className = 'vld-input';
-                        input.value = sel.dataset.currentValue || '';
-                        sel.parentNode.replaceChild(input, sel);
-                    });
+                document.querySelectorAll('.vld-dynamic-select').forEach(sel => {
+                    if (sel.tagName !== 'SELECT') return; // ← דלג על שדות שכבר הומרו
+                    const input = document.createElement('input');
+                    input.type      = 'text';
+                    input.id        = sel.id;
+                    input.className = 'vld-input';
+                    input.value     = sel.dataset.currentValue || '';
+                    sel.parentNode.replaceChild(input, sel);
+                });
             }
         }
 
@@ -930,7 +1390,7 @@
         async function loadSystem() {
             try {
                 const res = await fetch(
-                    `/SystemsCatalog/GetSystemById?id=${encodeURIComponent(SYSTEM_ID)}`,
+                    `/SystemsCatalog/GetSystemByIdPublic?id=${encodeURIComponent(SYSTEM_ID)}`,
                     { credentials: 'include' }
                 );
                 const data = await res.json();
@@ -945,6 +1405,7 @@
                 }
 
                 populateForm(data.system);
+                populateDynamicFields(data.system);
                 document.getElementById('vldFormWrap').style.display = 'block';
 
             } catch (err) {
@@ -968,24 +1429,95 @@
             }
         }
 
+        function populateDynamicFields(system) {
+            document.querySelectorAll('.vld-dynamic-field').forEach(el => {
+                const key = el.dataset.fieldKey;
+                if (!key) return;
+
+                // ─── חפש ערך בכל המקומות ───
+                const val = system[key]
+                    || system[key.charAt(0).toUpperCase() + key.slice(1)]
+                    || system.dynamicFields?.[key]
+                    || '';
+
+                if (!val) return;
+
+                // ─── multiselect: hidden input + UI ───
+                if (el.type === 'hidden' && el.closest('.vld-multiselect-wrap')) {
+                    const key = el.dataset.fieldKey;
+                    if (!val) return;
+
+                    el.value = val;
+                    const values    = val.split(',').map(v => v.trim()).filter(v => v);
+                    const dropdown  = document.getElementById(`vldMultiDropdown_${key}`);
+                    const displayEl = document.getElementById(`vldMultiDisplay_${key}`);
+                    const countEl   = document.getElementById(`vldMultiCount_${key}`);
+
+                    if (dropdown) {
+                        values.forEach(v => {
+                            const optEl = [...dropdown.querySelectorAll('.vld-multiselect-option')]
+                                .find(o => o.dataset.value === v);
+                            if (optEl) {
+                                optEl.classList.add('vld-multiselect-selected');
+                            }
+                        });
+                    }
+
+                    if (displayEl && values.length > 0) {
+                        displayEl.innerHTML = values.map(v => `
+                            <span class="vld-multiselect-tag">
+                                <i class="fas fa-check" style="font-size:0.5rem"></i>
+                                ${escHtml(v)}
+                            </span>
+                        `).join('');
+                    }
+
+                    if (countEl) {
+                        countEl.textContent = `${values.length} נבחרו`;
+                    }
+
+                    return;
+                }
+                if (el.tagName === 'SELECT') {
+                    // ─── בדוק אם הערך קיים ברשימה ───
+                    const exists = [...el.options]
+                        .some(o => o.value === val);
+
+                    if (exists) {
+                        el.value = val;
+                    } else if (val) {
+                        // ─── הוסף option אם לא קיים ───
+                        const opt = document.createElement('option');
+                        opt.value       = val;
+                        opt.textContent = val;
+                        opt.selected    = true;
+                        opt.style.color = '#fcd34d'; // הדגשה לערך לא ברשימה
+                        el.appendChild(opt);
+                        el.value = val;
+                    }
+                } else {
+                    // ─── input / textarea ───
+                    el.value = val;
+                }
+            });
+        }
+
         // ── מלא את הטופס ─────────────────────────────────────
         function populateForm(s) {
-            // ── שמור עותק של הנתונים המקוריים לביטול שינויים ──
-            _originalData = JSON.parse(JSON.stringify(s)); // ← הוסף שורה זו בתחילת הפונקציה
+            _originalData = JSON.parse(JSON.stringify(s));
 
-            document.getElementById('vldSystemBadge').textContent =
-                s.name || SYSTEM_ID;
-            document.getElementById('vldNameBadge').textContent =
-                s.name || '';
+            document.getElementById('vldSystemBadge').textContent = s.name || SYSTEM_ID;
+            document.getElementById('vldNameBadge').textContent   = s.name || '';
 
-            document.getElementById('vldNumber').value       = s.number                  || '';
-            document.getElementById('vldName').value         = s.name                    || '';
-            document.getElementById('vldNameEn').value       = s.nameEn                  || '';
-            document.getElementById('vldDesc').value         = s.description             || '';
-            document.getElementById('vldManager').value      = s.systemManager           || '';
+            document.getElementById('vldNumber').value  = s.number      || '';
+            document.getElementById('vldName').value    = s.name        || '';
+            document.getElementById('vldNameEn').value  = s.nameEn      || '';
+            document.getElementById('vldDesc').value    = s.description || '';
+            document.getElementById('vldManager').value = s.systemManager || '';
 
-            document.getElementById('vldPublisher').value    = s.publisher               || '';
-            document.getElementById('vldVendor').value       = s.supportVendor           || '';
+            // ─── publisher ו-vendor - תומך גם ב-select וגם ב-input ───
+            _setFieldValue('vldPublisher',   s.publisher    || '');
+            _setFieldValue('vldVendor',      s.supportVendor || '');
 
             const dynamicFields = {
                 'vldEnv':          s.environment             || '',
@@ -1003,18 +1535,13 @@
                 const el = document.getElementById(elId);
                 if (!el) return;
 
+                el.dataset.currentValue = val;
+
                 if (el.tagName === 'SELECT') {
-                    // ─── שמור ערך ב-dataset לשימוש ב-loadDynamicOptions ───
-                    el.dataset.currentValue = val;
-
-                    // ─── נסה להגדיר ישירות (אם options כבר נטענו) ───
-                    const exists = [...el.options]
-                        .some(o => o.value === val);
-
+                    const exists = [...el.options].some(o => o.value === val);
                     if (exists) {
                         el.value = val;
                     } else if (val) {
-                        // ─── הוסף option זמני ───
                         const opt = document.createElement('option');
                         opt.value = val;
                         opt.textContent = val;
@@ -1022,64 +1549,685 @@
                         el.appendChild(opt);
                     }
                 } else {
-                    // ─── fallback: input רגיל ───
                     el.value = val;
                 }
             });
 
-            // מלא שדות אוטומציה
+            // ─── אוטומציה ───
             const autoVal = s.hasAutomation || 'לא קיימות';
-            document.getElementById('vldHasAutomation').value = autoVal;
-            document.getElementById('vldAutomationNote').value = s.automationNote || '';
-
-            // הצג/הסתר שדה הערה לפי ערך האוטומציה
+            _setFieldValue('vldHasAutomation',  autoVal);
+            _setFieldValue('vldAutomationNote', s.automationNote || '');
             _updateAutomationNoteVisibility(autoVal);
 
-            // ─── טיפול בסטטוס עם fallback לערך לא מוכר ───
-            const statusSelect = document.getElementById('vldStatus');
-            const statusValue  = s.status || '';
+            // ─── סטטוס ───
+            const statusEl    = document.getElementById('vldStatus');
+            const statusValue = s.status || '';
 
-            // ─── בדוק אם הערך קיים ב-options ───
-            const optionExists = Array.from(statusSelect.options)
-                .some(opt => opt.value === statusValue);
+            if (statusEl) {
+                statusEl.dataset.currentValue = statusValue;
 
-            if (optionExists) {
-                // ─── ערך קיים - הגדר ישירות ───
-                statusSelect.value = statusValue;
-            } else if (statusValue) {
+                if (statusEl.tagName === 'SELECT') {
+                    const optionExists = [...statusEl.options]
+                        .some(opt => opt.value === statusValue);
+
+                    if (optionExists) {
+                        // ─── ערך קיים - הגדר ישירות ───
+                        statusEl.value = statusValue;
+                    } else if (statusValue) {
                 // ─── ערך לא קיים - הוסף option דינמי ───
-                const newOption = document.createElement('option');
-                newOption.value = statusValue;
-                newOption.textContent = statusValue;
-                newOption.style.color = '#fcd34d'; // ← צהוב להדגשה
-                // ─── הוסף אחרי האפשרות הראשונה (— לא הוגדר —) ───
-                statusSelect.insertBefore(newOption, statusSelect.options[1]);
-                statusSelect.value = statusValue;
+                        const newOption = document.createElement('option');
+                        newOption.value       = statusValue;
+                        newOption.textContent = statusValue;
+                        newOption.style.color = '#fcd34d';
+                        statusEl.insertBefore(newOption, statusEl.options[1]);
+                        statusEl.value = statusValue;
+                    } else {
+                        // ─── ריק - הגדר ברירת מחדל ───
+                        statusEl.value = '';
+                    }
+                } else {
+                    // ─── input (אחרי החלפה ע"י _applyServerSettingsToBuiltInFields) ───
+                    statusEl.value = statusValue;
+                }
+            }
+        }
+
+        // ── עזר: הגדר ערך לשדה (input או select) ──
+        function _setFieldValue(elementId, value) {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+
+            el.dataset.currentValue = value;
+
+            if (el.tagName === 'SELECT') {
+                const exists = [...el.options].some(o => o.value === value);
+                if (exists) {
+                    el.value = value;
+                } else if (value) {
+                    const opt = document.createElement('option');
+                    opt.value       = value;
+                    opt.textContent = value;
+                    opt.selected    = true;
+                    opt.style.color = '#fcd34d';
+                    el.appendChild(opt);
+                    el.value = value;
+                }
             } else {
-                // ─── ריק - הגדר ברירת מחדל ───
-                statusSelect.value = '';
+                el.value = value;
             }
         }
 
         // ── בטל שינויים - חזור לנתונים המקוריים ──────────────
-        function resetForm() {
+       function resetForm() {
             if (!_originalData) {
                 showToast('אין נתונים מקוריים לשחזור', 'info');
                 return;
             }
 
-            // ── אישור מהמשתמש ──
             if (!confirm('האם לבטל את כל השינויים ולחזור לנתונים המקוריים?')) {
                 return;
             }
 
             populateForm(_originalData);
+            populateDynamicFields(_originalData); // ← תיקון: _originalData במקום data.system
             showToast('↩️ השינויים בוטלו - הנתונים שוחזרו', 'info');
         }
 
+        // הוסף פונקציה לטעינת שדות דינמיים:
+        async function loadValidationFields() {
+            try {
+                const res = await fetch('/SystemsCatalog/GetColumnDefinitions',
+                    { credentials: 'include' });
+                const data = await res.json();
+                if (!data.success || !data.definitions?.columns) return;
+
+                // ─── שמור הגדרות עמודות לשימוש גלובלי ───
+                window._validationColDefs = data.definitions.columns;
+
+                // ─── בנה מפה של key → הגדרה לשימוש מהיר ───
+                window._validationColMap = {};
+                data.definitions.columns.forEach(col => {
+                    window._validationColMap[col.key] = col;
+                });
+
+                // ─── שדות קבועים שיש להם HTML מוכן בדף ───
+                // (אלו שדות שכבר קיימים ב-Validate.cshtml כ-input/select קשיח)
+                const hardcodedFields = new Set([
+                    'number', 'name', 'nameEn', 'description', 'status',
+                    'systemManager', 'departmentManager', 'environment',
+                    'domain', 'department', 'team', 'businessDivision',
+                    'appClassification', 'appType', 'businessCriticality',
+                    'availabilityRequirement', 'publisher', 'supportVendor',
+                    'hasAutomation', 'automationNote', 'buttons',
+                    'createdAt', 'lastValidatedAt', 'requiresValidation',
+                    'lastValidationEmailSentAt'
+                ]);
+
+                // ══════════════════════════════════════════════════════
+                // חלק א': עדכן שדות קבועים לפי הגדרות השרת
+                // ══════════════════════════════════════════════════════
+                _applyServerSettingsToBuiltInFields(data.definitions.columns, hardcodedFields);
+
+                // ══════════════════════════════════════════════════════
+                // חלק ב': בנה שדות דינמיים (שאינם קבועים)
+                // ══════════════════════════════════════════════════════
+                const validationCols = data.definitions.columns.filter(c =>
+                    c.showInValidation === true &&
+                    !hardcodedFields.has(c.key)
+                );
+
+                const dynamicSection = document.getElementById('vldDynamicFields');
+                const sectionTitle   = document.getElementById('vldDynamicSection');
+
+                if (dynamicSection && validationCols.length > 0) {
+                    if (sectionTitle) sectionTitle.style.display = '';
+
+                    validationCols.forEach(col => {
+                        const fieldHtml = _buildDynamicFieldHtml(col);
+                        dynamicSection.insertAdjacentHTML('beforeend', fieldHtml);
+                    });
+                }
+
+            } catch (err) {
+                console.warn('loadValidationFields error:', err);
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        // עדכן שדות קבועים לפי הגדרות מהשרת:
+        // - הסתר שדה אם showInValidation === false
+        // - הוסף * אדום אם requiredInValidation === true
+        // ══════════════════════════════════════════════════════════════
+        function _applyServerSettingsToBuiltInFields(columns, hardcodedFields) {
+
+            // ─── מפת שדה → element ID בדף ───
+            const fieldToElementId = {
+                'number':                  'vldNumber',
+                'name':                    'vldName',
+                'nameEn':                  'vldNameEn',
+                'description':             'vldDesc',
+                'status':                  'vldStatus',
+                'systemManager':           'vldManager',
+                'environment':             'vldEnv',
+                'domain':                  'vldDomain',
+                'department':              'vldDept',
+                'team':                    'vldTeam',
+                'businessDivision':        'vldBizDiv',
+                'appClassification':       'vldAppClass',
+                'appType':                 'vldAppType',
+                'businessCriticality':     'vldCriticality',
+                'availabilityRequirement': 'vldAvailability',
+                'publisher':               'vldPublisher',
+                'supportVendor':           'vldVendor',
+                'hasAutomation':           'vldHasAutomation',
+                'automationNote':          'vldAutomationNote',
+            };
+
+            // ══════════════════════════════════════════════════════════════
+            // ── חדש: עדכן סוג שדה לפי fieldType מהשרת ──
+            // ══════════════════════════════════════════════════════════════
+            columns.forEach(col => {
+                if (!hardcodedFields.has(col.key)) return;
+
+                const elementId = fieldToElementId[col.key];
+                if (!elementId) return;
+
+                const el = document.getElementById(elementId);
+                if (!el) return;
+
+                const fieldType     = (col.fieldType     || '').toLowerCase();
+                const allowedValues = col.allowedValues  || [];
+
+                // ── שמור ערך נוכחי לפני החלפה ──
+                const currentVal = el.value || el.dataset.currentValue || '';
+
+                // ══════════════════════════════════════════════════════════
+                // מקרה 1: השרת מגדיר text/number/date אבל ה-HTML הוא select
+                // ──────────────────────────────────────────────────────────
+                if (
+                    el.tagName === 'SELECT' &&
+                    (fieldType === 'text' || fieldType === 'number' || fieldType === 'date')
+                ) {
+                    const input = document.createElement('input');
+                    input.type      = fieldType === 'number' ? 'number' : 'text';
+                    input.id        = elementId;
+                    input.className = 'vld-input';
+                    input.value     = currentVal;
+                    input.dataset.currentValue = currentVal;
+
+                    // ─── שמור data-field אם קיים ───
+                    if (el.dataset.field) input.dataset.field = el.dataset.field;
+
+                    el.parentNode.replaceChild(input, el);
+                    return; // המשך ל-col הבא
+                }
+
+                // ══════════════════════════════════════════════════════════
+                // מקרה 2: השרת מגדיר textarea אבל ה-HTML הוא input/select
+                // ──────────────────────────────────────────────────────────
+                if (
+                    el.tagName !== 'TEXTAREA' &&
+                    fieldType === 'textarea'
+                ) {
+                    const textarea = document.createElement('textarea');
+                    textarea.id        = elementId;
+                    textarea.className = 'vld-textarea';
+                    textarea.rows      = 3;
+                    textarea.value     = currentVal;
+                    textarea.dataset.currentValue = currentVal;
+
+                    if (el.dataset.field) textarea.dataset.field = el.dataset.field;
+
+                    el.parentNode.replaceChild(textarea, el);
+                    return;
+                }
+
+                // ══════════════════════════════════════════════════════════
+                // מקרה 3: השרת מגדיר select עם allowedValues
+                //         → החלף את ה-options בערכי השרת
+                // ──────────────────────────────────────────────────────────
+                if (
+                    el.tagName === 'SELECT' &&
+                    fieldType === 'select' &&
+                    allowedValues.length > 0
+                ) {
+                    // ─── שמור placeholder ראשון ───
+                    const firstOption = el.options[0]?.outerHTML
+                        || '<option value="">— בחר —</option>';
+
+                    // ─── בנה options חדשים ───
+                    const newOptions = allowedValues
+                        .map(v => `<option value="${escHtml(v)}"
+                                        ${currentVal === v ? 'selected' : ''}>
+                                    ${escHtml(v)}
+                                </option>`)
+                        .join('');
+
+                    el.innerHTML = firstOption + newOptions;
+
+                    // ─── שחזר ערך נוכחי ───
+                    if (currentVal) {
+                        const exists = [...el.options].some(o => o.value === currentVal);
+                        if (exists) {
+                            el.value = currentVal;
+                        } else {
+                            // ─── ערך קיים אבל לא ברשימה - הוסף ───
+                            const opt = document.createElement('option');
+                            opt.value       = currentVal;
+                            opt.textContent = currentVal;
+                            opt.selected    = true;
+                            opt.style.color = '#fcd34d';
+                            el.appendChild(opt);
+                            el.value = currentVal;
+                        }
+                    }
+                    return;
+                }
+
+                // ══════════════════════════════════════════════════════════
+                // מקרה 4: השרת מגדיר select אבל ה-HTML הוא input
+                //         → צור select חדש עם allowedValues
+                // ──────────────────────────────────────────────────────────
+                if (
+                    el.tagName === 'INPUT' &&
+                    (fieldType === 'select' || fieldType === 'boolean') &&
+                    allowedValues.length > 0
+                ) {
+                    const select = document.createElement('select');
+                    select.id        = elementId;
+                    select.className = 'vld-select';
+                    select.dataset.currentValue = currentVal;
+
+                    if (el.dataset.field) select.dataset.field = el.dataset.field;
+
+                    // ─── בנה options ───
+                    const values = fieldType === 'boolean'
+                        ? ['כן', 'לא']
+                        : allowedValues;
+
+                    select.innerHTML = `<option value="">— בחר —</option>` +
+                        values.map(v => `
+                            <option value="${escHtml(v)}"
+                                    ${currentVal === v ? 'selected' : ''}>
+                                ${escHtml(v)}
+                            </option>`).join('');
+
+                    el.parentNode.replaceChild(select, el);
+                    return;
+                }
+
+                // ══════════════════════════════════════════════════════════
+                // מקרה 5: השרת מגדיר multiselect
+                //         → החלף את ה-select ב-multiselect component
+                // ──────────────────────────────────────────────────────────
+                if (
+                    fieldType === 'multiselect' &&
+                    allowedValues.length > 0
+                ) {
+                    const currentVals = currentVal
+                        .split(',')
+                        .map(v => v.trim())
+                        .filter(Boolean);
+
+                    const fieldWrapper = el.closest('.vld-field');
+                    if (!fieldWrapper) return;
+
+                    const optionsHtml = allowedValues.map(v => `
+                        <div class="vld-multiselect-option
+                                    ${currentVals.includes(v) ? 'vld-multiselect-selected' : ''}"
+                            data-value="${escAttr(v)}"
+                            data-ms-key="${escAttr(col.key)}">
+                            <div class="vld-multi-checkbox">
+                                <i class="fas fa-check"></i>
+                            </div>
+                            <span>${escHtml(v)}</span>
+                        </div>`).join('');
+
+                    const displayHtml = currentVals.length > 0
+                        ? currentVals.map(v => `
+                            <span class="vld-multiselect-tag">
+                                <i class="fas fa-check" style="font-size:0.5rem"></i>
+                                ${escHtml(v)}
+                            </span>`).join('')
+                        : `<span class="vld-multiselect-placeholder">
+                            <i class="fas fa-mouse-pointer"></i>
+                            לחץ לבחירת ערכים
+                        </span>`;
+
+                    const multiHtml = `
+                        <div class="vld-multiselect-wrap"
+                            id="vldMultiWrap_${escHtml(col.key)}">
+
+                            <div class="vld-multiselect-display"
+                                onclick="_toggleVldMultiDropdown(this.closest('.vld-multiselect-wrap').id.replace('vldMultiWrap_',''))">
+                                <span class="vld-multiselect-display-text"
+                                    id="vldMultiDisplay_${escHtml(col.key)}">
+                                    ${displayHtml}
+                                </span>
+                                <i class="fas fa-chevron-down vld-multiselect-chevron"
+                                id="vldMultiChevron_${escHtml(col.key)}"></i>
+                            </div>
+
+                            <div class="vld-multiselect-dropdown"
+                                id="vldMultiDropdown_${escHtml(col.key)}"
+                                style="display:none">
+
+                                <div class="vld-multiselect-options-list">
+                                    ${optionsHtml}
+                                </div>
+                            </div>
+
+                            <input type="hidden"
+                                id="${elementId}"
+                                class="vld-dynamic-field"
+                                data-field-key="${col.key}"  
+                                value="${escHtml(currentVal)}"/>
+                        </div>`;
+
+                    // ─── החלף את האלמנט הקיים ───
+                    const wrapper = document.createElement('div');
+                    wrapper.innerHTML = multiHtml;
+                    el.parentNode.replaceChild(wrapper.firstElementChild, el);
+                    return;
+                }
+
+                // ══════════════════════════════════════════════════════════
+                // מקרה 6: השרת מגדיר input אבל ה-HTML הוא select (ללא ערכים)
+                // ──────────────────────────────────────────────────────────
+                if (
+                    el.tagName === 'SELECT' &&
+                    fieldType === 'text' &&
+                    allowedValues.length === 0
+                ) {
+                    const input = document.createElement('input');
+                    input.type      = 'text';
+                    input.id        = elementId;
+                    input.className = 'vld-input';
+                    input.value     = currentVal;
+                    input.dataset.currentValue = currentVal;
+
+                    if (el.dataset.field) input.dataset.field = el.dataset.field;
+
+                    el.parentNode.replaceChild(input, el);
+                    return;
+                }
+            });
+
+            // ══════════════════════════════════════════════════════════════
+            // ── קוד קיים: showInValidation + requiredInValidation ──
+            // ══════════════════════════════════════════════════════════════
+            columns.forEach(col => {
+                if (!hardcodedFields.has(col.key)) return;
+                const elementId = fieldToElementId[col.key];
+                if (!elementId) return;
+
+                // ─── קבל את האלמנט הנוכחי (אחרי ההחלפה האפשרית למעלה) ───
+                const inputEl = document.getElementById(elementId);
+                if (!inputEl) return;
+
+                // ─── מצא את ה-wrapper (.vld-field) של השדה ───
+                const fieldWrapper = inputEl.closest('.vld-field');
+                if (!fieldWrapper) return;
+
+                // ─── מצא את ה-label ───
+                const labelEl = fieldWrapper.querySelector('.vld-label');
+
+                // ─── 1. showInValidation === false → הסתר ───
+                if (col.showInValidation === false) {
+                    fieldWrapper.style.display = 'none';
+                    _hideRowIfAllHidden(fieldWrapper.closest('.vld-row'));
+                    return;
+                }
+
+                fieldWrapper.style.display = '';
+
+                // ─── 2. requiredInValidation ───
+                const isRequired = col.requiredInValidation === true;
+
+                if (isRequired) {
+                    fieldWrapper.dataset.required = 'true';
+                } else {
+                    delete fieldWrapper.dataset.required;
+                }
+
+                if (labelEl) {
+                    const existingStar = labelEl.querySelector('.vld-required-star');
+                    if (existingStar) existingStar.remove();
+
+                    if (isRequired) {
+                        const star = document.createElement('span');
+                        star.className   = 'vld-required-star';
+                        star.title       = 'שדה חובה';
+                        star.textContent = '*';
+                        star.style.cssText = `
+                            color: #ef4444;
+                            margin-right: 3px;
+                            font-weight: 700;
+                            font-size: 1rem;
+                        `;
+                        labelEl.appendChild(star);
+
+                        const existingTooltip = labelEl.getAttribute('data-tooltip') || '';
+                        if (!existingTooltip.includes('(שדה חובה)')) {
+                            labelEl.setAttribute(
+                                'data-tooltip',
+                                existingTooltip + ' (שדה חובה)'
+                            );
+                        }
+                    } else {
+                        const tooltip = labelEl.getAttribute('data-tooltip') || '';
+                        labelEl.setAttribute(
+                            'data-tooltip',
+                            tooltip.replace(' (שדה חובה)', '')
+                        );
+                    }
+                }
+
+                if (isRequired) {
+                    inputEl.setAttribute('data-required', 'true');
+
+                    if (!inputEl.dataset.requiredListenerAdded) {
+                        inputEl.dataset.requiredListenerAdded = 'true';
+
+                        inputEl.addEventListener('blur', function() {
+                            if (!this.value || this.value.trim() === '') {
+                                this.style.borderColor = 'rgba(239,68,68,0.6)';
+                                this.style.boxShadow   = '0 0 0 2px rgba(239,68,68,0.15)';
+                            } else {
+                                this.style.borderColor = 'rgba(34,197,94,0.5)';
+                                this.style.boxShadow   = '0 0 0 2px rgba(34,197,94,0.1)';
+                                setTimeout(() => {
+                                    this.style.borderColor = '';
+                                    this.style.boxShadow   = '';
+                                }, 2000);
+                            }
+                        });
+
+                        inputEl.addEventListener('input', function() {
+                            if (this.value && this.value.trim() !== '') {
+                                this.style.borderColor = '';
+                                this.style.boxShadow   = '';
+                            }
+                        });
+                    }
+                } else {
+                    inputEl.removeAttribute('data-required');
+                }
+            });
+        }
+
+        // ── הסתר vld-row אם כל השדות בתוכו מוסתרים ──────────────
+        function _hideRowIfAllHidden(rowEl) {
+            if (!rowEl || !rowEl.classList.contains('vld-row')) return;
+
+            const allFields = rowEl.querySelectorAll('.vld-field');
+            const allHidden = [...allFields].every(
+                f => f.style.display === 'none'
+            );
+
+            rowEl.style.display = allHidden ? 'none' : '';
+        }
+
+        // ── בנה HTML לשדה דינמי ──────────────────────────────────
+        function _buildDynamicFieldHtml(col) {
+            const fieldType     = (col.fieldType     || 'text').toLowerCase();
+            const allowedValues = col.allowedValues  || [];
+            const label         = col.label          || col.key;
+            const isRequired    = col.requiredInValidation === true;
+            // ─── בנה input לפי סוג שדה ───
+            let inputHtml = '';
+
+            if (fieldType === 'select' && allowedValues.length > 0) {
+                // ─── Dropdown עם ערכים קבועים ───
+                const options = allowedValues
+                    .map(v => `<option value="${escHtml(v)}">${escHtml(v)}</option>`)
+                    .join('');
+
+                inputHtml = `
+                    <select id="vldDynamic_${escHtml(col.key)}"
+                            class="vld-select vld-dynamic-field"
+                            data-field-key="${escHtml(col.key)}"
+                            ${isRequired ? 'data-required="true"' : ''}>
+                        <option value="">— בחר —</option>
+                        ${options}
+                    </select>`;
+
+           } else if (fieldType === 'multiselect' && allowedValues.length > 0) {
+
+                const optionsHtml = allowedValues.map(v => `
+                    <div class="vld-multiselect-option"
+                        data-value="${escAttr(v)}"
+                        data-ms-key="${escAttr(col.key)}">
+                        <div class="vld-multi-checkbox">
+                            <i class="fas fa-check"></i>
+                        </div>
+                        <span>${escHtml(v)}</span>
+                    </div>
+                `).join('');
+
+                inputHtml = `
+                    <div class="vld-multiselect-wrap"
+                        id="vldMultiWrap_${escHtml(col.key)}">
+
+                        <!-- ── תצוגת הבחירות + כפתור פתיחה ── -->
+                        <div class="vld-multiselect-display"
+                            onclick="_toggleVldMultiDropdown(this.closest('.vld-multiselect-wrap').id.replace('vldMultiWrap_',''))">
+                            <span class="vld-multiselect-display-text"
+                                id="vldMultiDisplay_${escHtml(col.key)}">
+                                <span class="vld-multiselect-placeholder">
+                                    <i class="fas fa-mouse-pointer"></i>
+                                    לחץ לבחירת ערכים
+                                </span>
+                            </span>
+                            <i class="fas fa-chevron-down vld-multiselect-chevron"
+                            id="vldMultiChevron_${escHtml(col.key)}"></i>
+                        </div>
+
+                        <!-- ── Dropdown ── -->
+                        <div class="vld-multiselect-dropdown"
+                            id="vldMultiDropdown_${escHtml(col.key)}"
+                            style="display:none">
+
+                            <!-- רשימת אפשרויות -->
+                            <div class="vld-multiselect-options-list">
+                                ${optionsHtml}
+                            </div>
+                        </div>
+
+                        <!-- hidden input עם הערכים -->
+                        <input type="hidden"
+                            id="vldDynamic_${escHtml(col.key)}"
+                            class="vld-dynamic-field"
+                            data-field-key="${escHtml(col.key)}"
+                            value=""
+                            ${isRequired ? 'data-required="true"' : ''}/>
+                    </div>`;
+
+            } else if (fieldType === 'textarea') {
+                // ─── Textarea ───
+                inputHtml = `
+                    <textarea id="vldDynamic_${escHtml(col.key)}"
+                            class="vld-textarea vld-dynamic-field"
+                            data-field-key="${escHtml(col.key)}"
+                            rows="2"
+                            placeholder="${escHtml(label)}..."
+                            ${isRequired ? 'data-required="true"' : ''}
+                    ></textarea>`;
+
+            } else if (fieldType === 'number') {
+                // ─── מספר ───
+                inputHtml = `
+                    <input type="number"
+                        id="vldDynamic_${escHtml(col.key)}"
+                        class="vld-input vld-dynamic-field"
+                        data-field-key="${escHtml(col.key)}"
+                        placeholder="${escHtml(label)}..."
+                        ${isRequired ? 'data-required="true"' : ''}/>`;
+
+            } else if (fieldType === 'date') {
+                // ─── תאריך ───
+                inputHtml = `
+                    <input type="text"
+                        id="vldDynamic_${escHtml(col.key)}"
+                        class="vld-input vld-dynamic-field"
+                        data-field-key="${escHtml(col.key)}"
+                        placeholder="DD/MM/YYYY"
+                        ${isRequired ? 'data-required="true"' : ''}/>`;
+
+            } else {
+                // ─── text (ברירת מחדל) ───
+                inputHtml = `
+                    <input type="text"
+                        id="vldDynamic_${escHtml(col.key)}"
+                        class="vld-input vld-dynamic-field"
+                        data-field-key="${escHtml(col.key)}"
+                        placeholder="${escHtml(label)}..."
+                        ${isRequired ? 'data-required="true"' : ''}/>`;
+            }
+
+            return `
+                <div class="vld-field vld-field-wide"
+                    style="min-width:200px"
+                    ${isRequired ? 'data-required="true"' : ''}>
+                    <label class="vld-label"
+                        data-tooltip="${escHtml(col.description || label)}${isRequired ? ' (שדה חובה)' : ''}">
+                        <i class="fas fa-tag"></i>
+                        ${escHtml(label)}
+                        ${isRequired
+                            ? '<span class="vld-required-star" title="שדה חובה">*</span>'
+                            : ''}
+                    </label>
+                    ${inputHtml}
+                </div>`;
+        }
         // ── שמור נתונים ──────────────────────────────────────
-        async function saveSystem() {
+       async function saveSystem() {
+
+            // ══════════════════════════════════════════════════════
+            // ולידציה לכל שדות החובה (קבועים + דינמיים)
+            // ══════════════════════════════════════════════════════
+            const missingFields = _validateRequiredFields();
+
+            if (missingFields.length > 0) {
+                showToast(
+                    `⚠️ שדות חובה חסרים`,
+                    'error'
+                );
+
+                // ─── גלול לשדה הראשון הבעייתי ───
+                const firstMissing = document.querySelector(
+                    '[data-required="true"]:invalid, ' +
+                    '[data-required="true"][value=""], ' +
+                    '.vld-field[data-required="true"] [data-required="true"]'
+                );
+                firstMissing?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+                return;
+            }
+
+            // ── המשך קוד השמירה הקיים ──
             const saveBtn = document.getElementById('vldSaveBtn');
+          
             if (saveBtn) {
                 saveBtn.disabled = true;
                 saveBtn.innerHTML =
@@ -1107,32 +2255,59 @@
                         console.warn('GetManagerEmail error:', err);
                     }
                 }
-
+                // ─── בנה payload ──────────────────────────────────────
                 // ─── בנה payload ──────────────────────────────────────
                 const payload = {
                     systemId:                SYSTEM_ID,
-                    number:                  document.getElementById('vldNumber').value.trim()          || null,
-                    name:                    document.getElementById('vldName').value.trim()            || null,
-                    nameEn:                  document.getElementById('vldNameEn').value.trim()          || null,
-                    description:             document.getElementById('vldDesc').value.trim()            || null,
-                    status:                  document.getElementById('vldStatus').value                 || null,
-                    systemManager:           document.getElementById('vldManager').value.trim()         || null,
-                    managerEmail:            managerEmail || null,  // ← מייל שנמצא אוטומטית
-                    environment:             _getFieldValue('vldEnv'),
-                    domain:                  _getFieldValue('vldDomain'),
-                    department:              _getFieldValue('vldDept'),
-                    team:                    _getFieldValue('vldTeam'),
-                    businessDivision:        _getFieldValue('vldBizDiv'),
-                    appClassification:       _getFieldValue('vldAppClass'),
-                    appType:                 _getFieldValue('vldAppType'),
-                    businessCriticality:     _getFieldValue('vldCriticality'),
-                    availabilityRequirement: _getFieldValue('vldAvailability'),
-                    publisher:               document.getElementById('vldPublisher').value.trim()       || null,
-                    supportVendor:           document.getElementById('vldVendor').value.trim()          || null,
-                    hasAutomation:           document.getElementById('vldHasAutomation').value          || 'לא קיימות',
-                    automationNote:          document.getElementById('vldAutomationNote').value.trim()  || null,
+                    validationToken:         VALIDATION_TOKEN,
+                    // number:                  document.getElementById('vldNumber')?.value?.trim()  || '',
+                    name:                    document.getElementById('vldName')?.value?.trim()    || '',
+                    nameEn:                  document.getElementById('vldNameEn')?.value?.trim()  || '',
+                    description:             document.getElementById('vldDesc')?.value?.trim()    || '',
+                    status:                  _getBuiltInValue('vldStatus'),
+                    systemManager:           document.getElementById('vldManager')?.value?.trim() || '',
+                    managerEmail:            managerEmail || '',
+                    environment:             _getBuiltInValue('vldEnv'),
+                    domain:                  _getBuiltInValue('vldDomain'),
+                    department:              _getBuiltInValue('vldDept'),
+                    team:                    _getBuiltInValue('vldTeam'),
+                    businessDivision:        _getBuiltInValue('vldBizDiv'),
+                    appClassification:       _getBuiltInValue('vldAppClass'),
+                    appType:                 _getBuiltInValue('vldAppType'),
+                    businessCriticality:     _getBuiltInValue('vldCriticality'),
+                    availabilityRequirement: _getBuiltInValue('vldAvailability'),
+                    publisher:               _getBuiltInValue('vldPublisher'),
+                    supportVendor:           _getBuiltInValue('vldVendor'),
+                    hasAutomation:           _getBuiltInValue('vldHasAutomation') || 'לא קיימות',
+                    automationNote:          document.getElementById('vldAutomationNote')?.value?.trim() || '',
                 };
+                
+                // ← שמור כפי שהוא - ה-hidden input של multiselect
+                // כבר מכיל את הערכים הנכונים ("ערך1, ערך2")
+                // אבל הוסף סינון כפילויות - אם אותו key מופיע פעמיים
+                // (hidden + select), תן עדיפות לזה עם ערך:
 
+                // ← שנה ל:
+                const dynamicPayload = {};
+                document.querySelectorAll('.vld-dynamic-field').forEach(el => {
+                    const key = el.dataset.fieldKey;
+                    if (!key || key === 'systemId') return;
+
+                    let val = '';
+                    if (el.tagName === 'SELECT') {
+                        val = el.value || '';
+                    } else if (el.tagName === 'TEXTAREA') {
+                        val = el.value?.trim() ?? '';
+                    } else {
+                        val = el.value?.trim() ?? '';
+                    }
+
+                    // ← אל תדרוס ערך קיים עם ריק
+                    if (val || !(key in dynamicPayload)) {
+                        dynamicPayload[key] = val;
+                    }
+                });
+                Object.assign(payload, dynamicPayload);
                 const res = await fetch('/SystemsCatalog/UpdateSystemPublic', {
                     method:  'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -1176,6 +2351,58 @@
             }
         }
 
+        // ── פונקציית עזר: קרא ערך מ-input/select/hidden (multiselect) ──
+        function _getBuiltInValue(elementId) {
+            const el = document.getElementById(elementId);
+            if (!el) return '';
+
+            // ─── multiselect: hidden input בתוך wrap ───
+            if (el.type === 'hidden') return el.value || '';
+
+            // ─── select או input רגיל ───
+            return el.value?.trim() || '';
+        }
+
+        // ── בדוק כל שדות החובה ─────────────────────────────────
+        function _validateRequiredFields() {
+            const missing = [];
+
+            // ─── שדות קבועים ───
+            document.querySelectorAll(
+                '.vld-field[data-required="true"] input[data-required="true"], ' +
+                '.vld-field[data-required="true"] select[data-required="true"], ' +
+                '.vld-field[data-required="true"] textarea[data-required="true"]'
+            ).forEach(el => {
+                if (!el.value || el.value.trim() === '') {
+                    // ─── מצא את שם השדה מה-label ───
+                    const labelText = el.closest('.vld-field')
+                        ?.querySelector('.vld-label')
+                        ?.childNodes[1]  // ← TextNode אחרי <i>
+                        ?.textContent
+                        ?.trim()
+                        || el.id
+                        || el.dataset.fieldKey
+                        || '?';
+
+                    missing.push(labelText);
+
+                    // ─── הדגש שדה שגוי ───
+                    el.style.borderColor = '#ef4444';
+                    el.style.boxShadow   = '0 0 0 3px rgba(239,68,68,0.2)';
+
+                    el.addEventListener('input', function clearErr() {
+                        if (this.value.trim()) {
+                            this.style.borderColor = '';
+                            this.style.boxShadow   = '';
+                            this.removeEventListener('input', clearErr);
+                        }
+                    }, { once: false });
+                }
+            });
+
+            return missing;
+        }
+
         // ══════════════════════════════════════════════════════
         // Auto-fill שיוך ארגוני לפי שם מנהל מערכת
         // ══════════════════════════════════════════════════════
@@ -1200,43 +2427,50 @@
                 const data = await res.json();
 
                 if (!data.success || !data.employee) {
-                    showToast(
-                        `⚠️ לא נמצא עובד בשם: ${managerName}`,
-                        'info'
-                    );
+                    showToast(`⚠️ לא נמצא עובד בשם: ${managerName}`, 'info');
                     return;
                 }
 
                 const emp = data.employee;
 
-                // ─── מפה: id שדה → ערך מהעובד ───────────────
                 const fields = [
-                    { id: 'vldTeam',   val: emp.team,       label: 'צוות'   },
-                    { id: 'vldDept',   val: emp.department, label: 'מחלקה'  },
-                    { id: 'vldDomain', val: emp.domain,     label: 'תחום'   },
+                    { id: 'vldTeam',   val: emp.team,       label: 'צוות'  },
+                    { id: 'vldDept',   val: emp.department, label: 'מחלקה' },
+                    { id: 'vldDomain', val: emp.domain,     label: 'תחום'  },
                 ];
 
-                const filled   = [];
-                const skipped  = [];
+                // ─── בדוק אם יש שדות כבר מלאים ───
+                const filledFields = fields.filter(({ id, val }) => {
+                    if (!val) return false;
+                    const el = document.getElementById(id);
+                    return el && el.value && el.value.trim() !== ''
+                        && el.value !== val;
+                });
+
+                // ─── אם יש שדות מלאים - שאל אם לדרוס ───
+                let shouldOverwrite = true;
+                // if (filledFields.length > 0) {
+                //     const fieldNames = filledFields.map(f => f.label).join(', ');
+                //     shouldOverwrite = confirm(
+                //         `השדות הבאים כבר מלאים: ${fieldNames}\n` +
+                //         `האם לדרוס אותם עם הנתונים של ${emp.fullName}?`
+                //     );
+                // }
+
+                const filled = [];
 
                 fields.forEach(({ id, val, label }) => {
                     const el = document.getElementById(id);
                     if (!el || !val) return;
 
-                    // ─── בדוק אם ריק ───────────────────────
                     const isEmpty = !el.value || el.value.trim() === '';
-                    if (!isEmpty) {
-                        skipped.push(label);
-                        return;
-                    }
+                    
+                    // ─── מלא רק אם ריק, או אם המשתמש אישר דריסה ───
+                    if (!isEmpty && !shouldOverwrite) return;
 
-                    // ─── select דינמי ──────────────────────
                     if (el.tagName === 'SELECT') {
-                        const exists = [...el.options]
-                            .some(o => o.value === val);
-
+                        const exists = [...el.options].some(o => o.value === val);
                         if (!exists) {
-                            // ─── הוסף option אם לא קיים ───
                             const opt = document.createElement('option');
                             opt.value = val;
                             opt.textContent = val;
@@ -1244,35 +2478,18 @@
                         }
                         el.value = val;
                     } else {
-                        // ─── input רגיל ────────────────────
                         el.value = val;
                     }
 
-                    // ─── אנימציית הדגשה ────────────────────
                     el.classList.add('vld-autofilled');
-                    setTimeout(() =>
-                        el.classList.remove('vld-autofilled'), 3000
-                    );
-
+                    setTimeout(() => el.classList.remove('vld-autofilled'), 3000);
                     filled.push(label);
                 });
 
-                // ─── הצג תוצאה ─────────────────────────────
                 if (filled.length > 0) {
-                    showToast(
-                        `✅ מולאו: ${filled.join(', ')} (${emp.fullName})`,
-                        'success'
-                    );
-                } else if (skipped.length > 0) {
-                    showToast(
-                        `ℹ️ כל השדות כבר מלאים (${emp.fullName})`,
-                        'info'
-                    );
+                    showToast(`✅ מולאו: ${filled.join(', ')} (${emp.fullName})`, 'success');
                 } else {
-                    showToast(
-                        `ℹ️ לא נמצאו נתונים למילוי (${emp.fullName})`,
-                        'info'
-                    );
+                    showToast(`ℹ️ לא בוצעו שינויים (${emp.fullName})`, 'info');
                 }
 
             } catch (err) {
@@ -1281,34 +2498,10 @@
             } finally {
                 if (btn) {
                     btn.disabled = false;
-                    btn.innerHTML =
-                        '<i class="fas fa-magic"></i> מלא אוטומטית';
-                }
-            }
-
-            // ─── חפש מייל מנהל אוטומטית ───────────────────────────
-            const emailEl = document.getElementById('vldManagerEmail');
-            if (emailEl && (!emailEl.value || emailEl.value.trim() === '')) {
-                try {
-                    const emailRes = await fetch(
-                        `/PhoneDirectory/GetManagerEmail?name=` +
-                        `${encodeURIComponent(managerName.trim())}`,
-                        { credentials: 'include' }
-                    );
-                    const emailData = await emailRes.json();
-                    if (emailData.success && emailData.email) {
-                        emailEl.value = emailData.email;
-                        emailEl.classList.add('vld-autofilled');
-                        setTimeout(() =>
-                            emailEl.classList.remove('vld-autofilled'), 3000
-                        );
-                    }
-                } catch (err) {
-                    console.warn('GetManagerEmail error:', err);
+                    btn.innerHTML = '<i class="fas fa-magic"></i>';
                 }
             }
         }
-
             
         // ── אירועים ──────────────────────────────────────────
         document.getElementById('vldSaveBtn')
@@ -1341,31 +2534,33 @@
 
         // ── טען בעמוד ─────────────────────────────────────────
         // ─── טען במקביל: נתוני מערכת + ערכים דינמיים ───
-        Promise.all([
-            loadSystem(),
-            loadDynamicOptions()
-        ]).then(() => {
-            // ─── לאחר טעינת שניהם - ודא שהערכים מוגדרים נכון ───
+        // ─── טען בסדר נכון: שדות קודם, אחר כך נתונים ───
+        loadDynamicOptions()
+        .then(() => loadValidationFields())
+        .then(() => loadSystem())
+        .then(() => {
+            // ─── לאחר טעינת הכל - ודא שהערכים מוגדרים נכון ───
             document.querySelectorAll('.vld-dynamic-select')
                 .forEach(sel => {
                     const savedVal = sel.dataset.currentValue;
-                    if (savedVal && sel.value !== savedVal) {
-                        // ─── נסה שוב להגדיר ───
-                        const exists = [...sel.options]
-                            .some(o => o.value === savedVal);
-                        if (exists) {
-                            sel.value = savedVal;
-                        } else if (savedVal) {
-                            const opt = document.createElement('option');
-                            opt.value = savedVal;
-                            opt.textContent = savedVal;
-                            opt.selected = true;
-                            sel.appendChild(opt);
-                            sel.value = savedVal;
-                        }
+                    if (!savedVal || sel.value === savedVal) return;
+
+                    const exists = [...sel.options]
+                        .some(o => o.value === savedVal);
+
+                    if (exists) {
+                        sel.value = savedVal;
+                    } else {
+                        const opt = document.createElement('option');
+                        opt.value       = savedVal;
+                        opt.textContent = savedVal;
+                        opt.selected    = true;
+                        sel.appendChild(opt);
+                        sel.value = savedVal;
                     }
                 });
-        });
+        })
+        .catch(err => console.error('Init error:', err));
     </script>
 
 </body>

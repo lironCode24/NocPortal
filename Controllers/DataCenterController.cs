@@ -10,15 +10,23 @@ using System.Drawing;
 using System.Text.RegularExpressions;
 using System.Net.Http;
 using System.Text;
+using NocPortal.Services; 
+
 
 public class DataCenterController : Controller
 {
     // שימוש בנתיב יחסי או בהגדרה מקובץ תצורה
-    private readonly string _excelFilePathRG;
-    private readonly string _excelFilePathPT;
+    private readonly string _excelFilePathRG = PortalPaths.UnderFiles(@"DataCenter\תיעוד ציודים בחדרי שרתים - רמת גן.xlsx");
+    private readonly string _excelFilePathPT = PortalPaths.UnderFiles(@"DataCenter\תיעוד ציודים בחדר שרתים - פתח תקווה.xlsx");
     // הוספת שדות חדשים לניהול קאש
-    private readonly string _cacheFolderPath;
+    private readonly string _cacheFolderPath = PortalPaths.UnderFiles(@"dataCenterCache");
     private readonly string _connectionsFolderPath;
+
+    // ─── נתיב קובץ הרשאות ───
+    private readonly string _permissionsPath =
+        PortalPaths.UnderFiles(@"datacenter_permissions.json");
+
+    private static readonly object _permLock = new object();
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly string _proxyUrl = "http://10.10.111.209:8080";
@@ -28,6 +36,7 @@ public class DataCenterController : Controller
     private string _helixAccessSecretKey => _secrets.HelixAccessSecret;
     private string _helixTenantId        => _secrets.HelixTenantId;
     private string _helixApiBaseUrl      => _secrets.HelixBaseUrl;
+    private readonly UserService _userService; 
 
     private readonly string _scrapFolderPath;
     private readonly string _metricsCacheFolderPath;
@@ -36,15 +45,10 @@ public class DataCenterController : Controller
     private static DateTime _tokenExpiry = DateTime.MinValue;
     
     public DataCenterController(IHttpClientFactory httpClientFactory,
-    SecretsService secrets,
-    IWebHostEnvironment env)
+    SecretsService secrets, UserService userService)
     {
         _httpClientFactory = httpClientFactory;
         _secrets            = secrets;
-        var dataCenterRoot = Path.Combine(env.WebRootPath, "assets", "files", "DataCenter");
-        _excelFilePathRG = Path.Combine(dataCenterRoot, "תיעוד ציודים בחדרי שרתים - רמת גן.xlsx");
-        _excelFilePathPT = Path.Combine(dataCenterRoot, "תיעוד ציודים בחדר שרתים - פתח תקווה.xlsx");
-        _cacheFolderPath = Path.Combine(env.WebRootPath, "assets", "files", "dataCenterCache");
         _connectionsFolderPath = Path.Combine(_cacheFolderPath, "connections");
         _metricsCacheFolderPath = Path.Combine(_cacheFolderPath, "metricsCache");
         // וודא שהתיקיות קיימות
@@ -53,7 +57,8 @@ public class DataCenterController : Controller
         Directory.CreateDirectory(_connectionsFolderPath);
         Directory.CreateDirectory(_metricsCacheFolderPath); 
         _scrapFolderPath = Path.Combine(_cacheFolderPath, "scrap");
-        Directory.CreateDirectory(_scrapFolderPath);    
+        Directory.CreateDirectory(_scrapFolderPath);
+        _userService   = userService;
     }
     
     private async Task EnsureValidToken()
@@ -2737,6 +2742,278 @@ public class DataCenterController : Controller
         return result;
     }
 
+    // ─── טען הרשאות ───
+    private DataCenterPermissions LoadPermissions()
+    {
+        lock (_permLock)
+        {
+            if (!System.IO.File.Exists(_permissionsPath))
+                return GetDefaultPermissions();
+            try
+            {
+                var json = System.IO.File.ReadAllText(_permissionsPath, Encoding.UTF8);
+                return JsonSerializer.Deserialize<DataCenterPermissions>(
+                    json,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                ) ?? GetDefaultPermissions();
+            }
+            catch
+            {
+                return GetDefaultPermissions();
+            }
+        }
+    }
+
+    // ─── ברירת מחדל ───
+    private DataCenterPermissions GetDefaultPermissions() => new()
+    {
+        Editors     = new List<string> { "shabtayr" },
+        Viewers     = new List<string>(),
+        LastUpdated = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
+        UpdatedBy   = "system"
+    };
+
+    // ─── שמור הרשאות ───
+    private void SavePermissionsPrivate(DataCenterPermissions perms)
+    {
+        lock (_permLock)
+        {
+            var dir = Path.GetDirectoryName(_permissionsPath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+
+            var json = JsonSerializer.Serialize(perms,
+                new JsonSerializerOptions { WriteIndented = true });
+            System.IO.File.WriteAllText(_permissionsPath, json, Encoding.UTF8);
+        }
+    }
+
+    // ─── GET: קבל הרשאות ────────────────────────────────────────
+    [HttpGet]
+    public IActionResult GetPermissions()
+    {
+        try
+        {
+            // רק Admin ו-NOC יכולים לראות הרשאות
+            var username = GetCurrentUsername();
+            if (!IsAdminOrNoc(username))
+                return Json(new { success = false, error = "אין הרשאה" });
+
+            var perms = LoadPermissions();
+            return Json(new { success = true, permissions = perms });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    // ─── POST: שמור הרשאות ──────────────────────────────────────
+    [HttpPost]
+    public IActionResult SavePermissions([FromBody] DataCenterPermissions request)
+    {
+        try
+        {
+            var username = GetCurrentUsername();
+            if (!IsAdminOrNoc(username))
+                return Json(new { success = false, error = "אין הרשאה" });
+
+            if (request == null)
+                return Json(new { success = false, error = "בקשה לא תקינה" });
+
+            request.Editors     = request.Editors.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            request.Viewers     = request.Viewers.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            request.LastUpdated = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+            request.UpdatedBy   = username;
+
+            SavePermissionsPrivate(request);
+
+            return Json(new { success = true, message = "הרשאות נשמרו בהצלחה" });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    private bool IsCurrentUserAdmin()
+    {
+        // ── אפשרות 1: לפי Role ──────────────────────────────────
+        if (User?.IsInRole("Admin") == true)  return true;
+        if (User?.IsInRole("admin") == true)  return true;
+
+        // ── אפשרות 2: לפי Claim ─────────────────────────────────
+        var roleClaim = User?.FindFirst("role")?.Value
+                    ?? User?.FindFirst(
+                            System.Security.Claims.ClaimTypes.Role
+                        )?.Value ?? "";
+
+        if (roleClaim.Equals("admin",
+                StringComparison.OrdinalIgnoreCase)) return true;
+
+        // ── אפשרות 3: קרא מקובץ הרשאות דינמי ───────────────────
+        var username = GetCurrentUsername();
+        var perms = LoadServersPermissions();
+
+        if (perms.Admins.Contains(username,
+                StringComparer.OrdinalIgnoreCase))
+            return true;
+
+        // ── fallback: רשימה קשיחה ────────────────────────────────
+        var hardcodedAdmins = new HashSet<string>(
+            StringComparer.OrdinalIgnoreCase)
+        {
+            "talyoh",
+            "admin",
+            "administrator"
+        };
+        return hardcodedAdmins.Contains(username);
+    }
+
+
+    // ─── טען הרשאות שרתים ────────────────────────────────────────
+    private ServersPermissions LoadServersPermissions()
+    {
+        lock (_permLock)
+        {
+            if (!System.IO.File.Exists(_permissionsPath))
+                return GetDefaultServersPermissions();
+
+            try
+            {
+                var json = System.IO.File.ReadAllText(
+                    _permissionsPath, Encoding.UTF8);
+                return JsonSerializer.Deserialize<ServersPermissions>(
+                    json,
+                    new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    }
+                ) ?? GetDefaultServersPermissions();
+            }
+            catch
+            {
+                return GetDefaultServersPermissions();
+            }
+        }
+    }
+
+    // ─── ברירת מחדל ──────────────────────────────────────────────
+    private ServersPermissions GetDefaultServersPermissions()
+    {
+        return new ServersPermissions
+        {
+            Admins      = new List<string> { "talyoh" },
+            Editors     = new List<string>(),              
+            LastUpdated = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
+            UpdatedBy   = "system"
+        };
+    }
+
+    // ─── GET: קבל הרשאות שרתים ───────────────────────────────────
+    [HttpGet]
+    public IActionResult GetServersPermissions()
+    {
+        try
+        {
+            if (!IsCurrentUserAdmin())
+                return Json(new { success = false, error = "אין הרשאה" });
+
+            var perms = LoadServersPermissions();
+            return Json(new { success = true, permissions = perms });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+    
+    // ─── GET: קבל רשימת משתמשים ─────────────────────────────────
+    [HttpGet]
+    public IActionResult GetAllUsers()
+    {
+        try
+        {
+            if (!IsCurrentUserAdmin())
+                return Json(new { success = false, error = "אין הרשאה" });
+
+            // ─── קרא משתמשים מ-UserService (זהה לקטלוג) ────────
+            var users = _userService.GetAllUsers();
+
+            return Json(new
+            {
+                success = true,
+                users   = users
+                    .Select(u => new
+                    {
+                        username    = u.Username,
+                        displayName = u.DisplayName ?? u.Username,
+                        role        = u.Role.ToString()
+                    })
+                    .OrderBy(u => u.displayName)
+                    .ToList()
+            });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    // ─── GET: בדוק הרשאות משתמש נוכחי ──────────────────────────
+    [HttpGet]
+    public IActionResult GetMyPermissions()
+    {
+        try
+        {
+            var username = GetCurrentUsername();
+            var role     = GetCurrentUserRole();
+            var perms    = LoadPermissions();
+
+            bool canEdit = role == "Admin" || role == "NOC" ||
+                        perms.Editors.Contains(username,
+                            StringComparer.OrdinalIgnoreCase);
+
+            bool isAdminOrNoc = IsAdminOrNoc(username);
+
+            return Json(new
+            {
+                success      = true,
+                username,
+                role,
+                canEdit,
+                isAdminOrNoc,
+                permissions  = perms
+            });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    // ─── עזרים פרטיים ───────────────────────────────────────────
+    private string GetCurrentUsername()
+    {
+        return User?.Identity?.Name
+            ?? User?.FindFirst("username")?.Value
+            ?? "Unknown";
+    }
+
+    private string GetCurrentUserRole()
+    {
+        return User?.FindFirst("role")?.Value
+            ?? User?.FindFirst(
+                System.Security.Claims.ClaimTypes.Role
+            )?.Value ?? "";
+    }
+
+    private bool IsAdminOrNoc(string username)
+    {
+        var role = GetCurrentUserRole();
+        return role == "Admin" || role == "NOC";
+    }
+
     // ===== פונקציות עזר פרטיות =====
 
     private string GetScrapFilePath(string dataCenterType) =>
@@ -2886,4 +3163,14 @@ public class DataCenterController : Controller
         public string   Error              { get; set; }
         public DateTime CachedAt           { get; set; }
     }
+
+    // ─── מודל הרשאות ───
+    public class DataCenterPermissions
+    {
+        public List<string> Editors      { get; set; } = new(); // יכולים לערוך ציוד
+        public List<string> Viewers      { get; set; } = new(); // צפייה בלבד
+        public string       LastUpdated  { get; set; } = "";
+        public string?      UpdatedBy    { get; set; }
+    }
+
 }

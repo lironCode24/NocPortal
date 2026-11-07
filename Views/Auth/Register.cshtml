@@ -60,18 +60,34 @@
             font-weight: 500;
         }
         .input-wrapper { position: relative; }
-        .input-wrapper i {
+        .input-wrapper i.field-icon {
             position: absolute;
             right: 14px;
             top: 50%;
             transform: translateY(-50%);
             color: rgba(255,255,255,0.4);
             font-size: 0.85rem;
+            pointer-events: none;
         }
+        .toggle-btn {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: rgba(255,255,255,0.4);
+            cursor: pointer;
+            padding: 0;
+            font-size: 0.88rem;
+            transition: color 0.2s;
+        }
+        .toggle-btn:hover { color: rgba(255,255,255,0.8); }
+
         .form-group input,
         .form-group select {
             width: 100%;
-            padding: 11px 40px 11px 14px;
+            padding: 12px 40px 12px 40px;
             background: rgba(255,255,255,0.08);
             border: 1px solid rgba(255,255,255,0.15);
             border-radius: 8px;
@@ -89,6 +105,64 @@
             background: rgba(255,255,255,0.12);
         }
         .form-group input::placeholder { color: rgba(255,255,255,0.3); }
+
+        .strength-bar {
+            height: 4px;
+            border-radius: 2px;
+            background: rgba(255,255,255,0.1);
+            margin-top: 8px;
+            overflow: hidden;
+        }
+        .strength-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.3s, background 0.3s;
+            width: 0%;
+        }
+        .strength-text {
+            font-size: 0.78rem;
+            margin-top: 5px;
+            color: rgba(255,255,255,0.4);
+        }
+
+        /*  תיבת חוקי סיסמה */
+        .password-rules {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-top: 10px;
+        }
+
+        .rule {
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.35);
+            padding: 3px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: color 0.2s;
+        }
+
+        .rule-icon {
+            font-size: 0.45rem;  /* נקודה קטנה כברירת מחדל */
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        .rule.passed {
+            color: #5dd879;
+        }
+
+        .rule.passed .rule-icon {
+            font-size: 0.8rem;  /* גדל כשעובר */
+        }
+
+        /*  כלל שנכשל בזמן הקלדה - אדום */
+        .rule.failed {
+            color: #ff6b7a;
+        }
+
         .btn-register {
             width: 100%;
             padding: 13px;
@@ -102,8 +176,16 @@
             cursor: pointer;
             transition: opacity 0.2s;
             margin-top: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
         .btn-register:hover { opacity: 0.9; }
+        .btn-register:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
         .alert {
             border-radius: 8px;
             padding: 12px 16px;
@@ -164,16 +246,18 @@
         </div>
     }
 
-    @* אם ההרשמה הצליחה - הסתר את הטופס *@
     @if (string.IsNullOrEmpty(Model.SuccessMessage))
     {
-        <form method="post" asp-action="Register" asp-controller="Auth">
+        <form method="post"
+              asp-action="Register"
+              asp-controller="Auth"
+              id="registerForm">
             @Html.AntiForgeryToken()
 
             <div class="form-group">
                 <label for="displayName">שם מלא</label>
                 <div class="input-wrapper">
-                    <i class="fas fa-id-card"></i>
+                    <i class="fas fa-id-card field-icon"></i>
                     <input type="text"
                            id="displayName"
                            name="DisplayName"
@@ -186,7 +270,7 @@
             <div class="form-group">
                 <label for="username">שם משתמש</label>
                 <div class="input-wrapper">
-                    <i class="fas fa-user"></i>
+                    <i class="fas fa-user field-icon"></i>
                     <input type="text"
                            id="username"
                            name="Username"
@@ -196,55 +280,87 @@
                            required />
                 </div>
             </div>
+
             <div class="form-group">
                 <label for="email">כתובת מייל</label>
                 <div class="input-wrapper">
                     <i class="fas fa-envelope field-icon"></i>
                     <input type="email"
-                        id="email"
-                        name="Email"
-                        placeholder="הכנס כתובת מייל"
-                        value="@Model.Email"
-                        autocomplete="email"
-                        required />
-                </div>
-                @if (!string.IsNullOrEmpty(
-                    Html.ValidationMessage("Email")?.ToString()))
-                {
-                    <span class="field-error">
-                        @Html.ValidationMessageFor(m => m.Email)
-                    </span>
-                }
-            </div>
-            <div class="form-group">
-                <label for="password">סיסמה</label>
-                <div class="input-wrapper">
-                    <i class="fas fa-lock"></i>
-                    <input type="password"
-                           id="password"
-                           name="Password"
-                           placeholder="לפחות 6 תווים"
-                           autocomplete="new-password"
+                           id="email"
+                           name="Email"
+                           placeholder="הכנס כתובת מייל"
+                           value="@Model.Email"
+                           autocomplete="email"
                            required />
                 </div>
             </div>
 
             <div class="form-group">
+                <label for="password">סיסמה</label>
+                <div class="input-wrapper">
+                    <i class="fas fa-lock field-icon"></i>
+                    <input type="password"
+                           id="password"
+                           name="Password"
+                           placeholder="הכנס סיסמה"
+                           autocomplete="new-password"
+                           required />
+                    <button type="button"
+                            class="toggle-btn"
+                            onclick="togglePass('password','iconPass1')"
+                            tabindex="-1">
+                        <i class="fas fa-eye" id="iconPass1"></i>
+                    </button>
+                </div>
+                <div class="strength-bar">
+                    <div class="strength-fill" id="strengthFill"></div>
+                </div>
+                <div class="strength-text" id="strengthText"></div>
+            </div>
+
+            <div class="form-group">
                 <label for="confirmPassword">אימות סיסמה</label>
                 <div class="input-wrapper">
-                    <i class="fas fa-lock"></i>
+                    <i class="fas fa-lock field-icon"></i>
                     <input type="password"
                            id="confirmPassword"
                            name="ConfirmPassword"
                            placeholder="הכנס סיסמה שוב"
                            autocomplete="new-password"
                            required />
+                    <button type="button"
+                            class="toggle-btn"
+                            onclick="togglePass('confirmPassword','iconPass2')"
+                            tabindex="-1">
+                        <i class="fas fa-eye" id="iconPass2"></i>
+                    </button>
+                </div>
+                <div class="strength-text" id="matchText"></div>
+                <div class="password-rules" id="passwordRules">
+                    <div class="rule" id="rule-length">
+                        <i class="fas fa-circle rule-icon"></i>
+                        לפחות 6 תווים
+                    </div>
+                    <div class="rule" id="rule-upper">
+                        <i class="fas fa-circle rule-icon"></i>
+                        אות גדולה אחת לפחות (A-Z)
+                    </div>
+                    <div class="rule" id="rule-lower">
+                        <i class="fas fa-circle rule-icon"></i>
+                        אות קטנה אחת לפחות (a-z)
+                    </div>
+                    <div class="rule" id="rule-number">
+                        <i class="fas fa-circle rule-icon"></i>
+                        ספרה אחת לפחות (0-9)
+                    </div>
                 </div>
             </div>
 
-            <button type="submit" class="btn-register">
-                <i class="fas fa-user-plus"></i>
-                שלח בקשת הרשמה
+            <button type="submit"
+                    class="btn-register"
+                    id="submitBtn">
+                <i class="fas fa-user-plus" id="submitIcon"></i>
+                <span id="submitText">שלח בקשת הרשמה</span>
             </button>
         </form>
     }
@@ -255,5 +371,144 @@
     </div>
 
 </div>
+
+<script>
+    // ── Toggle הצגת סיסמה ─────────────────────────────────────────
+    function togglePass(inputId, iconId) {
+        const input = document.getElementById(inputId);
+        const icon  = document.getElementById(iconId);
+        const show  = input.type === 'password';
+        input.type     = show ? 'text' : 'password';
+        icon.className = show ? 'fas fa-eye-slash' : 'fas fa-eye';
+    }
+
+    // ── חוזק סיסמה ───────────────────────────────────────────────
+    document.getElementById('password')
+        ?.addEventListener('input', function () {
+            const val  = this.value;
+            const fill = document.getElementById('strengthFill');
+            const text = document.getElementById('strengthText');
+            const rules = document.getElementById('passwordRules');
+
+            //  הצג את תיבת החוקים ברגע שמתחילים להקליד
+            rules.style.display = val.length ? 'block' : 'none';
+
+            //  בדוק כל חוק בנפרד
+            const checks = {
+                'rule-length':  val.length >= 6,
+                'rule-upper':   /[A-Z]/.test(val),
+                'rule-lower':   /[a-z]/.test(val),
+                'rule-number':  /[0-9]/.test(val),
+            };
+
+            Object.entries(checks).forEach(([id, passed]) => {
+                const el   = document.getElementById(id);
+                const icon = el.querySelector('.rule-icon');
+
+                el.classList.toggle('passed', passed);
+                el.classList.toggle('failed', !passed && val.length > 0);
+
+                //  החלף אייקון: וי כשעובר, X כשנכשל, נקודה כשריק
+                if (passed) {
+                    icon.className = 'fas fa-check-circle rule-icon';
+                } else if (val.length > 0) {
+                    icon.className = 'fas fa-times-circle rule-icon';
+                } else {
+                    icon.className = 'fas fa-circle rule-icon';
+                }
+            });
+
+            //  חישוב חוזק
+            let score = 0;
+            if (val.length >= 6)           score++;
+            if (val.length >= 10)          score++;
+            if (/[A-Z]/.test(val))         score++;
+            if (/[a-z]/.test(val))         score++;
+            if (/[0-9]/.test(val))         score++;
+            if (/[^A-Za-z0-9]/.test(val))  score++;
+
+            const levels = [
+                { w: '0%',   c: 'transparent', t: '' },
+                { w: '25%',  c: '#dc3545',      t: 'חלשה מאוד' },
+                { w: '50%',  c: '#fd7e14',      t: 'חלשה' },
+                { w: '70%',  c: '#ffc107',      t: 'בינונית' },
+                { w: '85%',  c: '#20c997',      t: 'חזקה' },
+                { w: '100%', c: '#28a745',      t: 'חזקה מאוד' },
+            ];
+
+            const lvl             = levels[Math.min(score, 5)];
+            fill.style.width      = val.length ? lvl.w : '0%';
+            fill.style.background = lvl.c;
+            text.textContent      = val.length ? `חוזק סיסמה: ${lvl.t}` : '';
+            text.style.color      = lvl.c;
+
+            checkMatch();
+        });
+
+    // ── בדיקת התאמת סיסמאות ──────────────────────────────────────
+    document.getElementById('confirmPassword')
+        ?.addEventListener('input', checkMatch);
+
+    function checkMatch() {
+        const p1   = document.getElementById('password')?.value        ?? '';
+        const p2   = document.getElementById('confirmPassword')?.value ?? '';
+        const text = document.getElementById('matchText');
+        if (!text) return;
+
+        if (!p2) {
+            text.textContent = '';
+            return;
+        }
+
+        if (p1 === p2) {
+            text.textContent = '✓ הסיסמאות תואמות';
+            text.style.color = '#5dd879';
+        } else {
+            text.textContent = '✗ הסיסמאות אינן תואמות';
+            text.style.color = '#ff6b7a';
+        }
+    }
+
+    // ── מניעת שליחה + Loading state ──────────────────────────────
+    document.getElementById('registerForm')
+        ?.addEventListener('submit', function (e) {
+            const p1 = document.getElementById('password').value;
+            const p2 = document.getElementById('confirmPassword').value;
+
+            //  בדיקת חוקי סיסמה
+            const allRulesPassed =
+                p1.length >= 6          &&
+                /[A-Z]/.test(p1)        &&
+                /[a-z]/.test(p1)        &&
+                /[0-9]/.test(p1);
+
+            if (!allRulesPassed) {
+                e.preventDefault();
+                // הצג את תיבת החוקים עם סימוני שגיאה
+                document.getElementById('passwordRules').style.display = 'block';
+                document.getElementById('password').dispatchEvent(new Event('input'));
+                document.getElementById('password').focus();
+                return;
+            }
+
+            // בדיקת התאמת סיסמאות
+            if (p1 !== p2) {
+                e.preventDefault();
+                const text = document.getElementById('matchText');
+                text.textContent = '✗ הסיסמאות אינן תואמות';
+                text.style.color = '#ff6b7a';
+                document.getElementById('confirmPassword').focus();
+                return;
+            }
+
+            // Loading state
+            const btn  = document.getElementById('submitBtn');
+            const icon = document.getElementById('submitIcon');
+            const span = document.getElementById('submitText');
+            btn.disabled     = true;
+            icon.className   = 'fas fa-spinner fa-spin';
+            span.textContent = 'שולח...';
+    });
+</script>
 </body>
 </html>

@@ -42,7 +42,22 @@
                         היי, @User.FindFirst("DisplayName")?.Value
                     </span>
                 </div>
-
+                <!-- ══ כפתור מעבר לניהול - Admin/NOC בלבד ══ -->
+                @if (User.IsInRole("Admin"))
+                {
+                    <a href="/Auth/AdminPanel"
+                    class="btn-header-admin admin-panel-link">
+                        <i class="fas fa-users-cog"></i>
+                        <span>ניהול</span>
+                        @if (ViewBag.UnapprovedCount != null &&
+                            ViewBag.UnapprovedCount > 0)
+                        {
+                            <span class="pending-badge">
+                                @ViewBag.UnapprovedCount
+                            </span>
+                        }
+                    </a>
+                }
                 <!-- ══ הודעות ממתינות ══════════════════════════════════════ -->
                 <div class="user-messages-row" id="userMessagesRow" 
                     style="display:none">
@@ -80,7 +95,8 @@
         </div>
     </div>
     <!-- תוכן הדף יוכנס דינמית על ידי DashboardsManager -->
-    <script src="~/js/DashboardsManager.js"asp-append-version="true"></script>
+    <script src="/js/UserSettingsManager.js"></script>
+    <script src="~/js/DashboardsManager.js" asp-append-version="true"></script>
     <script src="~/js/message-popup.js"></script>
 </body>
 
@@ -94,7 +110,7 @@
                 'lastSelectedEmployee'
             ];
             
-            keysToRemove.forEach(key => localStorage.removeItem(key));
+            keysToRemove.forEach(key => userSettings.removeItem(key));
             
             // מחק מ-sessionStorage
             sessionStorage.removeItem('currentUser');

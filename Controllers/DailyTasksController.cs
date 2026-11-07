@@ -7,12 +7,7 @@ using System.Text.Json;
 
 public class DailyTasksController : Controller
 {
-    private readonly string _tasksFilePath;
-
-    public DailyTasksController(IWebHostEnvironment env)
-    {
-        _tasksFilePath = Path.Combine(env.WebRootPath, "assets", "files", "daily_tasks.txt");
-    }
+    private readonly string _tasksFilePath = PortalPaths.UnderFiles(@"daily_tasks.txt");
 
     [HttpGet]
     public IActionResult GetTasks(string date)
@@ -340,7 +335,7 @@ public class DailyTasksController : Controller
                                 Timestamp = now,
                                 TargetDate = completionDate ?? request.Date, 
                                 Action = "עריכת משימה",
-                                UserName = "משתמש",
+                                UserName = request.EditorName ?? "לא ידוע",
                                 Details = $"שדה '{change.field}' שונה",
                                 PreviousValue = change.oldValue,
                                 NewValue = change.newValue
@@ -451,7 +446,7 @@ public class DailyTasksController : Controller
                                 Timestamp = deleteTimestamp, // ← שונה
                                 TargetDate = completionDate,
                                 Action = "מחיקת הערה",
-                                UserName = "משתמש",
+                                UserName = request.EditorName ?? "משתמש", 
                                 Details = $"הערה נמחקה מתאריך {completionDate}: {deletedNote.Text}",
                                 PreviousValue = deletedNote.Text,
                                 NewValue = ""
@@ -560,7 +555,7 @@ public class DailyTasksController : Controller
                                 Timestamp = now,
                                 TargetDate = completionDate,
                                 Action = "ביטול סטטוס",
-                                UserName = "משתמש",
+                                UserName = request.EditorName ?? "משתמש", 
                                 Details = $"הסטטוס בוטל בתאריך {completionDate}",
                                 PreviousValue = wasCompleted ? "הושלמה" : "לא בוצעה",
                                 NewValue = "ממתינה"
@@ -1232,6 +1227,7 @@ public class TaskUpdateRequest
     public string EditNoteUserName { get; set; }
     public List<int> DaysOfWeek { get; set; }
     public bool EnableAlarm { get; set; }
+    public string EditorName { get; set; }  // ← הוסף שדה זה
 }
 
 public class TaskOrderRequest

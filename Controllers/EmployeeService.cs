@@ -8,14 +8,15 @@ public class EmployeeService
 {
     private readonly string _employeesFilePath;
 
-    public EmployeeService() : this(null)
+    public EmployeeService()
     {
+        _employeesFilePath = PortalPaths.UnderFiles(@"employees.txt");
     }
 
-    public EmployeeService(IWebHostEnvironment? env)
+    // Constructor for dependency injection with custom path
+    public EmployeeService(string employeesFilePath)
     {
-        var webRoot = env?.WebRootPath ?? AppContext.BaseDirectory;
-        _employeesFilePath = Path.Combine(webRoot, "assets", "files", "employees.txt");
+        _employeesFilePath = employeesFilePath;
     }
 
     /// <summary>

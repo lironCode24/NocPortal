@@ -1,7 +1,7 @@
 class MessagesManager {
     constructor() {
         this.allMessages = [];
-        this.bookmarkedMessages = JSON.parse(localStorage.getItem('bookmarkedMessages') || '[]');
+        this.bookmarkedMessages = JSON.parse(userSettings.getItem('bookmarkedMessages') || '[]');
         this.draggedElement = null;
         this.draggedMessageId = null;
         this.employees = [];
@@ -66,11 +66,23 @@ class MessagesManager {
                 const data = await response.json();
                 this.currentUserRole = data.role || 'user';
                 this.currentUserName = data.username || '';
+
+                // ← הוסף את זה
+                this._updateAdminButtons();
             }
         } catch (error) {
             console.warn('Could not load user role:', error);
-            this.currentUserRole = 'user'; // ברירת מחדל - משתמש רגיל
+            this.currentUserRole = 'user';
+            this._updateAdminButtons();
         }
+    }
+
+    // ← פונקציה חדשה
+    _updateAdminButtons() {
+        const adminBtns = document.querySelectorAll('#emailRecipientsAdminBtn');
+        adminBtns.forEach(btn => {
+            btn.style.display = this.isAdmin() ? 'flex' : 'none';
+        });
     }
 
     getCurrentUserName() {
@@ -202,13 +214,13 @@ class MessagesManager {
 
     saveLastSelectedAuthor(authorName) {
         if (authorName && authorName !== '' && authorName !== 'other') {
-            localStorage.setItem('lastSelectedEmployee', authorName);
+            userSettings.setItem('lastSelectedEmployee', authorName);
         }
     }
 
     // Get last selected author from localStorage
     getLastSelectedAuthor() {
-        return localStorage.getItem('lastSelectedEmployee') || '';
+        return userSettings.getItem('lastSelectedEmployee') || '';
     }
 
     // Set default author in select dropdown
@@ -600,98 +612,1355 @@ class MessagesManager {
         return '';
     }
 
+    // ========== ניהול מיילים קבועים UC4 ==========
+    async openUC4EmailRecipientsModal() {
+        // טען הגדרות נוכחיות
+        let config = { toAddresses: [], ccAddresses: [] };
+        try {
+            const response = await fetch('/Messages/GetUC4EmailRecipients');
+            const data = await response.json();
+            if (data.success) config = data.config;
+        } catch (e) {
+            NotificationManager.show('שגיאה בטעינת הגדרות', 'error');
+            return;
+        }
+
+        // יצירת מודל
+        let modal = document.getElementById('uc4EmailRecipientsModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'uc4EmailRecipientsModal';
+            modal.className = 'modal-overlay';
+            modal.style.zIndex = '10005';
+            modal.innerHTML = `
+            <div class="modal-content" style="
+                max-width: 600px; width: 95%;
+                border-radius: 12px; overflow: hidden;
+                max-height: 90vh; display: flex; flex-direction: column;">
+                
+                <div class="modal-header" style="
+                    background: linear-gradient(135deg, #667eea, #764ba2);
+                    padding: 18px 24px; color: white; flex-shrink: 0;">
+                    <h3 style="margin:0; color:white; display:flex;
+                               align-items:center; gap:8px;">
+                        <i class="fas fa-envelope-open-text"></i>
+                        ניהול מיילים קבועים - דוחות UC4
+                    </h3>
+                    <button class="close-btn" onclick="document.getElementById(
+                                'uc4EmailRecipientsModal'
+                            ).style.display='none'">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <div class="modal-body" style="
+                    padding: 20px 24px; overflow-y: auto; flex: 1;">
+                    
+                    <div style="
+                        background: #fffbf0;
+                        border: 1px solid #fde8b4;
+                        border-radius: 8px;
+                        padding: 10px 14px;
+                        margin-bottom: 18px;
+                        font-size: 0.88rem;
+                        color: #744210;
+                        display: flex;
+                        align-items: flex-start;
+                        gap: 8px;">
+                        <i class="fas fa-info-circle" 
+                           style="margin-top:2px; flex-shrink:0;"></i>
+                        <span>
+                            רשימות אלו מגדירות את הנמענים הקבועים בכל שליחת 
+                            דוח UC4. אחראים דינמיים מהדוח יתווספו אוטומטית.
+                        </span>
+                    </div>
+                    
+                    <!-- TO -->
+                    <div class="form-group" style="margin-bottom:20px;">
+                        <label class="form-label" style="
+                            font-weight:700; margin-bottom:8px;
+                            display:flex; align-items:center; gap:6px;">
+                            <i class="fas fa-paper-plane" 
+                               style="color:#667eea;"></i>
+                            נמענים (TO)
+                        </label>
+                        <div id="uc4ToList" style="
+                            border: 1.5px solid #e2e8f0;
+                            border-radius: 8px;
+                            padding: 8px;
+                            min-height: 60px;
+                            background: #fafbff;">
+                        </div>
+                        <div style="
+                            display:flex; gap:8px; margin-top:8px;">
+                            <input type="email" 
+                                   id="uc4ToNewEmail"
+                                   class="form-input"
+                                   placeholder="הוסף כתובת מייל..."
+                                   style="flex:1; padding:8px 12px;
+                                          border:1.5px solid #ddd;
+                                          border-radius:7px; font-size:0.9rem;"
+                                   onkeydown="if(event.key==='Enter'){
+                                       messagesManager._addUC4Email('to');
+                                   }">
+                            <button onclick="messagesManager._addUC4Email('to')"
+                                    style="
+                                padding:8px 16px;
+                                background:linear-gradient(135deg,#667eea,#764ba2);
+                                color:white; border:none; border-radius:7px;
+                                cursor:pointer; font-weight:600;
+                                font-family:inherit; white-space:nowrap;">
+                                <i class="fas fa-plus"></i> הוסף
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- CC -->
+                    <div class="form-group">
+                        <label class="form-label" style="
+                            font-weight:700; margin-bottom:8px;
+                            display:flex; align-items:center; gap:6px;">
+                            <i class="fas fa-copy" 
+                               style="color:#667eea;"></i>
+                            עותק (CC)
+                        </label>
+                        <div id="uc4CcList" style="
+                            border: 1.5px solid #e2e8f0;
+                            border-radius: 8px;
+                            padding: 8px;
+                            min-height: 60px;
+                            background: #fafbff;">
+                        </div>
+                        <div style="
+                            display:flex; gap:8px; margin-top:8px;">
+                            <input type="email" 
+                                   id="uc4CcNewEmail"
+                                   class="form-input"
+                                   placeholder="הוסף כתובת מייל..."
+                                   style="flex:1; padding:8px 12px;
+                                          border:1.5px solid #ddd;
+                                          border-radius:7px; font-size:0.9rem;"
+                                   onkeydown="if(event.key==='Enter'){
+                                       messagesManager._addUC4Email('cc');
+                                   }">
+                            <button onclick="messagesManager._addUC4Email('cc')"
+                                    style="
+                                padding:8px 16px;
+                                background:linear-gradient(135deg,#667eea,#764ba2);
+                                color:white; border:none; border-radius:7px;
+                                cursor:pointer; font-weight:600;
+                                font-family:inherit; white-space:nowrap;">
+                                <i class="fas fa-plus"></i> הוסף
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="modal-footer" style="
+                    padding: 14px 24px;
+                    border-top: 1px solid #e2e8f0;
+                    background: #f8f9fa;
+                    display: flex;
+                    justify-content: flex-end;
+                    gap: 10px;
+                    flex-shrink: 0;">
+                    <button onclick="messagesManager._saveUC4EmailRecipients()"
+                            style="
+                        padding: 10px 24px;
+                        background: linear-gradient(135deg,#27AE60,#1D6F42);
+                        color: white; border: none; border-radius: 8px;
+                        font-size: 0.95rem; font-weight: 600;
+                        cursor: pointer; font-family: inherit;
+                        display: flex; align-items: center; gap: 7px;">
+                        <i class="fas fa-save"></i> שמור שינויים
+                    </button>
+                    <button onclick="document.getElementById(
+                                'uc4EmailRecipientsModal'
+                            ).style.display='none'"
+                            style="
+                        padding: 10px 20px;
+                        background: #f8f9fa;
+                        border: 1.5px solid #ddd;
+                        border-radius: 8px;
+                        font-size: 0.9rem;
+                        cursor: pointer;
+                        font-family: inherit;">
+                        ביטול
+                    </button>
+                </div>
+            </div>
+        `;
+            document.body.appendChild(modal);
+        }
+
+        // מלא את הרשימות
+        this._uc4EmailConfig = JSON.parse(JSON.stringify(config));
+        this._renderUC4EmailList('to', config.toAddresses || []);
+        this._renderUC4EmailList('cc', config.ccAddresses || []);
+
+        modal.style.display = 'flex';
+    }
+
+    _renderUC4EmailList(type, emails) {
+        const containerId = type === 'to' ? 'uc4ToList' : 'uc4CcList';
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        if (!emails || emails.length === 0) {
+            container.innerHTML = `
+            <div style="color:#aaa; font-size:0.85rem; 
+                        padding:8px; text-align:center;">
+                אין כתובות מייל
+            </div>`;
+            return;
+        }
+
+        container.innerHTML = emails.map((email, idx) => `
+        <div style="
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 10px;
+            margin-bottom: 4px;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 0.88rem;">
+            <span style="
+                display: flex;
+                align-items: center;
+                gap: 7px;
+                color: #333;">
+                <i class="fas fa-envelope" 
+                   style="color:#667eea; font-size:0.8rem;"></i>
+                ${this.escapeHtml(email)}
+            </span>
+            <button onclick="messagesManager._removeUC4Email('${type}', ${idx})"
+                    style="
+                background: #fff5f5;
+                border: 1px solid #feb2b2;
+                color: #e53e3e;
+                border-radius: 5px;
+                width: 26px; height: 26px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 0.75rem;
+                transition: all 0.15s;"
+                    title="הסר">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `).join('');
+    }
+
+    _addUC4Email(type) {
+        const inputId = type === 'to' ? 'uc4ToNewEmail' : 'uc4CcNewEmail';
+        const input = document.getElementById(inputId);
+        if (!input) return;
+
+        const email = input.value.trim();
+
+        if (!email) {
+            NotificationManager.show('יש להזין כתובת מייל', 'warning');
+            return;
+        }
+
+        if (!email.includes('@')) {
+            NotificationManager.show('כתובת מייל לא תקינה', 'error');
+            input.focus();
+            return;
+        }
+
+        if (!this._uc4EmailConfig) {
+            this._uc4EmailConfig = { toAddresses: [], ccAddresses: [] };
+        }
+
+        const list = type === 'to'
+            ? this._uc4EmailConfig.toAddresses
+            : this._uc4EmailConfig.ccAddresses;
+
+        // בדוק כפילות
+        if (list.some(e => e.toLowerCase() === email.toLowerCase())) {
+            NotificationManager.show('כתובת מייל זו כבר קיימת', 'warning');
+            input.value = '';
+            return;
+        }
+
+        list.push(email);
+        this._renderUC4EmailList(type, list);
+        input.value = '';
+        input.focus();
+    }
+
+    _removeUC4Email(type, index) {
+        if (!this._uc4EmailConfig) return;
+
+        const list = type === 'to'
+            ? this._uc4EmailConfig.toAddresses
+            : this._uc4EmailConfig.ccAddresses;
+
+        if (index >= 0 && index < list.length) {
+            list.splice(index, 1);
+            this._renderUC4EmailList(type, list);
+        }
+    }
+
+    async _saveUC4EmailRecipients() {
+        if (!this._uc4EmailConfig) return;
+
+        try {
+            const response = await fetch('/Messages/SaveUC4EmailRecipients', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(this._uc4EmailConfig)
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                NotificationManager.show(
+                    'הגדרות המיילים נשמרו בהצלחה', 'success'
+                );
+                document.getElementById(
+                    'uc4EmailRecipientsModal'
+                ).style.display = 'none';
+            } else {
+                NotificationManager.show(
+                    result.error || 'שגיאה בשמירה', 'error'
+                );
+            }
+        } catch (error) {
+            console.error('Error saving UC4 email recipients:', error);
+            NotificationManager.show('שגיאה בשמירת ההגדרות', 'error');
+        }
+    }
+
+    _getEntryPermitSiteConfig(siteKey) {
+        if (!this._entryPermitEmailConfig) {
+            this._entryPermitEmailConfig = {
+                sites: {}
+            };
+        }
+
+        if (!this._entryPermitEmailConfig.sites) {
+            this._entryPermitEmailConfig.sites = {};
+        }
+
+        if (!this._entryPermitEmailConfig.sites[siteKey]) {
+            this._entryPermitEmailConfig.sites[siteKey] = {
+                to: '',
+                cc: ''
+            };
+        }
+
+        return this._entryPermitEmailConfig.sites[siteKey];
+    }
+
+    _splitEntryPermitEmails(value) {
+        if (!value) return [];
+
+        return value
+            .split(';')
+            .map(x => x.trim())
+            .filter(Boolean);
+    }
+
+    _joinEntryPermitEmails(emails) {
+        return [...new Set(
+            (emails || [])
+                .map(x => x.trim())
+                .filter(Boolean)
+        )].join(';');
+    }
+
+    _renderEntryPermitEmailList(siteKey, type) {
+        const siteConfig = this._getEntryPermitSiteConfig(siteKey);
+
+        const property = type === 'to' ? 'to' : 'cc';
+
+        const emails = this._splitEntryPermitEmails(
+            siteConfig[property]
+        );
+
+        const containerId =
+            `entryPermit${siteKey}${type === 'to' ? 'To' : 'Cc'}List`;
+
+        const container = document.getElementById(containerId);
+
+        if (!container) return;
+
+        if (emails.length === 0) {
+            container.innerHTML = `
+            <div style="
+                color:#999;
+                padding:8px;
+                text-align:center;
+            ">
+                אין כתובות מייל
+            </div>
+        `;
+            return;
+        }
+
+        container.innerHTML = emails.map((email, index) => `
+        <div style="
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            padding:7px 10px;
+            margin-bottom:5px;
+            border:1px solid #e2e8f0;
+            border-radius:6px;
+            background:white;
+        ">
+            <span>
+                <i class="fas fa-envelope"></i>
+                ${this.escapeHtml(email)}
+            </span>
+
+            <button
+                type="button"
+                onclick="
+                    messagesManager._removeEntryPermitEmail(
+                        '${siteKey}',
+                        '${type}',
+                        ${index}
+                    )
+                "
+                style="
+                    border:none;
+                    background:#fff5f5;
+                    color:#e53e3e;
+                    border-radius:5px;
+                    width:28px;
+                    height:28px;
+                    cursor:pointer;
+                "
+                title="הסר"
+            >
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `).join('');
+    }
+
+    _addEntryPermitEmail(siteKey, type) {
+        const siteConfig =
+            this._getEntryPermitSiteConfig(siteKey);
+
+        const inputId =
+            `entryPermit${siteKey}${type === 'to' ? 'To' : 'Cc'}NewEmail`;
+
+        const input = document.getElementById(inputId);
+
+        if (!input) return;
+
+        const email = input.value.trim();
+
+        if (!email || !email.includes('@')) {
+            NotificationManager.show(
+                'כתובת מייל לא תקינה',
+                'error'
+            );
+            return;
+        }
+
+        const property = type === 'to' ? 'to' : 'cc';
+
+        const emails =
+            this._splitEntryPermitEmails(siteConfig[property]);
+
+        if (emails.some(x =>
+            x.toLowerCase() === email.toLowerCase())) {
+
+            NotificationManager.show(
+                'כתובת המייל כבר קיימת באתר זה',
+                'warning'
+            );
+
+            return;
+        }
+
+        emails.push(email);
+
+        siteConfig[property] =
+            this._joinEntryPermitEmails(emails);
+
+        input.value = '';
+
+        this._renderEntryPermitEmailList(siteKey, type);
+
+        input.focus();
+    }
+
+    _removeEntryPermitEmail(siteKey, type, index) {
+        const siteConfig =
+            this._getEntryPermitSiteConfig(siteKey);
+
+        const property = type === 'to' ? 'to' : 'cc';
+
+        const emails =
+            this._splitEntryPermitEmails(siteConfig[property]);
+
+        if (index < 0 || index >= emails.length)
+            return;
+
+        emails.splice(index, 1);
+
+        siteConfig[property] =
+            this._joinEntryPermitEmails(emails);
+
+        this._renderEntryPermitEmailList(siteKey, type);
+    }
+
+    async _saveEntryPermitEmailRecipients() {
+        if (!this._entryPermitEmailConfig?.sites) {
+            NotificationManager.show(
+                'לא נמצאו הגדרות לשמירה',
+                'error'
+            );
+            return false;
+        }
+
+        try {
+            console.log(
+                '[EntryPermitEmail] Saving config:',
+                this._entryPermitEmailConfig
+            );
+
+            const response = await fetch(
+                '/Messages/SaveEntryPermitEmailRecipients',
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(
+                        this._entryPermitEmailConfig
+                    )
+                }
+            );
+
+            if (!response.ok) {
+                const errorText = await response.text();
+
+                console.error(
+                    '[EntryPermitEmail] Server error:',
+                    errorText
+                );
+
+                NotificationManager.show(
+                    `שגיאה בשמירה (${response.status})`,
+                    'error'
+                );
+
+                return false;
+            }
+
+            const result = await response.json();
+
+            if (!result.success) {
+                NotificationManager.show(
+                    result.error ||
+                    'שגיאה בשמירת נמעני אישורי הכניסה',
+                    'error'
+                );
+
+                return false;
+            }
+
+            NotificationManager.show(
+                'נמעני אישורי הכניסה נשמרו בהצלחה',
+                'success'
+            );
+
+            const modal = document.getElementById(
+                'entryPermitEmailRecipientsModal'
+            );
+
+            if (modal) {
+                modal.style.display = 'none';
+            }
+
+            return true;
+        }
+        catch (error) {
+            console.error(
+                '[EntryPermitEmail] Error saving recipients:',
+                error
+            );
+
+            NotificationManager.show(
+                'שגיאה בשמירת נמעני אישורי הכניסה',
+                'error'
+            );
+
+            return false;
+        }
+    }
+
+    openEmailRecipientsAdminModal() {
+        let modal = document.getElementById('emailRecipientsAdminModal');
+
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'emailRecipientsAdminModal';
+            modal.className = 'modal-overlay';
+            modal.style.zIndex = '10004';
+
+            modal.innerHTML = `
+            <div class="modal-content" style="
+                max-width: 520px;
+                width: 95%;
+                border-radius: 14px;
+                overflow: hidden;
+                direction: rtl;
+            ">
+                <div class="modal-header" style="
+                    background: linear-gradient(135deg, #667eea, #764ba2);
+                    padding: 18px 24px;
+                    color: white;
+                ">
+                    <h3 style="
+                        margin: 0;
+                        color: white;
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                    ">
+                        <i class="fas fa-envelope-open-text"></i>
+                        ניהול מיילים קבועים
+                    </h3>
+
+                    <button
+                        type="button"
+                        class="close-btn"
+                        onclick="messagesManager.closeEmailRecipientsAdminModal()"
+                        style="
+                            background: rgba(255,255,255,0.2);
+                            border: 2px solid rgba(255,255,255,0.3);
+                            color: white;
+                            width: 32px;
+                            height: 32px;
+                            border-radius: 50%;
+                            cursor: pointer;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                        ">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+
+                <div style="padding: 28px 24px;">
+                    <div style="
+                        text-align: center;
+                        color: #666;
+                        margin-bottom: 22px;
+                        font-size: 0.95rem;
+                    ">
+                        בחר את סוג המיילים שברצונך לנהל
+                    </div>
+
+                    <div style="
+                        display: flex;
+                        flex-direction: column;
+                        gap: 14px;
+                    ">
+
+                        <!-- UC4 -->
+                        <button
+                            type="button"
+                            onclick="messagesManager.openEmailRecipientsAdminOption('uc4')"
+                            style="
+                                width: 100%;
+                                padding: 18px 20px;
+                                border: 1.5px solid #d9def7;
+                                border-radius: 12px;
+                                background: #f8f9ff;
+                                cursor: pointer;
+                                display: flex;
+                                align-items: center;
+                                gap: 16px;
+                                text-align: right;
+                                font-family: inherit;
+                                transition: all 0.2s ease;
+                            "
+                            onmouseover="
+                                this.style.borderColor='#667eea';
+                                this.style.background='#f1f3ff';
+                                this.style.transform='translateY(-1px)';
+                            "
+                            onmouseout="
+                                this.style.borderColor='#d9def7';
+                                this.style.background='#f8f9ff';
+                                this.style.transform='translateY(0)';
+                            ">
+
+                            <div style="
+                                width: 46px;
+                                height: 46px;
+                                border-radius: 12px;
+                                background: linear-gradient(135deg,#667eea,#764ba2);
+                                color: white;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                font-size: 1.15rem;
+                                flex-shrink: 0;
+                            ">
+                                <i class="fas fa-chart-line"></i>
+                            </div>
+
+                            <div style="flex: 1;">
+                                <div style="
+                                    font-weight: 700;
+                                    color: #333;
+                                    font-size: 1rem;
+                                    margin-bottom: 4px;
+                                ">
+                                    ניהול מיילים קבועים - דוחות UC4
+                                </div>
+
+                                <div style="
+                                    color: #888;
+                                    font-size: 0.82rem;
+                                ">
+                                    ניהול נמעני TO ו-CC של דוחות UC4
+                                </div>
+                            </div>
+
+                            <i class="fas fa-chevron-left"
+                               style="color:#aaa;"></i>
+                        </button>
+
+                        <!-- Entry permits -->
+                        <button
+                            type="button"
+                            onclick="messagesManager.openEmailRecipientsAdminOption('entryPermit')"
+                            style="
+                                width: 100%;
+                                padding: 18px 20px;
+                                border: 1.5px solid #d9def7;
+                                border-radius: 12px;
+                                background: #f8f9ff;
+                                cursor: pointer;
+                                display: flex;
+                                align-items: center;
+                                gap: 16px;
+                                text-align: right;
+                                font-family: inherit;
+                                transition: all 0.2s ease;
+                            "
+                            onmouseover="
+                                this.style.borderColor='#667eea';
+                                this.style.background='#f1f3ff';
+                                this.style.transform='translateY(-1px)';
+                            "
+                            onmouseout="
+                                this.style.borderColor='#d9def7';
+                                this.style.background='#f8f9ff';
+                                this.style.transform='translateY(0)';
+                            ">
+
+                            <div style="
+                                width: 46px;
+                                height: 46px;
+                                border-radius: 12px;
+                                background: linear-gradient(135deg,#27ae60,#1d6f42);
+                                color: white;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                font-size: 1.15rem;
+                                flex-shrink: 0;
+                            ">
+                                <i class="fas fa-id-card"></i>
+                            </div>
+
+                            <div style="flex: 1;">
+                                <div style="
+                                    font-weight: 700;
+                                    color: #333;
+                                    font-size: 1rem;
+                                    margin-bottom: 4px;
+                                ">
+                                    ניהול מיילים קבועים - אישורי כניסה
+                                </div>
+
+                                <div style="
+                                    color: #888;
+                                    font-size: 0.82rem;
+                                ">
+                                    ניהול נמעני TO ו-CC של אישורי כניסה
+                                </div>
+                            </div>
+
+                            <i class="fas fa-chevron-left"
+                               style="color:#aaa;"></i>
+                        </button>
+
+                    </div>
+                </div>
+            </div>
+        `;
+
+            document.body.appendChild(modal);
+        }
+
+        modal.style.display = 'flex';
+    }
+
+    openEmailRecipientsAdminOption(type) {
+        this.closeEmailRecipientsAdminModal();
+
+        if (type === 'uc4') {
+            this.openUC4EmailRecipientsModal();
+            return;
+        }
+
+        if (type === 'entryPermit') {
+            this.openEntryPermitEmailRecipientsModal();
+        }
+    }
+
+    closeEmailRecipientsAdminModal() {
+        const modal = document.getElementById('emailRecipientsAdminModal');
+
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    }
+
+    async openEntryPermitEmailRecipientsModal() {
+        let config = {
+            sites: {
+                RG: {
+                    to: '',
+                    cc: ''
+                },
+                DR: {
+                    to: '',
+                    cc: ''
+                }
+            }
+        };
+
+        try {
+            const response = await fetch(
+                '/Messages/GetEntryPermitEmailRecipients'
+            );
+
+            const data = await response.json();
+
+            if (data.success && data.config) {
+                config = data.config;
+            }
+        }
+        catch (e) {
+            console.error(
+                'Error loading entry permit email recipients:',
+                e
+            );
+
+            NotificationManager.show(
+                'שגיאה בטעינת הגדרות אישורי הכניסה',
+                'error'
+            );
+
+            return;
+        }
+
+        // הגנה למקרה שחסר אתר בקובץ
+        config.sites = config.sites || {};
+
+        config.sites.RG = config.sites.RG || {
+            to: '',
+            cc: ''
+        };
+
+        config.sites.DR = config.sites.DR || {
+            to: '',
+            cc: ''
+        };
+
+        let modal = document.getElementById(
+            'entryPermitEmailRecipientsModal'
+        );
+
+        if (!modal) {
+            modal = document.createElement('div');
+
+            modal.id =
+                'entryPermitEmailRecipientsModal';
+
+            modal.className = 'modal-overlay';
+            modal.style.zIndex = '10005';
+
+            modal.innerHTML = `
+        <div class="modal-content" style="
+            max-width:700px;
+            width:95%;
+            border-radius:12px;
+            overflow:hidden;
+            max-height:90vh;
+            display:flex;
+            flex-direction:column;
+            direction:rtl;
+        ">
+
+            <div class="modal-header" style="
+                background:linear-gradient(
+                    135deg,
+                    #27ae60,
+                    #1d6f42
+                );
+                padding:18px 24px;
+                color:white;
+                flex-shrink:0;
+            ">
+                <h3 style="
+                    margin:0;
+                    color:white;
+                    display:flex;
+                    align-items:center;
+                    gap:8px;
+                ">
+                    <i class="fas fa-id-card"></i>
+                    ניהול מיילים קבועים - אישורי כניסה
+                </h3>
+
+                <button
+                    type="button"
+                    class="close-btn"
+                    onclick="
+                        document.getElementById(
+                            'entryPermitEmailRecipientsModal'
+                        ).style.display='none'
+                    "
+                    style="
+                        color:white;
+                        width:32px;
+                        height:32px;
+                        border-radius:50%;
+                        cursor:pointer;
+                    "
+                >
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div class="modal-body" style="
+                padding:20px 24px;
+                overflow-y:auto;
+                flex:1;
+            ">
+
+                <div style="
+                    background:#f0fff4;
+                    border:1px solid #b7ebc6;
+                    border-radius:8px;
+                    padding:10px 14px;
+                    margin-bottom:18px;
+                    color:#276749;
+                    font-size:0.88rem;
+                ">
+                    <i class="fas fa-info-circle"></i>
+                    הנמענים מוגדרים בנפרד לכל אתר.
+                    הכתובות נשמרות בקובץ
+                    entry_permit_email_recipients.json.
+                </div>
+
+                ${this._buildEntryPermitSiteRecipientsSection(
+                'RG',
+                'רמת גן'
+            )}
+
+                ${this._buildEntryPermitSiteRecipientsSection(
+                'DR',
+                'פתח תקווה'
+            )}
+
+            </div>
+
+            <div class="modal-footer" style="
+                padding:14px 24px;
+                border-top:1px solid #e2e8f0;
+                background:#f8f9fa;
+                display:flex;
+                justify-content:flex-end;
+                gap:10px;
+                flex-shrink:0;
+            ">
+
+                <button
+                    type="button"
+                    onclick="
+                        messagesManager
+                            ._saveEntryPermitEmailRecipients()
+                    "
+                    style="
+                        padding:10px 24px;
+                        background:linear-gradient(
+                            135deg,
+                            #27ae60,
+                            #1d6f42
+                        );
+                        color:white;
+                        border:none;
+                        border-radius:8px;
+                        cursor:pointer;
+                        font-family:inherit;
+                        font-weight:600;
+                    "
+                >
+                    <i class="fas fa-save"></i>
+                    שמור שינויים
+                </button>
+
+                <button
+                    type="button"
+                    onclick="
+                        document.getElementById(
+                            'entryPermitEmailRecipientsModal'
+                        ).style.display='none'
+                    "
+                    style="
+                        padding:10px 20px;
+                        background:#f8f9fa;
+                        border:1.5px solid #ddd;
+                        border-radius:8px;
+                        cursor:pointer;
+                        font-family:inherit;
+                    "
+                >
+                    ביטול
+                </button>
+
+            </div>
+        </div>
+        `;
+
+            document.body.appendChild(modal);
+        }
+
+        this._entryPermitEmailConfig =
+            JSON.parse(JSON.stringify(config));
+
+        this._renderEntryPermitEmailList('RG', 'to');
+        this._renderEntryPermitEmailList('RG', 'cc');
+
+        this._renderEntryPermitEmailList('DR', 'to');
+        this._renderEntryPermitEmailList('DR', 'cc');
+
+        modal.style.display = 'flex';
+    }
+
+    _buildEntryPermitSiteRecipientsSection(
+        siteKey,
+        siteDisplayName
+    ) {
+        return `
+        <div style="
+            margin-bottom:22px;
+            border:1.5px solid #dfe7e2;
+            border-radius:10px;
+            overflow:hidden;
+            background:#fff;
+        ">
+
+            <div style="
+                padding:11px 14px;
+                background:#f2f8f4;
+                border-bottom:1px solid #dfe7e2;
+                font-weight:700;
+                color:#1d6f42;
+                display:flex;
+                align-items:center;
+                gap:8px;
+            ">
+                <i class="fas fa-building"></i>
+                ${this.escapeHtml(siteDisplayName)}
+                <span style="
+                    direction:ltr;
+                    color:#777;
+                    font-size:0.82rem;
+                    font-weight:500;
+                ">
+                    (${siteKey})
+                </span>
+            </div>
+
+            <div style="padding:15px;">
+
+                <div class="form-group"
+                     style="margin-bottom:18px;">
+
+                    <label style="
+                        display:block;
+                        font-weight:700;
+                        margin-bottom:7px;
+                    ">
+                        <i
+                            class="fas fa-paper-plane"
+                            style="color:#27ae60;"
+                        ></i>
+                        נמענים (TO)
+                    </label>
+
+                    <div
+                        id="entryPermit${siteKey}ToList"
+                        style="
+                            border:1.5px solid #e2e8f0;
+                            border-radius:8px;
+                            padding:8px;
+                            min-height:50px;
+                            background:#fafbff;
+                        "
+                    ></div>
+
+                    <div style="
+                        display:flex;
+                        gap:8px;
+                        margin-top:8px;
+                    ">
+
+                        <input
+                            type="email"
+                            id="entryPermit${siteKey}ToNewEmail"
+                            placeholder="הוסף כתובת מייל..."
+                            style="
+                                flex:1;
+                                padding:8px 12px;
+                                border:1.5px solid #ddd;
+                                border-radius:7px;
+                            "
+                            onkeydown="
+                                if(event.key === 'Enter'){
+                                    event.preventDefault();
+                                    messagesManager
+                                        ._addEntryPermitEmail(
+                                            '${siteKey}',
+                                            'to'
+                                        );
+                                }
+                            "
+                        >
+
+                        <button
+                            type="button"
+                            onclick="
+                                messagesManager
+                                    ._addEntryPermitEmail(
+                                        '${siteKey}',
+                                        'to'
+                                    )
+                            "
+                            style="
+                                padding:8px 16px;
+                                background:#27ae60;
+                                color:white;
+                                border:none;
+                                border-radius:7px;
+                                cursor:pointer;
+                            "
+                        >
+                            <i class="fas fa-plus"></i>
+                            הוסף
+                        </button>
+
+                    </div>
+                </div>
+
+                <div class="form-group">
+
+                    <label style="
+                        display:block;
+                        font-weight:700;
+                        margin-bottom:7px;
+                    ">
+                        <i
+                            class="fas fa-copy"
+                            style="color:#27ae60;"
+                        ></i>
+                        עותק (CC)
+                    </label>
+
+                    <div
+                        id="entryPermit${siteKey}CcList"
+                        style="
+                            border:1.5px solid #e2e8f0;
+                            border-radius:8px;
+                            padding:8px;
+                            min-height:50px;
+                            background:#fafbff;
+                        "
+                    ></div>
+
+                    <div style="
+                        display:flex;
+                        gap:8px;
+                        margin-top:8px;
+                    ">
+
+                        <input
+                            type="email"
+                            id="entryPermit${siteKey}CcNewEmail"
+                            placeholder="הוסף כתובת מייל..."
+                            style="
+                                flex:1;
+                                padding:8px 12px;
+                                border:1.5px solid #ddd;
+                                border-radius:7px;
+                            "
+                            onkeydown="
+                                if(event.key === 'Enter'){
+                                    event.preventDefault();
+                                    messagesManager
+                                        ._addEntryPermitEmail(
+                                            '${siteKey}',
+                                            'cc'
+                                        );
+                                }
+                            "
+                        >
+
+                        <button
+                            type="button"
+                            onclick="
+                                messagesManager
+                                    ._addEntryPermitEmail(
+                                        '${siteKey}',
+                                        'cc'
+                                    )
+                            "
+                            style="
+                                padding:8px 16px;
+                                background:#27ae60;
+                                color:white;
+                                border:none;
+                                border-radius:7px;
+                                cursor:pointer;
+                            "
+                        >
+                            <i class="fas fa-plus"></i>
+                            הוסף
+                        </button>
+
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    `;
+    }
+
     // פונקציה להכנת רשימות נמענים למייל UC4
     async prepareUC4EmailRecipientsAsync(processedData) {
         const { jobsByResponsible, nullResponsibleJobs } = processedData;
 
-        // בניית רשימת נמענים
-        let toAddresses = ['NOC@MENORAMIVT.CO.IL']; // חדר מחשב
+        // ─── טען הגדרות מהשרת ───────────────────────────────────────
+        let baseConfig = { toAddresses: [], ccAddresses: [] };
+        try {
+            const response = await fetch('/Messages/GetUC4EmailRecipients');
+            const data = await response.json();
+            if (data.success && data.config) {
+                baseConfig = {
+                    toAddresses: data.config.toAddresses || [],
+                    ccAddresses: data.config.ccAddresses || []
+                };
+            }
+        } catch (e) {
+            console.warn('Could not load UC4 email recipients config:', e);
+            // fallback לברירת מחדל
+            baseConfig = {
+                toAddresses: ['NOC@MENORAMIVT.CO.IL'],
+                ccAddresses: [
+                    "yanivkat@menoramivt.co.il",
+                    "davidday@menoramivt.co.il",
+                    "pdl-automationteam@menoramivt.net"
+                ]
+            };
+        }
 
-        // מערך עזר לעקוב אחרי כתובות שכבר נוספו (בצורת lowercase)
-        let addedEmails = new Set(['noc@menoramivt.co.il']);
+        // ─── בנה רשימות עם מניעת כפילויות ──────────────────────────
+        let toAddresses = [...baseConfig.toAddresses];
+        let addedEmails = new Set(
+            toAddresses.map(e => e.toLowerCase())
+        );
 
-        // פונקציית עזר להוספת מיילים עם טיפול בפיצול לפי נקודה-פסיק
         const addEmailToList = (emailList, email, skipIfExists = true) => {
             if (!email) return;
-            // פיצול במקרה של מספר מיילים מופרדים בנקודה-פסיק
             const emailParts = email.split(';');
             for (let part of emailParts) {
                 part = part.trim();
                 if (!part) continue;
                 const emailLower = part.toLowerCase();
-
-                // בדוק אם המייל כבר קיים (אם skipIfExists=true)
                 if (skipIfExists && addedEmails.has(emailLower)) continue;
                 emailList.push(part);
                 addedEmails.add(emailLower);
             }
         };
 
-        // ─── הוסף אחראים עם fallback ─────────────────────────────
+        // ─── הוסף אחראים עם fallback ────────────────────────────────
         for (const responsible of Object.keys(jobsByResponsible)) {
             if (!responsible || responsible === '-' ||
                 responsible === 'NULL' ||
                 responsible.trim() === '') continue;
 
-            // ← שימוש בפונקציה החדשה עם fallback
             const email = await this.getEmailByNameWithFallback(responsible);
             if (email) {
                 addEmailToList(toAddresses, email);
             } else {
-                console.warn(
-                    `[UC4] לא נמצא מייל עבור: ${responsible}`
-                );
+                console.warn(`[UC4] לא נמצא מייל עבור: ${responsible}`);
             }
         }
 
-        // ─── CC קבוע ─────────────────────────────────────────────
-        let ccAddresses = [];
-        const fixedCCs = [
-            "yanivkat@menoramivt.co.il",
-            "davidday@menoramivt.co.il",
-            "pdl-automationteam@menoramivt.net",
-            "anata@menora.co.il",
-            "borisk@menora.co.il",
-            "yomtovg@menoramivt.co.il",
-            "zoharlu@menoramivt.co.il",
-            "chenmo@menoramivt.co.il",
-            "monak@menoramivt.co.il"
-        ];
+        // ─── CC מהקובץ + אחראים משניים ──────────────────────────────
+        let ccAddresses = [...baseConfig.ccAddresses];
+        let ccAdded = new Set([
+            ...addedEmails,
+            ...ccAddresses.map(e => e.toLowerCase())
+        ]);
 
-        // הוסף את הכתובות הקבועות לרשימת העותקים אם הן לא כבר ברשימת הנמענים
-        for (const ccEmail of fixedCCs) {
-            addEmailToList(ccAddresses, ccEmail);
-        }
+        const addToCC = (email) => {
+            if (!email) return;
+            const emailParts = email.split(';');
+            for (let part of emailParts) {
+                part = part.trim();
+                if (!part) continue;
+                const emailLower = part.toLowerCase();
+                if (ccAdded.has(emailLower)) continue;
+                ccAddresses.push(part);
+                ccAdded.add(emailLower);
+            }
+        };
 
-        // ─── אחראים משניים ───────────────────────────────────────
+        // אחראים משניים
         for (const jobs of Object.values(jobsByResponsible)) {
             for (const job of jobs) {
-                if (job.responsibleUser1 &&
-                    job.responsibleUser1 !== 'NULL') {
+                if (job.responsibleUser1 && job.responsibleUser1 !== 'NULL') {
                     const email = await this.getEmailByNameWithFallback(
                         job.responsibleUser1
                     );
-                    if (email) addEmailToList(ccAddresses, email);
+                    if (email) addToCC(email);
                 }
             }
         }
 
-        // הוספת אחראים משניים מג'ובים ללא אחראי
         for (const job of nullResponsibleJobs) {
-            if (job.responsibleUser1 &&
-                job.responsibleUser1 !== 'NULL') {
+            if (job.responsibleUser1 && job.responsibleUser1 !== 'NULL') {
                 const email = await this.getEmailByNameWithFallback(
                     job.responsibleUser1
                 );
-                if (email) addEmailToList(ccAddresses, email);
+                if (email) addToCC(email);
             }
         }
-        // אם יש ג'ובים ללא אחראי, הוסף את רשימת תפוצה צוות אוטומציה תהליכים לנמענים
+
         if (nullResponsibleJobs.length > 0) {
-            addEmailToList(
-                toAddresses,
-                "pdl-automationteam@menoramivt.net"
-            );
+            addEmailToList(toAddresses, "pdl-automationteam@menoramivt.net");
         }
 
         return { toAddresses, ccAddresses };
@@ -1877,66 +3146,6 @@ ${base64Data}`;
 
         html += `</table>`;
         return html;
-    }
-
-    async sendUC4JobsEmail(processedData, title) {
-        try {
-            const { jobsByResponsible, nullResponsibleJobs } = processedData;
-
-            // בניית רשימת נמענים
-            let toAddresses = ['NOC@MENORAMIVT.CO.IL']; // חדר מחשב
-            let ccAddresses = [
-                "yanivkat@menoramivt.co.il",
-                "anata@menora.co.il",
-                "borisk@menora.co.il"
-            ];
-
-            // הוספת אחראים לרשימת הנמענים
-            for (const responsible of Object.keys(jobsByResponsible)) {
-                // הוספת האחראי כנמען
-                const email = this.getEmailByName(responsible);
-                if (email && !toAddresses.includes(email)) {
-                    toAddresses.push(email);
-                }
-            }
-
-            // הוספת אחראים משניים לעותקים
-            for (const jobs of Object.values(jobsByResponsible)) {
-                jobs.forEach(job => {
-                    if (job.responsibleUser1 && job.responsibleUser1 !== 'NULL') {
-                        const email = this.getEmailByName(job.responsibleUser1);
-                        if (email && !ccAddresses.includes(email)) {
-                            ccAddresses.push(email);
-                        }
-                    }
-                });
-            }
-
-            // הוספת אחראים משניים מג'ובים ללא אחראי
-            nullResponsibleJobs.forEach(job => {
-                if (job.responsibleUser1 && job.responsibleUser1 !== 'NULL') {
-                    const email = this.getEmailByName(job.responsibleUser1);
-                    if (email && !ccAddresses.includes(email)) {
-                        ccAddresses.push(email);
-                    }
-                }
-            });
-
-            // בניית תוכן המייל
-            const htmlContent = await this.buildUC4JobsEmail(processedData, title);
-
-            // כותרת המייל
-            const subject = `דוח ג'ובים שנכשלו - ${title}`;
-
-            // שליחת המייל
-            this.openEmailInOutlook(subject, htmlContent, toAddresses.join(';'), ccAddresses.join(';'));
-
-            return { success: true };
-        } catch (error) {
-            console.error('Error sending UC4 jobs email:', error);
-            NotificationManager.show('שגיאה בשליחת המייל', 'error');
-            return { success: false, error: error.message };
-        }
     }
 
     // פונקציה משופרת להמרת שם לכתובת מייל
@@ -10525,13 +11734,13 @@ ${data.base64Data}`;
                 timestamp: new Date().toISOString()
             };
 
-            localStorage.setItem(key, JSON.stringify(jobData));
+            userSettings.setItem(key, JSON.stringify(jobData));
 
             // שמור גם רשימה של כל המשימות שעודכנו
-            let updatedJobs = JSON.parse(localStorage.getItem('updated_jobs') || '[]');
+            let updatedJobs = JSON.parse(userSettings.getItem('updated_jobs') || '[]');
             if (!updatedJobs.includes(key)) {
                 updatedJobs.push(key);
-                localStorage.setItem('updated_jobs', JSON.stringify(updatedJobs));
+                userSettings.setItem('updated_jobs', JSON.stringify(updatedJobs));
             }
 
         } catch (error) {
@@ -13187,7 +14396,7 @@ ${data.base64Data}`;
             NotificationManager.show('הודעה נוספה למועדפים', 'success');
         }
 
-        localStorage.setItem('bookmarkedMessages', JSON.stringify(this.bookmarkedMessages));
+        userSettings.setItem('bookmarkedMessages', JSON.stringify(this.bookmarkedMessages));
 
         const currentFilter = document.querySelector('.notices-category-filter-tab.active').textContent.trim();
         this.filterMessages(currentFilter);
@@ -14226,7 +15435,7 @@ ${data.base64Data}`;
 
     initializeFilterCollapse() {
         // Load saved state from localStorage
-        const isCollapsed = localStorage.getItem('messagesFiltersSectionCollapsed');
+        const isCollapsed = userSettings.getItem('messagesFiltersSectionCollapsed');
 
         // Default to collapsed if no saved state (null) or if explicitly set to 'true'
         if (isCollapsed === null || isCollapsed === 'true') {
@@ -16546,11 +17755,13 @@ ${data.base64Data}`;
             );
 
             if (!savedResult) {
-                return; // שגיאה כבר הוצגה בפונקציה
+                return;
             }
 
-            // שלח מייל דרך השרת (לא קובץ EML)
-            await this._sendEntryPermitEmailViaServer(data);
+            // ===== בדוק אם יש תאריך ושעה - הצע תזמון =====
+            if (data.date) {
+                await this._handlePermitEmailWithScheduling(data);
+            }
 
             this.closeEntryPermitModal();
 
@@ -16558,6 +17769,732 @@ ${data.base64Data}`;
             console.error('Error in submitEntryPermit:', error);
             NotificationManager.show('שגיאה בשמירה או שליחת המייל', 'error');
         }
+    }
+
+    _calcFutureSendTime(visitDateTime) {
+        // אפשרות א: 07:00 ביום הביקור
+        const sevenAM = new Date(visitDateTime);
+        sevenAM.setHours(7, 0, 0, 0);
+
+        // אפשרות ב: שעה לפני הביקור
+        const oneHourBefore = new Date(
+            visitDateTime.getTime() - 60 * 60 * 1000
+        );
+
+        // בחר את המוקדם מביניהם
+        // אם שניהם בעבר - החזר null (ישלח מיידית)
+        const now = new Date();
+
+        const sevenAMValid = sevenAM > now;
+        const oneHourBeforeValid = oneHourBefore > now;
+
+        if (!sevenAMValid && !oneHourBeforeValid) {
+            return null; // שניהם עברו - שלח מיידית
+        }
+
+        if (!sevenAMValid) return oneHourBefore;
+        if (!oneHourBeforeValid) return sevenAM;
+
+        // שניהם תקינים - החזר את המוקדם
+        return sevenAM < oneHourBefore ? sevenAM : oneHourBefore;
+    }
+
+    // ===== תזמון שליחת מייל אישור כניסה =====
+    async _handlePermitEmailWithScheduling(data) {
+        const now = new Date();
+
+        // ── נסה לפרסר תאריך + שעה ──────────────────────────────────
+        let scheduledTime = null;
+
+        if (data.date && data.time) {
+            // יש גם תאריך וגם שעה
+            scheduledTime = this._parsePermitDateTime(data.date, data.time);
+        }
+
+        if (!scheduledTime && data.date) {
+            // יש תאריך בלי שעה - קבע שעה ברירת מחדל 11:00
+            const parts = data.date.split('/');
+            if (parts.length === 3) {
+                const day = parseInt(parts[0]);
+                const month = parseInt(parts[1]) - 1;
+                const year = parseInt(parts[2]);
+                scheduledTime = new Date(year, month, day, 11, 0, 0);
+            }
+        }
+
+        // אם לא הצלחנו לפרסר - שלח מיידית
+        if (!scheduledTime || isNaN(scheduledTime.getTime())) {
+            await this._sendEntryPermitEmailViaServer(data);
+            return;
+        }
+
+        const diffMinutes = Math.round((scheduledTime - now) / 60000);
+
+        // אם הזמן כבר עבר - שלח מיידית ללא שאלה
+        if (diffMinutes <= 0) {
+            await this._sendEntryPermitEmailViaServer(data);
+            return;
+        }
+
+        // חשב את זמן השליחה העתידי
+        const futureSendTime = this._calcFutureSendTime(scheduledTime);
+
+        // הצג דיאלוג
+        const choice = await this._showSchedulingDialog(
+            scheduledTime, diffMinutes, futureSendTime, data
+        );
+
+        if (choice === 'immediate') {
+            await this._sendEntryPermitEmailViaServer(data);
+        } else if (choice === 'scheduled') {
+            await this._schedulePermitEmail(data, futureSendTime);
+        }
+        // אם null - המשתמש סגר, לא עושים כלום
+    }
+
+    _parsePermitDateTime(dateStr, timeStr) {
+        try {
+            if (!dateStr || !timeStr) return null;
+
+            // dateStr בפורמט DD/MM/YYYY
+            const dateParts = dateStr.split('/');
+            if (dateParts.length !== 3) return null;
+
+            const day = parseInt(dateParts[0]);
+            const month = parseInt(dateParts[1]) - 1; // 0-based
+            const year = parseInt(dateParts[2]);
+
+            // timeStr בפורמט HH:MM
+            const timeParts = timeStr.split(':');
+            if (timeParts.length !== 2) return null;
+
+            const hours = parseInt(timeParts[0]);
+            const minutes = parseInt(timeParts[1]);
+
+            const dt = new Date(year, month, day, hours, minutes, 0);
+
+            if (isNaN(dt.getTime())) return null;
+
+            return dt;
+        } catch (e) {
+            console.error('Error parsing permit date/time:', e);
+            return null;
+        }
+    }
+
+    _showSchedulingDialog(scheduledTime, diffMinutes, futureSendTime, data) {
+        return new Promise((resolve) => {
+            const existing = document.getElementById('permitSchedulingDialog');
+            if (existing) existing.remove();
+
+            const visitTimeStr = (data.time && data.time.trim() !== '')
+                ? data.time
+                : scheduledTime.toLocaleTimeString('he-IL', {
+                    hour: '2-digit', minute: '2-digit'
+                });
+            const visitDateStr = scheduledTime.toLocaleDateString('he-IL');
+
+            // תיאור זמן השליחה העתידי
+            let futureLabel = '';
+            let futureSubLabel = '';
+
+            if (futureSendTime) {
+                const sendTimeStr = futureSendTime.toLocaleTimeString('he-IL', {
+                    hour: '2-digit', minute: '2-digit'
+                });
+                const sendDateStr = futureSendTime.toLocaleDateString('he-IL');
+
+                const isSameDay = futureSendTime.toDateString() ===
+                    scheduledTime.toDateString();
+
+                // קבע מה נבחר - 07:00 או שעה לפני
+                const futureCopy = new Date(scheduledTime);
+                futureCopy.setHours(7, 0, 0, 0);
+                const isSevenAM = Math.abs(
+                    futureSendTime.getTime() - futureCopy.getTime()
+                ) < 60000;
+
+                if (isSevenAM) {
+                    futureLabel = `שלח ב-07:00 ביום הביקור`;
+                    futureSubLabel = `${sendDateStr} בשעה 07:00`;
+                } else {
+                    futureLabel = `שלח שעה לפני הביקור`;
+                    futureSubLabel = `${sendDateStr} בשעה ${sendTimeStr}`;
+                }
+            }
+
+            const dialog = document.createElement('div');
+            dialog.id = 'permitSchedulingDialog';
+            dialog.style.cssText = `
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.55);
+            z-index: 10020;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            direction: rtl;
+        `;
+
+            dialog.innerHTML = `
+            <div style="
+                background: white;
+                border-radius: 16px;
+                max-width: 420px;
+                width: 95%;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+                direction: rtl;
+                overflow: hidden;
+            ">
+                <!-- Header -->
+                <div style="
+                    background: linear-gradient(135deg, #667eea, #764ba2);
+                    padding: 20px 24px;
+                    color: white;
+                    text-align: center;
+                ">
+                    <i class="fas fa-envelope" style="
+                        font-size: 2rem;
+                        margin-bottom: 10px;
+                        display: block;
+                        opacity: 0.9;
+                    "></i>
+                    <h3 style="margin:0; font-size:1.1rem; font-weight:700;">
+                        שליחת מייל אישור כניסה
+                    </h3>
+                </div>
+
+                <!-- פרטי הביקור -->
+                <div style="
+                    padding: 14px 24px;
+                    background: #f8f9ff;
+                    border-bottom: 1px solid #e2e8f0;
+                    display: flex;
+                    gap: 20px;
+                    justify-content: center;
+                    flex-wrap: wrap;
+                ">
+                    <div style="
+                        display: flex;
+                        align-items: center;
+                        gap: 6px;
+                        font-size: 0.88rem;
+                        color: #555;
+                    ">
+                        <i class="fas fa-calendar" style="color:#667eea;"></i>
+                        <span>תאריך ביקור: <strong>${visitDateStr}</strong></span>
+                    </div>
+                    <div style="
+                        display: flex;
+                        align-items: center;
+                        gap: 6px;
+                        font-size: 0.88rem;
+                        color: #555;
+                    ">
+                        <i class="fas fa-clock" style="color:#667eea;"></i>
+                        <span>שעת ביקור: <strong>${visitTimeStr}</strong></span>
+                    </div>
+                </div>
+
+                <!-- אפשרויות -->
+                <div style="padding: 20px 24px;">
+                    <p style="
+                        margin: 0 0 14px 0;
+                        font-size: 0.9rem;
+                        color: #555;
+                        font-weight: 600;
+                        text-align: center;
+                    ">
+                        מתי לשלוח את המייל?
+                    </p>
+
+                    <div style="display:flex; flex-direction:column; gap:12px;">
+
+                        <!-- שלח עכשיו -->
+                        <button id="schedOptImmediate" style="
+                            padding: 16px 18px;
+                            background: #f8f9fa;
+                            border: 2px solid #e2e8f0;
+                            border-radius: 12px;
+                            cursor: pointer;
+                            text-align: right;
+                            display: flex;
+                            align-items: center;
+                            gap: 14px;
+                            font-family: inherit;
+                            transition: all 0.2s;
+                            width: 100%;
+                        ">
+                            <div style="
+                                width: 44px;
+                                height: 44px;
+                                background: linear-gradient(135deg,#e8f4fd,#d1ecf1);
+                                border-radius: 50%;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                flex-shrink: 0;
+                            ">
+                                <i class="fas fa-paper-plane"
+                                   style="color:#2980b9; font-size:1.1rem;"></i>
+                            </div>
+                            <div style="text-align:right; flex:1;">
+                                <div style="
+                                    font-weight: 700;
+                                    color: #1a1a2e;
+                                    font-size: 1rem;
+                                    margin-bottom: 3px;
+                                ">
+                                    שלח עכשיו
+                                </div>
+                                <div style="
+                                    font-size: 0.8rem;
+                                    color: #888;
+                                ">
+                                    המייל יישלח מיידית
+                                </div>
+                            </div>
+                        </button>
+
+                        <!-- שלח עתידי -->
+                        ${futureSendTime ? `
+                        <button id="schedOptFuture" style="
+                            padding: 16px 18px;
+                            background: #f8f9fa;
+                            border: 2px solid #e2e8f0;
+                            border-radius: 12px;
+                            cursor: pointer;
+                            text-align: right;
+                            display: flex;
+                            align-items: center;
+                            gap: 14px;
+                            font-family: inherit;
+                            transition: all 0.2s;
+                            width: 100%;
+                            position: relative;
+                        ">
+                            <!-- תג "מומלץ" -->
+                            <div style="
+                                position: absolute;
+                                top: -10px;
+                                left: 14px;
+                                background: linear-gradient(135deg,#27AE60,#1D6F42);
+                                color: white;
+                                font-size: 0.72rem;
+                                font-weight: 700;
+                                padding: 2px 10px;
+                                border-radius: 10px;
+                                font-family: inherit;
+                            ">
+                                ✓ מומלץ
+                            </div>
+
+                            <div style="
+                                width: 44px;
+                                height: 44px;
+                                background: linear-gradient(135deg,#e8f5e9,#c8e6c9);
+                                border-radius: 50%;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                flex-shrink: 0;
+                            ">
+                                <i class="fas fa-clock"
+                                   style="color:#27AE60; font-size:1.1rem;"></i>
+                            </div>
+                            <div style="text-align:right; flex:1;">
+                                <div style="
+                                    font-weight: 700;
+                                    color: #1a1a2e;
+                                    font-size: 1rem;
+                                    margin-bottom: 3px;
+                                ">
+                                    ${futureLabel}
+                                </div>
+                                <div style="
+                                    font-size: 0.8rem;
+                                    color: #888;
+                                ">
+                                    ${futureSubLabel}
+                                </div>
+                            </div>
+                        </button>` : ''}
+
+                    </div>
+                </div>
+            </div>
+        `;
+
+            document.body.appendChild(dialog);
+
+            // Hover effects
+            const addHover = (btn, hoverBorder, hoverBg) => {
+                if (!btn) return;
+                btn.addEventListener('mouseenter', () => {
+                    btn.style.borderColor = hoverBorder;
+                    btn.style.background = hoverBg;
+                    btn.style.transform = 'translateY(-2px)';
+                    btn.style.boxShadow = '0 4px 14px rgba(0,0,0,0.1)';
+                });
+                btn.addEventListener('mouseleave', () => {
+                    btn.style.borderColor = '#e2e8f0';
+                    btn.style.background = '#f8f9fa';
+                    btn.style.transform = 'none';
+                    btn.style.boxShadow = 'none';
+                });
+            };
+
+            addHover(
+                document.getElementById('schedOptImmediate'),
+                '#2980b9', '#ebf5fb'
+            );
+            addHover(
+                document.getElementById('schedOptFuture'),
+                '#27AE60', '#eafaf1'
+            );
+
+            // מאזינים
+            document.getElementById('schedOptImmediate')
+                .addEventListener('click', () => {
+                    document.body.removeChild(dialog);
+                    resolve('immediate');
+                });
+
+            const futureBtn = document.getElementById('schedOptFuture');
+            if (futureBtn) {
+                futureBtn.addEventListener('click', () => {
+                    document.body.removeChild(dialog);
+                    resolve('scheduled');
+                });
+            }
+        });
+    }
+
+    _buildSchedulingOptions(scheduledTime, diffMinutes) {
+        const options = [];
+        const now = new Date();
+
+        // הגדר אפשרויות לפי כמה זמן יש
+        const possibleOptions = [
+            {
+                minutesBefore: 1440, // 24 שעות
+                label: 'שלח יום לפני',
+                icon: 'fas fa-calendar-day',
+                bgColor: '#e8f4fd',
+                iconColor: '#2980b9',
+                recommended: false
+            },
+            {
+                minutesBefore: 60,
+                label: 'שלח שעה לפני',
+                icon: 'fas fa-bell',
+                bgColor: '#fff3e0',
+                iconColor: '#f59e0b',
+                recommended: false
+            }
+        ];
+
+        possibleOptions.forEach(opt => {
+            const sendTime = new Date(scheduledTime.getTime() - opt.minutesBefore * 60000);
+
+            // הצג רק אפשרויות שהן בעתיד (לפחות דקה מעכשיו)
+            if (sendTime > new Date(now.getTime() + 60000)) {
+                options.push({ ...opt, sendTime });
+            }
+        });
+
+        // סמן את האפשרות המומלצת (30 דקות לפני, או הקרובה ביותר)
+        if (options.length > 0) {
+            // מצא את האפשרות הכי קרובה ל-30 דקות לפני
+            const preferred = options.find(o => o.minutesBefore === 30) ||
+                options.find(o => o.minutesBefore === 15) ||
+                options[0];
+            if (preferred) preferred.recommended = true;
+        }
+
+        return options;
+    }
+
+    _formatTimeDiff(minutes) {
+        if (minutes < 60) {
+            return `${minutes} דקות`;
+        } else if (minutes < 1440) {
+            const hours = Math.floor(minutes / 60);
+            const mins = minutes % 60;
+            return mins > 0
+                ? `${hours} שעות ו-${mins} דקות`
+                : `${hours} שעות`;
+        } else {
+            const days = Math.floor(minutes / 1440);
+            const hours = Math.floor((minutes % 1440) / 60);
+            return hours > 0
+                ? `${days} ימים ו-${hours} שעות`
+                : `${days} ימים`;
+        }
+    }
+
+    async _schedulePermitEmail(data, sendTime) {
+        try {
+            const overlay = document.getElementById('shiftsLoadingOverlay')
+                || this.createLoadingOverlay();
+            overlay.classList.add('show');
+
+            // בנה גוף המייל
+            const body = this._buildEntryPermitEmailBody(data);
+
+            // קבע נמענים
+            const sites = data.sites && data.sites.length > 0
+                ? data.sites : [data.site];
+
+            const siteKeys = sites
+                .map(site => this._getEntryPermitSiteKey(site))
+                .filter(Boolean);
+
+            // בנה כותרת
+            const siteDisplay = sites.length > 1
+                ? sites.map(s => s === 'פ"ת' ? `אתר ${s}` : s).join(' ו')
+                : (sites[0] === 'פ"ת' ? `אתר ${sites[0]}` : sites[0]);
+
+            const isRelativeDate = data.dateLabel && (
+                data.dateLabel.startsWith('היום') ||
+                data.dateLabel.startsWith('מחר')
+            );
+
+            const subject = isRelativeDate
+                ? `אישור כניסה ל${data.dateLabel} ב${siteDisplay}`
+                : `אישור כניסה בתאריך ${data.dateLabel} ב${siteDisplay}`;
+
+            // ─── תיקון: שלח כ-Local ISO string, לא UTC ───────────────
+            const localISOString = this._toLocalISOString(sendTime);
+
+            // שלח לשרת לתזמון
+            const response = await fetch('/Messages/ScheduleEntryPermitEmail', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    subject: subject,
+                    body: body,
+                    siteKeys,
+                    scheduledTime: localISOString  // ← Local time
+                })
+            });
+
+            overlay.classList.remove('show');
+
+            const result = await response.json();
+
+            if (result.success) {
+                if (result.sent) {
+                    // נשלח מיידית
+                    this._showEmailSentPopup({
+                        subject,
+                        siteKeys,
+                        personName: data.fullName || data.names?.[0] || '',
+                        site: siteDisplay,
+                        date: data.dateLabel || data.date
+                    });
+                } else {
+                    // מתוזמן
+                    this._showScheduledConfirmation({
+                        scheduledTime: sendTime,
+                        scheduledId: result.scheduledId,
+                        subject,
+                        siteKeys,
+                        personName: data.fullName || data.names?.[0] || '',
+                        site: siteDisplay,
+                        date: data.dateLabel || data.date
+                    });
+                }
+            } else {
+                this._showEmailErrorPopup(result.error || 'שגיאה בתזמון המייל');
+            }
+
+        } catch (error) {
+            console.error('Error scheduling permit email:', error);
+            const overlay = document.getElementById('shiftsLoadingOverlay');
+            if (overlay) overlay.classList.remove('show');
+            this._showEmailErrorPopup('שגיאה בתזמון המייל: ' + error.message);
+        }
+    }
+
+    // ─── פונקציה עזר חדשה: המר Date ל-ISO Local (ללא UTC offset) ─────
+    _toLocalISOString(date) {
+        const pad = n => String(n).padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+            `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+    }
+
+    _showScheduledConfirmation(details) {
+        let modal = document.getElementById('emailScheduledModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'emailScheduledModal';
+            modal.className = 'modal-overlay';
+            modal.style.zIndex = '10010';
+            document.body.appendChild(modal);
+        }
+
+        const sendTimeStr = details.scheduledTime.toLocaleTimeString('he-IL', {
+            hour: '2-digit', minute: '2-digit'
+        });
+        const sendDateStr = details.scheduledTime.toLocaleDateString('he-IL');
+        const now = new Date();
+        const diffMinutes = Math.round(
+            (details.scheduledTime - now) / 60000
+        );
+
+        modal.innerHTML = `
+        <div class="modal-content" style="
+            max-width: 440px;
+            width: 95%;
+            border-radius: 16px;
+            overflow: hidden;
+        ">
+            <!-- Header ירוק-כתום לתזמון -->
+            <div style="
+                background: linear-gradient(135deg, #f59e0b, #d97706);
+                padding: 24px 28px;
+                text-align: center;
+                color: white;
+            ">
+                <div style="
+                    width: 64px; height: 64px;
+                    background: rgba(255,255,255,0.2);
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin: 0 auto 12px;
+                    font-size: 2rem;
+                ">
+                    <i class="fas fa-clock"></i>
+                </div>
+                <h3 style="margin:0; font-size:1.2rem; font-weight:700;">
+                    המייל מתוזמן לשליחה
+                </h3>
+                <p style="margin:5px 0 0; opacity:0.85; font-size:0.88rem;">
+                    אישור כניסה ל${this.escapeHtml(details.personName)}
+                </p>
+            </div>
+
+            <!-- Body -->
+            <div style="padding: 22px 28px; background: white;">
+
+                <!-- זמן שליחה -->
+                <div style="
+                    text-align: center;
+                    padding: 16px;
+                    background: #fffbf0;
+                    border: 1.5px solid #fde8b4;
+                    border-radius: 10px;
+                    margin-bottom: 16px;
+                ">
+                    <div style="
+                        font-size: 0.8rem;
+                        color: #888;
+                        margin-bottom: 6px;
+                    ">
+                        <i class="fas fa-clock"></i> המייל ישלח ב
+                    </div>
+                    <div style="
+                        font-size: 1.4rem;
+                        font-weight: 800;
+                        color: #d97706;
+                    ">
+                        ${sendDateStr} · ${sendTimeStr}
+                    </div>
+                    <div style="
+                        font-size: 0.82rem;
+                        color: #aaa;
+                        margin-top: 5px;
+                    ">
+                        בעוד ${this._formatTimeDiff(diffMinutes)}
+                    </div>
+                </div>
+
+                <!-- פרטים -->
+                <div style="
+                    background: #f8f9ff;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 8px;
+                    padding: 12px 14px;
+                    margin-bottom: 14px;
+                ">
+                    <div style="
+                        font-size: 0.78rem;
+                        color: #888;
+                        margin-bottom: 3px;
+                    ">
+                        <i class="fas fa-envelope"></i> נושא
+                    </div>
+                    <div style="
+                        font-weight: 600;
+                        color: #333;
+                        font-size: 0.88rem;
+                        margin-bottom: 10px;
+                    ">
+                        ${this.escapeHtml(details.subject)}
+                    </div>
+                </div>
+
+                <!-- הערה -->
+                <div style="
+                    display: flex;
+                    align-items: flex-start;
+                    gap: 8px;
+                    padding: 10px 12px;
+                    background: #f0fff4;
+                    border: 1px solid #c6f6d5;
+                    border-radius: 8px;
+                    font-size: 0.8rem;
+                    color: #276749;
+                ">
+                    <i class="fas fa-check-circle"
+                       style="margin-top:2px; flex-shrink:0;"></i>
+                    <span>
+                        התזמון נשמר בשרת ויישרד ריסטארט.
+                        המייל ישלח אוטומטית בזמן שנקבע.
+                    </span>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div style="
+                padding: 14px 28px;
+                background: #f8f9fa;
+                border-top: 1px solid #e2e8f0;
+                display: flex;
+                justify-content: center;
+            ">
+                <button onclick="document.getElementById(
+                                    'emailScheduledModal'
+                                 ).style.display='none'"
+                        style="
+                    padding: 10px 36px;
+                    background: linear-gradient(135deg,#f59e0b,#d97706);
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    font-size: 0.95rem;
+                    font-weight: 700;
+                    cursor: pointer;
+                    font-family: inherit;
+                    transition: all 0.2s;
+                ">
+                    <i class="fas fa-check"></i> הבנתי
+                </button>
+            </div>
+        </div>
+    `;
+
+        modal.style.display = 'flex';
+
+        // סגירה אוטומטית אחרי 10 שניות
+        setTimeout(() => {
+            if (modal.style.display === 'flex') {
+                modal.style.display = 'none';
+            }
+        }, 10000);
     }
 
     async _sendEntryPermitEmailViaServer(data) {
@@ -16574,20 +18511,9 @@ ${data.base64Data}`;
                 ? data.sites
                 : [data.site];
 
-            let allToAddresses = new Set();
-            let allCcAddresses = new Set();
-
-            sites.forEach(site => {
-                const recipients = this._getEntryPermitRecipients(site);
-                recipients.to.split(';').forEach(e => {
-                    const t = e.trim();
-                    if (t) allToAddresses.add(t);
-                });
-                recipients.cc.split(';').forEach(e => {
-                    const t = e.trim();
-                    if (t) allCcAddresses.add(t);
-                });
-            });
+            const siteKeys = sites
+                .map(site => this._getEntryPermitSiteKey(site))
+                .filter(Boolean);
 
             // בנה כותרת
             let siteDisplay = '';
@@ -16616,8 +18542,7 @@ ${data.base64Data}`;
                 body: JSON.stringify({
                     subject: subject,
                     body: body,
-                    toAddresses: Array.from(allToAddresses),
-                    ccAddresses: Array.from(allCcAddresses)
+                    siteKeys
                 })
             });
 
@@ -16628,8 +18553,7 @@ ${data.base64Data}`;
             if (result.success) {
                 this._showEmailSentPopup({
                     subject,
-                    toAddresses: Array.from(allToAddresses),
-                    ccAddresses: Array.from(allCcAddresses),
+                    siteKeys,
                     personName: data.fullName || data.names?.[0] || '',
                     site: siteDisplay,
                     date: data.dateLabel || data.date
@@ -16656,12 +18580,6 @@ ${data.base64Data}`;
             modal.style.zIndex = '10010';
             document.body.appendChild(modal);
         }
-
-        const toList = details.toAddresses.join('<br>');
-        const ccList = details.ccAddresses.length > 0
-            ? details.ccAddresses.join('<br>')
-            : '-';
-
         modal.innerHTML = `
         <div class="modal-content email-sent-modal" style="
             max-width: 480px;
@@ -16729,25 +18647,6 @@ ${data.base64Data}`;
                             ${this.escapeHtml(details.date)}
                         </div>
                     </div>
-
-                    <div style="margin-bottom:10px;">
-                        <div style="font-size:0.78rem; color:#888; margin-bottom:3px;">
-                            <i class="fas fa-paper-plane"></i> נשלח אל
-                        </div>
-                        <div style="color:#333; font-size:0.85rem; line-height:1.6;">
-                            ${toList}
-                        </div>
-                    </div>
-
-                    ${details.ccAddresses.length > 0 ? `
-                    <div>
-                        <div style="font-size:0.78rem; color:#888; margin-bottom:3px;">
-                            <i class="fas fa-copy"></i> עותק
-                        </div>
-                        <div style="color:#666; font-size:0.82rem; line-height:1.6;">
-                            ${ccList}
-                        </div>
-                    </div>` : ''}
                 </div>
 
                 <div style="
@@ -20622,84 +22521,115 @@ ${data.base64Data}`;
     }
 
     // ========== בניית המייל ==========
-
     _openEntryPermitEmail(data) {
-        // קבל נמענים לפי האתרים שנבחרו
+        // קבל את האתרים שנבחרו
         const sites = data.sites && data.sites.length > 0
             ? data.sites
             : [data.site];
 
-        // איסוף כל הנמענים מכל האתרים
-        let allToAddresses = new Set();
-        let allCcAddresses = new Set();
+        // המר את שמות האתרים למפתחות של קובץ הקונפיג
+        // ר"ג -> RG
+        // פ"ת -> DR
+        const siteKeys = this._getEntryPermitSiteKeys(sites);
 
-        sites.forEach(site => {
-            const recipients = this._getEntryPermitRecipients(site);
+        if (siteKeys.length === 0) {
+            NotificationManager.show(
+                'לא נמצאו אתרים תקינים לשליחת אישור הכניסה',
+                'error'
+            );
+            return;
+        }
 
-            // הוסף נמענים TO
-            recipients.to.split(';').forEach(email => {
-                const trimmed = email.trim();
-                if (trimmed) allToAddresses.add(trimmed);
-            });
-
-            // הוסף נמענים CC
-            recipients.cc.split(';').forEach(email => {
-                const trimmed = email.trim();
-                if (trimmed) allCcAddresses.add(trimmed);
-            });
-        });
-
-        // בנה כותרת עם כל האתרים
+        // בנה שם תצוגה עבור הכותרת
         let siteDisplay = '';
+
         if (sites.length > 1) {
-            siteDisplay = sites.map(s => s === 'פ"ת' ? `אתר ${s}` : s).join(' ו');
+            siteDisplay = sites
+                .map(site =>
+                    site === 'פ"ת'
+                        ? `אתר ${site}`
+                        : site
+                )
+                .join(' ו');
         } else {
             const site = sites[0];
-            siteDisplay = site === 'פ"ת' ? `אתר ${site}` : site;
+
+            siteDisplay = site === 'פ"ת'
+                ? `אתר ${site}`
+                : site;
         }
 
-        var subject;
+        let subject;
 
         // בדוק אם dateLabel מתחיל ב"היום" או "מחר"
-        const isRelativeDate = data.dateLabel && (
-            data.dateLabel.startsWith('היום') ||
-            data.dateLabel.startsWith('מחר')
-        );
+        const isRelativeDate =
+            data.dateLabel &&
+            (
+                data.dateLabel.startsWith('היום') ||
+                data.dateLabel.startsWith('מחר')
+            );
 
-        // שורת פתיחה - "בתאריך" רק אם זה תאריך מספרי בלבד
         if (isRelativeDate) {
-            subject = `אישור כניסה ל${data.dateLabel} ב${siteDisplay}`;
+            subject =
+                `אישור כניסה ל${data.dateLabel} ב${siteDisplay}`;
         } else {
-            subject = `אישור כניסה בתאריך ${data.dateLabel} ב${siteDisplay}`;
+            subject =
+                `אישור כניסה בתאריך ${data.dateLabel} ב${siteDisplay}`;
         }
-        // בנה נתונים עם כל האתרים לגוף המייל
+
+        // בנה את גוף המייל
         const emailData = {
             ...data,
             site: siteDisplay
         };
 
-        const body = this._buildEntryPermitEmailBody(emailData);
+        const body =
+            this._buildEntryPermitEmailBody(emailData);
 
-        const toStr = Array.from(allToAddresses).join(';');
-        const ccStr = Array.from(allCcAddresses).join(';');
-
-        this._openEntryPermitOutlookEmail(subject, body, toStr, ccStr);
+        // חשוב:
+        // לא שולחים יותר TO/CC מה-JavaScript.
+        // שולחים את מפתחות האתרים בלבד.
+        this._openEntryPermitOutlookEmail(
+            subject,
+            body,
+            siteKeys
+        );
     }
 
-    _getEntryPermitRecipients(site) {
-        // נמענים בהתאם לאתר - מבוסס על המיילים לדוגמה
-        const recipientsBySite = {
-            'ר"ג': {
-                to: 'lobbymenora@menoramivt.co.il;binyaminra@menoramivt.co.il;securityroomusr@menoramivt.co.il',
-                cc: 'noc@menoramivt.co.il'
-            },
-            'פ"ת': {
-                to: 'HananBD1@kyndryl.com',
-                cc: 'noc@menoramivt.co.il'
-            }
+    _getEntryPermitSiteKey(site) {
+        if (!site) return null;
+
+        const normalized = site.trim();
+
+        const map = {
+            'ר"ג': 'RG',
+            'רמת גן': 'RG',
+            'RG': 'RG',
+
+            'פ"ת': 'DR',
+            'פתח תקווה': 'DR',
+            'DR': 'DR'
         };
 
-        return recipientsBySite[site] || { to: '', cc: '' };
+        return map[normalized] || null;
+    }
+
+    _getEntryPermitSiteKeys(sites) {
+        if (!Array.isArray(sites)) {
+            sites = sites
+                ? [sites]
+                : [];
+        }
+
+        return [
+            ...new Set(
+                sites
+                    .map(site =>
+                        this._getEntryPermitSiteKey(site)
+                    )
+                    .filter(Boolean)
+            )
+        ];
     }
 
     _buildEntryPermitEmailBody(data) {
@@ -20771,60 +22701,58 @@ ${data.base64Data}`;
         return body;
     }
 
-    _openEntryPermitOutlookEmail(subject, body, to, cc) {
+    async _openEntryPermitOutlookEmail(
+        subject,
+        body,
+        siteKeys
+    ) {
         try {
-            const boundary = `----=_EntryPermit_${Date.now()}`;
-            const htmlBody = this._buildEntryPermitHtmlEmail(body);
+            const response = await fetch(
+                '/Messages/SendEntryPermitEmail',
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        subject: subject,
+                        body: body,
+                        siteKeys: siteKeys
+                    })
+                }
+            );
 
-            let emlContent = `X-Unsent: 1
-MIME-Version: 1.0
-Content-Type: multipart/alternative; boundary="${boundary}"
-To: ${to}`;
-
-            if (cc) {
-                emlContent += `\nCc: ${cc}`;
+            if (!response.ok) {
+                throw new Error(
+                    `HTTP error: ${response.status}`
+                );
             }
 
-            emlContent += `
-Subject: =?UTF-8?B?${btoa(unescape(encodeURIComponent(subject)))}?=
+            const result = await response.json();
 
---${boundary}
-Content-Type: text/plain; charset=UTF-8
+            if (!result.success) {
+                NotificationManager.show(
+                    result.error ||
+                    'שגיאה בשליחת אישור הכניסה',
+                    'error'
+                );
+                return;
+            }
 
-${body}
-
---${boundary}
-Content-Type: text/html; charset=UTF-8
-
-${htmlBody}
-
---${boundary}--`;
-
-            const blob = new Blob([emlContent], { type: 'message/rfc822' });
-            const url = URL.createObjectURL(blob);
-
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `אישור_כניסה_${subject.replace(/[^א-תa-zA-Z0-9]/g, '_')}.eml`;
-            a.style.display = 'none';
-            document.body.appendChild(a);
-            a.click();
-
-            setTimeout(() => {
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            }, 2000);
-
-            // הצג הנחיות
-            setTimeout(() => {
-                this.showEmailInstructionsModal();
-            }, 1500);
-
-            NotificationManager.show('קובץ המייל הורד - פתח אותו לשליחה ב-Outlook', 'success');
-
+            NotificationManager.show(
+                'אישור הכניסה נשלח בהצלחה',
+                'success'
+            );
         } catch (error) {
-            console.error('Error creating entry permit email:', error);
-            NotificationManager.show('שגיאה ביצירת המייל', 'error');
+            console.error(
+                '[EntryPermitEmail] Send error:',
+                error
+            );
+
+            NotificationManager.show(
+                'שגיאה בשליחת אישור הכניסה',
+                'error'
+            );
         }
     }
 
@@ -22308,6 +24236,6 @@ function toggleFilterTabs() {
 
     // Save state to localStorage
     const isCollapsed = content.classList.contains('collapsed');
-    localStorage.setItem('messagesFiltersSectionCollapsed', isCollapsed);
+    userSettings.setItem('messagesFiltersSectionCollapsed', isCollapsed);
 }
 

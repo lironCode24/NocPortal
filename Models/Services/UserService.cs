@@ -11,13 +11,11 @@ namespace NocPortal.Services
 
         // מפתח הצפנה - שמור ב-appsettings או Environment Variable!
         private const string EncryptionKey = "NocPortal2025SecretKey32BytesLng!";
-        private readonly string _usersFilePath;
+        private readonly string _usersFilePath = PortalPaths.UnderFiles(@"users.json");
 
         public UserService(IWebHostEnvironment env, ILogger<UserService> logger)
         {
             _logger = logger;
-            var filesRoot = Path.Combine(env.WebRootPath, "assets", "files");
-            _usersFilePath = Path.Combine(filesRoot, "users.json");
             EnsureDataDirectoryAndFile();
         }
 

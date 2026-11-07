@@ -12,19 +12,10 @@ using System.Drawing;
 public class ShiftsController : Controller
 {
     // Define file paths as constants
-    private readonly string SHIFTS_FILE_PATH;
-    private readonly string BACKUP_DIRECTORY;
-    private readonly string EXCEL_FILE_PATH;
-    private readonly string FUTURE_SHIFTS_FILE_PATH;
-
-    public ShiftsController(IWebHostEnvironment env)
-    {
-        var baseFilesPath = Path.Combine(env.WebRootPath, "assets", "files");
-        SHIFTS_FILE_PATH = Path.Combine(baseFilesPath, "shifts.csv");
-        BACKUP_DIRECTORY = Path.Combine(baseFilesPath, "shifts_backup");
-        EXCEL_FILE_PATH = Path.Combine(baseFilesPath, "משמרות", "משמרות.xlsx");
-        FUTURE_SHIFTS_FILE_PATH = Path.Combine(baseFilesPath, "future_shifts.csv");
-    }
+    private static readonly string SHIFTS_FILE_PATH = PortalPaths.UnderFiles(@"shifts.csv");
+    private static readonly string BACKUP_DIRECTORY = PortalPaths.UnderFiles(@"shifts_backup");
+    private static readonly string EXCEL_FILE_PATH = PortalPaths.UnderFiles(@"משמרות\משמרות.xlsx");
+    private static readonly string FUTURE_SHIFTS_FILE_PATH = PortalPaths.UnderFiles(@"future_shifts.csv");
 
     [HttpGet]
     public IActionResult GetShifts()

@@ -223,36 +223,68 @@ class ServersDashboard {
 
             if (data.success) {
                 this.isAdmin = data.isAdmin || false;
+                this.isEditor = data.isEditor || false;
                 this.currentUser = data.username || '';
+
+                // ─── אדמינים קשיחים - לא ניתן להסיר ─────────────────
+                this.systemAdmins = data.systemAdmins || [];
+
+                // ─── אדמינים של הדשבורד - ניתן לנהל ─────────────────
+                this.dashboardAdmins = data.admins || [];
             }
 
-            // ─── עדכן UI לפי הרשאות ───
             this._updateAdminUI();
 
         } catch (err) {
             console.warn('_loadCurrentUser error:', err);
             this.isAdmin = false;
+            this.isEditor = false;
+            this.systemAdmins = [];
+            this.dashboardAdmins = [];
         }
     }
 
     // ─── עדכן UI לפי הרשאות ──────────────────────────────────
     _updateAdminUI() {
 
-        // ─── הצג/הסתר כפתורי אדמין ───
+        // ─── כפתורי אדמין בלבד ───
         const adminBtns = document.querySelectorAll('.srv-admin-only');
         adminBtns.forEach(btn => {
             btn.style.display = this.isAdmin ? 'flex' : 'none';
         });
 
-        // ─── הצג badge אדמין ───
+        // ─── כפתורי עורך (אדמין + עורך) ───────────────────────
+        const editorBtns = document.querySelectorAll('.srv-editor-only');
+        editorBtns.forEach(btn => {
+            btn.style.display =
+                (this.isAdmin || this.isEditor) ? 'flex' : 'none';
+        });
+
+        // ─── badge ───
         const badge = document.getElementById('srvAdminBadge');
         if (badge) {
-            badge.style.display = this.isAdmin ? 'flex' : 'none';
+            badge.style.display =
+                (this.isAdmin || this.isEditor) ? 'flex' : 'none';
             badge.title = `מחובר כ: ${this.currentUser}`;
+
+            // ─── שנה צבע לפי רמת הרשאה ───
+            if (this.isAdmin) {
+                badge.style.background = 'rgba(245,158,11,0.15)';
+                badge.style.borderColor = 'rgba(245,158,11,0.4)';
+                badge.style.color = '#fcd34d';
+                badge.innerHTML = `
+                <i class="fas fa-shield-alt"></i> Admin`;
+            } else if (this.isEditor) {
+                badge.style.background = 'rgba(99,102,241,0.15)';
+                badge.style.borderColor = 'rgba(99,102,241,0.4)';
+                badge.style.color = '#a5b4fc';
+                badge.innerHTML = `
+                <i class="fas fa-edit"></i> Editor`;
+            }
         }
 
         // ─── רענן תוכן כדי שכפתורי עריכה בשורות יופיעו ───
-        if (this.isAdmin && this.allServers.length > 0) {
+        if ((this.isAdmin || this.isEditor) && this.allServers.length > 0) {
             this.renderContent();
         }
     }
@@ -1038,37 +1070,6 @@ class ServersDashboard {
                     updateSelectedCount();
                 });
 
-            document.getElementById('srvBulkDeselectAll')
-                ?.addEventListener('click', () => {
-                    // ─── עדכן plannedChanges ───
-                    plannedChanges.forEach(c => { c.selected = false; });
-
-                    // ─── עדכן _bulkGroupMap ───
-                    if (this._bulkGroupMap) {
-                        Object.values(this._bulkGroupMap).forEach(mgr => {
-                            Object.values(mgr).forEach(g => { g.selected = false; });
-                        });
-                    }
-
-                    // ─── עדכן UI ───
-                    document.querySelectorAll('.srv-bulk-group-cb').forEach(cb => {
-                        cb.checked = false;
-                        const row = cb.closest('.srv-bulk-group-row');
-                        if (row) row.style.opacity = '0.4';
-                    });
-                    document.querySelectorAll('.srv-bulk-manager-cb').forEach(cb => {
-                        cb.checked = false;
-                        cb.indeterminate = false;
-                    });
-                    const headerCb = document.getElementById('srvBulkHeaderCb');
-                    if (headerCb) {
-                        headerCb.checked = false;
-                        headerCb.indeterminate = false;
-                    }
-                    updateSelectedCount();
-                });
-
-            // ─── כפתור "בטל הכל" ───
             document.getElementById('srvBulkDeselectAll')
                 ?.addEventListener('click', () => {
                     plannedChanges.forEach((change, idx) => {
@@ -2076,7 +2077,7 @@ class ServersDashboard {
 
             fields.forEach(({ id, val, label }) => {
                 const el = document.getElementById(id);
-                if (el && !el.value.trim() && val) {
+                if (el && val) {
                     el.value = val;
                     el.classList.add('srv-autofilled');
                     filled.push(label);
@@ -2114,7 +2115,7 @@ class ServersDashboard {
     openEditServerModal(serverName) {
 
         // ─── בדוק הרשאות ─────────────────────────────────────
-        if (!this.isAdmin) {
+        if (!this.isAdmin && !this.isEditor) {
             this.showToast('אין הרשאה לעריכה', 'error');
             return;
         }
@@ -2174,12 +2175,18 @@ class ServersDashboard {
         <!-- ══ כותרת ══ -->
         <div class="srv-modal-header srv-edit-modal-header">
             <h3 class="srv-modal-title">
-                <i class="fas fa-edit"
-                   style="color:#f59e0b"></i>
+                <i class="fas fa-edit" style="color:#f59e0b"></i>
                 עריכת שרת
-                <span class="srv-edit-server-name-badge">
+                <span class="srv-edit-server-name-badge"
+                    id="srvEditServerNameBadge">
                     ${this.escHtml(serverName)}
                 </span>
+                <button type="button"
+                        id="srvEditRenameBtn"
+                        class="srv-rename-btn"
+                        title="שנה שם שרת">
+                    <i class="fas fa-pen-to-square"></i>
+                </button>
             </h3>
             <div style="display:flex;align-items:center;gap:8px">
                 <span class="srv-admin-badge-inline">
@@ -2505,6 +2512,10 @@ class ServersDashboard {
         document.getElementById('srvEditCancel')
             .addEventListener('click', closeModal);
 
+        document.getElementById('srvEditRenameBtn')
+            ?.addEventListener('click', () => {
+                this._openRenameDialog(serverName, modal);
+            });
         document.getElementById('srvEditSave')
             .addEventListener('click', () =>
                 this._saveServerEdit(serverName, modal)
@@ -2533,6 +2544,320 @@ class ServersDashboard {
             `.srv-tr[data-name="${this.escHtml(serverName)}"]`
         );
         if (row) row.classList.add('srv-tr-editing');
+    }
+
+    // הוסף כפונקציה חדשה בקלאס, לפני addStyles()
+    _openRenameDialog(currentName, editModal) {
+        const existing = document.getElementById('srvRenameModal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'srvRenameModal';
+        modal.className = 'srv-modal-overlay';
+        modal.style.zIndex = '999999'; // מעל מודל העריכה
+
+        modal.innerHTML = `
+    <div class="srv-modal" style="max-width:460px;width:95%">
+
+        <!-- כותרת -->
+        <div class="srv-modal-header" style="
+            border-bottom:2px solid rgba(245,158,11,0.35);
+            background:linear-gradient(135deg,
+                rgba(245,158,11,0.08),
+                rgba(217,119,6,0.05))">
+            <h3 class="srv-modal-title">
+                <i class="fas fa-pen-to-square"
+                   style="color:#f59e0b"></i>
+                שינוי שם שרת
+            </h3>
+            <button class="srv-modal-close"
+                    id="srvRenameClose">&times;</button>
+        </div>
+
+        <!-- גוף -->
+        <div class="srv-modal-body" style="gap:14px">
+
+            <!-- שם נוכחי -->
+            <div style="
+                display:flex;align-items:center;gap:10px;
+                padding:10px 14px;
+                background:rgba(255,255,255,0.02);
+                border:1px solid rgba(255,255,255,0.07);
+                border-radius:8px">
+                <i class="fas fa-server"
+                   style="color:#555;font-size:0.85rem"></i>
+                <div>
+                    <div style="font-size:0.72rem;color:#666;
+                                margin-bottom:2px">
+                        שם נוכחי:
+                    </div>
+                    <div style="font-size:0.9rem;font-weight:700;
+                                color:#e0e0e0;font-family:monospace">
+                        ${this.escHtml(currentName)}
+                    </div>
+                </div>
+            </div>
+
+            <!-- שדה שם חדש -->
+            <div class="srv-edit-field">
+                <label class="srv-edit-label">
+                    <i class="fas fa-tag"></i>
+                    שם חדש
+                    <span class="srv-required-badge">* חובה</span>
+                </label>
+                <input type="text"
+                       id="srvRenameInput"
+                       class="srv-edit-input"
+                       value="${this.escHtml(currentName)}"
+                       placeholder="שם שרת חדש..."
+                       autocomplete="off"
+                       maxlength="63"
+                       spellcheck="false"/>
+                <div id="srvRenameError"
+                     class="srv-add-field-error"
+                     style="display:none">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span id="srvRenameErrorMsg"></span>
+                </div>
+                <div style="font-size:0.72rem;color:#555;
+                            margin-top:3px">
+                    <i class="fas fa-info-circle"
+                       style="color:#444"></i>
+                    ללא רווחים, /, \\, :, *, ?, ", &lt;, &gt;, |
+                    | מקסימום 63 תווים
+                </div>
+            </div>
+
+            <!-- אזהרה -->
+            <div style="
+                display:flex;align-items:flex-start;gap:10px;
+                padding:10px 14px;
+                background:rgba(245,158,11,0.08);
+                border:1px solid rgba(245,158,11,0.25);
+                border-radius:8px;
+                font-size:0.78rem;color:#fcd34d;line-height:1.5">
+                <i class="fas fa-exclamation-triangle"
+                   style="color:#f59e0b;flex-shrink:0;
+                          margin-top:2px"></i>
+                <span>
+                    שינוי שם ישמר בהיסטוריית ההערות.
+                    ודא שהשם החדש תואם לשם השרת בפועל.
+                </span>
+            </div>
+
+        </div>
+
+        <!-- Footer -->
+        <div class="srv-modal-footer">
+            <button class="srv-modal-cancel-btn"
+                    id="srvRenameCancel">
+                <i class="fas fa-times"></i> ביטול
+            </button>
+            <button id="srvRenameConfirm"
+                    style="padding:8px 18px;
+                           background:linear-gradient(
+                               135deg,#f59e0b,#d97706);
+                           border:none;border-radius:6px;
+                           color:#1a0a00;font-size:0.85rem;
+                           font-weight:700;cursor:pointer;
+                           display:flex;align-items:center;
+                           gap:6px;font-family:inherit;
+                           transition:all 0.2s">
+                <i class="fas fa-check"></i>
+                שנה שם
+            </button>
+        </div>
+
+    </div>`;
+
+        document.body.appendChild(modal);
+
+        // ── Focus ──────────────────────────────────────────────────
+        const input = document.getElementById('srvRenameInput');
+        setTimeout(() => {
+            if (input) {
+                input.focus();
+                input.select();
+            }
+        }, 100);
+
+        // ── ולידציה בזמן אמת ──────────────────────────────────────
+        const showError = (msg) => {
+            const errEl = document.getElementById('srvRenameError');
+            const errMsg = document.getElementById('srvRenameErrorMsg');
+            if (errEl) errEl.style.display = 'flex';
+            if (errMsg) errMsg.textContent = msg;
+            input?.classList.add('srv-add-input-error');
+        };
+
+        const clearError = () => {
+            const errEl = document.getElementById('srvRenameError');
+            if (errEl) errEl.style.display = 'none';
+            input?.classList.remove('srv-add-input-error');
+        };
+
+        input?.addEventListener('input', () => {
+            clearError();
+            // ── בדוק תווים לא חוקיים בזמן הקלדה ──────────────────
+            const val = input.value;
+            const invalidChars = /[/\\:*?"<>| ]/;
+            if (invalidChars.test(val)) {
+                showError('תווים לא חוקיים: / \\ : * ? " < > | רווח');
+            }
+        });
+
+        // ── Enter לאישור ──────────────────────────────────────────
+        input?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('srvRenameConfirm')?.click();
+            }
+            if (e.key === 'Escape') {
+                modal.remove();
+            }
+        });
+
+        // ── סגירה ─────────────────────────────────────────────────
+        const closeRename = () => modal.remove();
+
+        document.getElementById('srvRenameClose')
+            ?.addEventListener('click', closeRename);
+        document.getElementById('srvRenameCancel')
+            ?.addEventListener('click', closeRename);
+
+        // ── אישור שינוי שם ────────────────────────────────────────
+        document.getElementById('srvRenameConfirm')
+            ?.addEventListener('click', async () => {
+                const newName = input?.value?.trim() ?? '';
+
+                // ── ולידציה ──────────────────────────────────────
+                if (!newName) {
+                    showError('שם שרת נדרש');
+                    return;
+                }
+
+                if (newName === currentName) {
+                    showError('השם החדש זהה לשם הנוכחי');
+                    return;
+                }
+
+                const invalidChars = /[/\\:*?"<>| ]/;
+                if (invalidChars.test(newName)) {
+                    showError('תווים לא חוקיים: / \\ : * ? " < > | רווח');
+                    return;
+                }
+
+                if (newName.length > 63) {
+                    showError('שם שרת לא יכול לעלות על 63 תווים');
+                    return;
+                }
+
+                // ── בדוק כפילות בצד הלקוח ────────────────────────
+                const exists = this.allServers.some(s =>
+                    s.name !== currentName &&
+                    s.name.toLowerCase() === newName.toLowerCase()
+                );
+                if (exists) {
+                    showError(`שרת בשם "${newName}" כבר קיים`);
+                    return;
+                }
+
+                // ── שלח לשרת ─────────────────────────────────────
+                const confirmBtn = document.getElementById('srvRenameConfirm');
+                if (confirmBtn) {
+                    confirmBtn.disabled = true;
+                    confirmBtn.innerHTML =
+                        '<i class="fas fa-spinner fa-spin"></i> שומר...';
+                }
+
+                try {
+                    const res = await fetch('/Servers/RenameServer', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({
+                            oldName: currentName,
+                            newName: newName
+                        })
+                    });
+
+                    const data = await res.json();
+
+                    if (!data.success)
+                        throw new Error(data.error || 'שגיאה בשינוי שם');
+
+                    // ── עדכן בזיכרון ─────────────────────────────
+                    const srv = this.allServers.find(
+                        s => s.name === currentName
+                    );
+                    if (srv) {
+                        srv.name = newName;
+                        srv.notes = data.server?.notes ?? srv.notes;
+                        srv.lastUpdated = data.server?.lastUpdated;
+                        srv.updatedBy = data.server?.updatedBy;
+                    }
+
+                    // ── עדכן selectedServers אם נבחר ─────────────
+                    if (this.selectedServers.has(currentName)) {
+                        this.selectedServers.delete(currentName);
+                        this.selectedServers.add(newName);
+                    }
+
+                    // ── עדכן editingRow ───────────────────────────
+                    if (this.editingRow === currentName) {
+                        this.editingRow = newName;
+                    }
+
+                    // ── סגור מודל שינוי שם ────────────────────────
+                    modal.remove();
+
+                    // ── עדכן badge במודל העריכה ───────────────────
+                    const badge = document.getElementById(
+                        'srvEditServerNameBadge'
+                    );
+                    if (badge) badge.textContent = newName;
+
+                    // ── עדכן כותרת מודל העריכה ───────────────────
+                    const editTitle = editModal?.querySelector(
+                        '.srv-edit-server-name-badge'
+                    );
+                    if (editTitle) editTitle.textContent = newName;
+
+                    // ── עדכן data-name של מודל העריכה ────────────
+                    if (editModal) {
+                        // עדכן את ה-serverName בכפתור שמירה
+                        const saveBtn = document.getElementById('srvEditSave');
+                        if (saveBtn) {
+                            // הסר listener ישן והוסף חדש עם השם החדש
+                            const newSaveBtn = saveBtn.cloneNode(true);
+                            saveBtn.parentNode?.replaceChild(newSaveBtn, saveBtn);
+                            newSaveBtn.addEventListener('click', () =>
+                                this._saveServerEdit(newName, editModal)
+                            );
+                        }
+                    }
+
+                    // ── רענן תצוגה ────────────────────────────────
+                    this.applyFiltersAndSort();
+                    this.renderContent();
+                    this.updateStats();
+
+                    this.showToast(
+                        `✅ שם שרת שונה: "${currentName}" → "${newName}"`,
+                        'success'
+                    );
+
+                } catch (err) {
+                    console.error('RenameServer error:', err);
+                    showError(err.message);
+
+                    if (confirmBtn) {
+                        confirmBtn.disabled = false;
+                        confirmBtn.innerHTML =
+                            '<i class="fas fa-check"></i> שנה שם';
+                    }
+                }
+            });
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -3800,6 +4125,13 @@ class ServersDashboard {
                             style="display:none">
                         <i class="fas fa-plus-circle"></i>
                         הוסף שרת
+                    </button>
+                    <!-- ניהול הרשאות -->
+                    <button id="srvPermissionsBtn"
+                            class="srv-permissions-btn srv-admin-only"
+                            title="ניהול הרשאות"
+                            style="display:none">
+                        <i class="fas fa-user-shield"></i>
                     </button>
                     <!-- ייצוא -->
                     <button id="srvExportBtn" class="srv-export-btn"
@@ -5990,17 +6322,21 @@ class ServersDashboard {
                         [s.mappingNotes, s.notes].filter(Boolean).join(' | ')
                     )}
                 </span>
+                <!-- ─── כפתור עריכת הערה - לעורכים ─── -->
+                ${(this.isAdmin || this.isEditor) ? `
                 <button class="srv-edit-note-btn"
                         data-name="${this.escHtml(s.name)}"
                         title="ערוך הערה">
                     <i class="fas fa-pen"></i>
-                </button>
-                ${this.isAdmin ? `
+                </button>` : ''}
+
+                <!-- ─── כפתור עריכה מלאה - אדמין בלבד ─── -->
+                ${this.isAdmin || this.isEditor ? `
                 <button class="srv-row-edit-btn"
                         data-name="${this.escHtml(s.name)}"
                         title="ערוך שרת (Admin)">
                     <i class="fas fa-edit"></i>
-                </button>`  : ''}
+                </button>` : ''}
             </td>
 
             <!-- BigFix Updates -->
@@ -7017,7 +7353,7 @@ class ServersDashboard {
                 <button class="srv-edit-note-btn" data-name="${this.escHtml(s.name)}" title="ערוך הערה">
                     <i class="fas fa-pen"></i>
                 </button>
-                ${this.isAdmin ? `
+                ${this.isAdmin || this.isEditor ? `
                 <button class="srv-row-edit-btn" data-name="${this.escHtml(s.name)}" title="ערוך שרת">
                     <i class="fas fa-edit"></i>
                 </button>` : ''}
@@ -7431,7 +7767,7 @@ class ServersDashboard {
                 target: data.target,
                 targetType: data.targetType,
                 storedIp: data.storedIp,
-                allIps: data.allIps || [],       // ← חדש
+                allIps: data.allIps || [],
                 successfulIp: data.successfulIp || '',  // ← חדש: ה-IP שהצליח
 
                 // ─── DNS / Reverse DNS ────────────────────────────
@@ -7530,6 +7866,632 @@ class ServersDashboard {
         }
     }
 
+    // ══════════════════════════════════════════════════════════
+    // מודל ניהול הרשאות שרתים
+    // ══════════════════════════════════════════════════════════
+    async openPermissionsModal() {
+        if (!this.isAdmin) {
+            this.showToast('אין הרשאה לניהול הרשאות', 'error');
+            return;
+        }
+
+        const existing = document.getElementById('srvPermModal');
+        if (existing) existing.remove();
+
+        // ─── הצג loading ───
+        const modal = document.createElement('div');
+        modal.id = 'srvPermModal';
+        modal.className = 'srv-modal-overlay';
+        modal.innerHTML = `
+        <div class="srv-modal" style="max-width:1000px;width:95%">
+            <div class="srv-modal-header" style="
+                background:linear-gradient(135deg,
+                    rgba(99,102,241,0.12),
+                    rgba(124,58,237,0.08));
+                border-bottom:2px solid rgba(99,102,241,0.35)">
+                <h3 class="srv-modal-title">
+                    <i class="fas fa-user-shield"
+                       style="color:#a5b4fc"></i>
+                    ניהול הרשאות שרתים
+                    <span style="
+                        padding:2px 10px;
+                        background:rgba(239,68,68,0.15);
+                        border:1px solid rgba(239,68,68,0.35);
+                        border-radius:8px;
+                        color:#fca5a5;
+                        font-size:0.72rem;
+                        font-weight:700">
+                        Admin Only
+                    </span>
+                </h3>
+                <button class="srv-modal-close"
+                        id="srvPermClose">&times;</button>
+            </div>
+            <div class="srv-modal-body" style="
+                align-items:center;justify-content:center;
+                padding:40px;gap:10px;color:#666">
+                <i class="fas fa-spinner fa-spin"
+                   style="color:#6366f1;font-size:1.2rem"></i>
+                <span>טוען הרשאות...</span>
+            </div>
+        </div>`;
+
+        document.body.appendChild(modal);
+
+        document.getElementById('srvPermClose')
+            ?.addEventListener('click', () => modal.remove());
+
+        try {
+            // ─── טען הרשאות + משתמשים במקביל ───
+            const [permsRes, usersRes] = await Promise.all([
+                fetch('/Servers/GetServersPermissions',
+                    { credentials: 'include' }),
+                fetch('/Servers/GetAllUsers',
+                    { credentials: 'include' })
+            ]);
+
+            const permsData = await permsRes.json();
+            const usersData = await usersRes.json();
+
+            if (!permsData.success)
+                throw new Error(permsData.error || 'שגיאה בטעינת הרשאות');
+
+            const perms = permsData.permissions;
+            const allUsers = usersData.success
+                ? (usersData.users || []).map(u => u.username)
+                : [];
+
+            this._renderPermissionsModal(modal, perms, allUsers);
+
+        } catch (err) {
+            const body = modal.querySelector('.srv-modal-body');
+            if (body) {
+                body.innerHTML = `
+                <div style="color:#f87171;text-align:center;
+                            padding:20px">
+                    <i class="fas fa-exclamation-triangle"
+                       style="font-size:1.5rem;margin-bottom:8px;
+                              display:block"></i>
+                    שגיאה: ${this.escHtml(err.message)}
+                </div>`;
+            }
+        }
+    }
+
+    // ─── רנדר תוכן מודל הרשאות ───────────────────────────────────
+    _renderPermissionsModal(modal, perms, allUsers) {
+        const admins = perms.admins || perms.Admins || [];
+        const editors = perms.editors || perms.Editors || [];
+        const lastUpd = perms.lastUpdated || perms.LastUpdated || '—';
+        const updatedBy = perms.updatedBy || perms.UpdatedBy || '—';
+        // ─── בנה רשימת משתמשים לבחירה ───────────────────────────
+
+        const buildUserList = (listId, currentList, title,
+            color, icon) => {
+
+            const listItems = currentList.map((u, i) => {
+
+                // ─── בדוק אם אדמין קשיח של המערכת ───────────────────
+                const isSystemAdmin = listId === 'admins' &&
+                    (this.systemAdmins || []).some(
+                        sa => sa.toLowerCase() === u.toLowerCase()
+                    );
+
+                // ─── בדוק אם המשתמש הנוכחי ───────────────────────────
+                const isCurrentUser =
+                    u.toLowerCase() ===
+                    this.currentUser.toLowerCase();
+
+                // ─── ניתן להסיר רק אם לא אדמין מערכת ולא עצמו ───────
+                const canRemove = !isSystemAdmin && !isCurrentUser;
+
+                // ─── בנה badge מתאים ──────────────────────────────────
+                const lockBadge = isSystemAdmin
+                    ? `<span style="
+                    font-size:0.65rem;
+                    color:#f59e0b;
+                    background:rgba(245,158,11,0.12);
+                    border:1px solid rgba(245,158,11,0.3);
+                    border-radius:5px;
+                    padding:1px 6px;
+                    white-space:nowrap"
+                    title="אדמין מערכת - לא ניתן להסיר">
+                    <i class="fas fa-lock"></i> מערכת
+                  </span>`
+                    : isCurrentUser
+                        ? `<span style="
+                        font-size:0.65rem;
+                        color:#6366f1;
+                        background:rgba(99,102,241,0.12);
+                        border:1px solid rgba(99,102,241,0.3);
+                        border-radius:5px;
+                        padding:1px 6px;
+                        white-space:nowrap"
+                        title="המשתמש הנוכחי - לא ניתן להסיר">
+                        <i class="fas fa-user-circle"></i> אתה
+                      </span>`
+                        : '';
+
+                const removeBtn = canRemove
+                    ? `<button class="srv-perm-remove-btn"
+                           data-list="${listId}"
+                           data-user="${this.escHtml(u)}"
+                           title="הסר">
+                       <i class="fas fa-times"></i>
+                   </button>`
+                    : `<button class="srv-perm-remove-btn"
+                           disabled
+                           style="opacity:0.2;cursor:not-allowed"
+                           title="${isSystemAdmin
+                        ? 'אדמין מערכת - לא ניתן להסיר'
+                        : 'לא ניתן להסיר את עצמך'}">
+                       <i class="fas fa-lock"></i>
+                   </button>`;
+
+                return `
+            <div class="srv-perm-user-item"
+                 data-list="${listId}"
+                 data-index="${i}">
+                <i class="fas fa-user"
+                   style="color:${color};
+                          font-size:0.7rem"></i>
+                <span class="srv-perm-user-name">
+                    ${this.escHtml(u)}
+                </span>
+                ${lockBadge}
+                ${removeBtn}
+            </div>`;
+            }).join('');
+
+            // ─── dropdown - סנן משתמשים שכבר ברשימה ──────────────────
+            const availableUsers = allUsers.filter(
+                u => !currentList.some(
+                    cu => cu.toLowerCase() === u.toLowerCase()
+                )
+            );
+
+            const userOptions = availableUsers
+                .map(u => `
+            <option value="${this.escHtml(u)}">
+                ${this.escHtml(u)}
+            </option>`)
+                .join('');
+
+            return `
+        <div class="srv-perm-section">
+            <div class="srv-perm-section-header"
+                 style="border-right:3px solid ${color}">
+                <i class="fas ${icon}"
+                   style="color:${color}"></i>
+                <span style="color:${color};font-weight:700">
+                    ${title}
+                </span>
+                <span class="srv-perm-count"
+                      style="background:${color}22;
+                             border:1px solid ${color}44;
+                             color:${color}"
+                      id="srvPermCount_${listId}">
+                    ${currentList.length}
+                </span>
+            </div>
+
+            <div class="srv-perm-user-list"
+                 id="srvPermList_${listId}">
+                ${listItems || `
+                    <div style="color:#555;font-size:0.78rem;
+                                padding:8px;font-style:italic">
+                        אין משתמשים ברשימה
+                    </div>`}
+            </div>
+
+            <!-- ─── הוספה מרשימה בלבד ─── -->
+            <div class="srv-perm-add-row">
+                <select id="srvPermSelect_${listId}"
+                        class="srv-select"
+                        style="flex:1;font-size:0.8rem">
+                    <option value="">
+                        — בחר משתמש להוספה —
+                    </option>
+                    ${userOptions}
+                </select>
+                <button class="srv-perm-add-btn"
+                        data-list="${listId}"
+                        style="background:${color}22;
+                               border:1px solid ${color}44;
+                               color:${color}">
+                    <i class="fas fa-plus"></i>
+                </button>
+            </div>
+
+            ${listId === 'admins' ? `
+                <!-- הסבר נעילות -->
+                <div style="
+                    display:flex;
+                    gap:12px;
+                    flex-wrap:wrap;
+                    padding:10px 14px;
+                    background:rgba(255,255,255,0.02);
+                    border:1px solid rgba(255,255,255,0.06);
+                    border-radius:8px;
+                    font-size:0.75rem">
+
+                    <div style="
+                        display:flex;
+                        align-items:center;
+                        gap:6px;
+                        color:#f59e0b">
+                        <i class="fas fa-lock"
+                        style="font-size:0.65rem"></i>
+                        <span>
+                            <strong>מערכת</strong> =
+                            אדמין קשיח, לא ניתן להסיר
+                        </span>
+                    </div>
+
+                    <div style="
+                        display:flex;
+                        align-items:center;
+                        gap:6px;
+                        color:#6366f1">
+                        <i class="fas fa-user-circle"
+                        style="font-size:0.65rem"></i>
+                        <span>
+                            <strong>אתה</strong> =
+                            לא ניתן להסיר את עצמך
+                        </span>
+                    </div>
+
+                </div>
+            ` : ''}
+        </div>`;
+        };
+
+        // ─── בנה את המודל ─────────────────────────────────────────────
+        const modalEl = modal.querySelector('.srv-modal');
+        modalEl.innerHTML = `
+    <div class="srv-modal-header" style="
+        background:linear-gradient(135deg,
+            rgba(99,102,241,0.12),
+            rgba(124,58,237,0.08));
+        border-bottom:2px solid rgba(99,102,241,0.35)">
+        <h3 class="srv-modal-title">
+            <i class="fas fa-user-shield"
+               style="color:#a5b4fc"></i>
+            ניהול הרשאות שרתים
+        </h3>
+        <button class="srv-modal-close"
+                id="srvPermClose2">&times;</button>
+    </div>
+
+    <!-- מידע אחרון -->
+    <div style="
+        display:flex;align-items:center;gap:8px;
+        padding:8px 20px;
+        background:rgba(99,102,241,0.05);
+        border-bottom:1px solid rgba(99,102,241,0.12);
+        font-size:0.75rem;color:#666">
+        <i class="fas fa-clock" style="color:#6366f1"></i>
+        עדכון אחרון:
+        <strong style="color:#a5b4fc">
+            ${this.escHtml(lastUpd)}
+        </strong>
+        על ידי
+        <strong style="color:#a5b4fc">
+            ${this.escHtml(updatedBy)}
+        </strong>
+        <span style="margin-right:auto;color:#555">
+            <i class="fas fa-users" style="color:#6366f1"></i>
+            ${allUsers.length} משתמשים במערכת
+        </span>
+    </div>
+
+    <!-- גוף -->
+    <div class="srv-modal-body"
+         style="max-height:65vh;overflow-y:auto;
+                padding:16px 20px;gap:14px">
+
+        <!-- ─── שני sections בשורה אחת ─── -->
+        <div style="
+            display:grid;
+            grid-template-columns:1fr 1fr;
+            gap:12px;
+            align-items:start">
+
+        ${buildUserList(
+            'admins',
+            admins,
+            'אדמינים',
+            '#f59e0b',
+            'fa-shield-alt'
+        )}
+
+        ${buildUserList(
+            'editors',
+            editors,
+            'עורכים',
+            '#6366f1',
+            'fa-edit'
+        )}
+        </div>
+        <!-- legend הרשאות -->
+        <div class="srv-perm-legend">
+            <div class="srv-perm-legend-title">
+                <i class="fas fa-info-circle"
+                   style="color:#6366f1"></i>
+                רמות הרשאה:
+            </div>
+            <div class="srv-perm-legend-row">
+                <span class="srv-perm-legend-badge"
+                      style="background:rgba(245,158,11,0.15);
+                             border-color:rgba(245,158,11,0.4);
+                             color:#fcd34d">
+                    <i class="fas fa-shield-alt"></i> Admin
+                </span>
+                <span class="srv-perm-legend-desc">
+                    גישה מלאה — הוספה, מחיקה, עריכת כל השדות,
+                    ייבוא, ניהול הרשאות
+                </span>
+            </div>
+            <div class="srv-perm-legend-row">
+                <span class="srv-perm-legend-badge"
+                      style="background:rgba(99,102,241,0.15);
+                             border-color:rgba(99,102,241,0.4);
+                             color:#a5b4fc">
+                    <i class="fas fa-edit"></i> Editor
+                </span>
+                <span class="srv-perm-legend-desc">
+                    עריכה מוגבלת — תקינות, סטטוס, הערות
+                </span>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="srv-modal-footer">
+        <button class="srv-modal-cancel-btn"
+                id="srvPermCancel">
+            <i class="fas fa-times"></i> ביטול
+        </button>
+        <button id="srvPermSave"
+                style="padding:8px 20px;
+                       background:linear-gradient(
+                           135deg,#4f46e5,#7c3aed);
+                       border:none;border-radius:6px;
+                       color:white;font-size:0.85rem;
+                       font-weight:700;cursor:pointer;
+                       display:flex;align-items:center;
+                       gap:6px;font-family:inherit;
+                       transition:all 0.2s">
+            <i class="fas fa-save"></i>
+            שמור הרשאות
+        </button>
+    </div>`;
+
+        // ─── שמור נתונים ──────────────────────────────────────────────
+        this._permData = {
+            admins: [...admins],
+            editors: [...editors]
+        };
+
+        // ─── אירועים ──────────────────────────────────────────────────
+        document.getElementById('srvPermClose2')
+            ?.addEventListener('click', () => modal.remove());
+        document.getElementById('srvPermCancel')
+            ?.addEventListener('click', () => modal.remove());
+        document.getElementById('srvPermSave')
+            ?.addEventListener('click', () =>
+                this._savePermissions(modal));
+
+        // ─── הסר / הוסף משתמש ────────────────────────────────────
+        modalEl.addEventListener('click', e => {
+            const removeBtn = e.target.closest(
+                '.srv-perm-remove-btn'
+            );
+            if (removeBtn && !removeBtn.disabled) {
+                const listId = removeBtn.dataset.list;
+                const user = removeBtn.dataset.user;
+                this._removePermUser(listId, user, modal);
+            }
+
+            const addBtn = e.target.closest('.srv-perm-add-btn');
+            if (addBtn) {
+                const listId = addBtn.dataset.list;
+                this._addPermUser(listId, modal, allUsers);
+            }
+        });
+    }
+
+    // ─── הוסף משתמש לרשימה ───────────────────────────────────────
+    _addPermUser(listId, modal, allUsers) {
+        // ─── קרא ערך מה-select בלבד ───────────────────────────
+        const sel = document.getElementById(`srvPermSelect_${listId}`);
+        const username = (sel?.value || '').trim();
+
+        if (!username) {
+            this.showToast('בחר משתמש מהרשימה', 'error');
+            return;
+        }
+
+        if (!this._permData) this._permData = { admins: [], editors: [] };
+
+        const list = this._permData[listId] || [];
+
+        if (list.some(u => u.toLowerCase() === username.toLowerCase())) {
+            this.showToast(`${username} כבר ברשימה`, 'error');
+            sel.value = '';
+            return;
+        }
+
+        list.push(username);
+        this._permData[listId] = list;
+
+        // ─── עדכן UI - הוסף שורה לרשימה ───────────────────────
+        const listEl = document.getElementById(`srvPermList_${listId}`);
+        if (listEl) {
+            const color = listId === 'admins' ? '#f59e0b' : '#6366f1';
+
+            // ─── הסר הודעת "אין משתמשים" אם קיימת ───
+            const emptyMsg = listEl.querySelector('div[style*="font-style:italic"]');
+            if (emptyMsg) emptyMsg.remove();
+
+            const newItem = document.createElement('div');
+            newItem.className = 'srv-perm-user-item';
+            newItem.dataset.list = listId;
+            newItem.innerHTML = `
+            <i class="fas fa-user"
+               style="color:${color};font-size:0.7rem"></i>
+            <span class="srv-perm-user-name">
+                ${this.escHtml(username)}
+            </span>
+            <button class="srv-perm-remove-btn"
+                    data-list="${listId}"
+                    data-user="${this.escHtml(username)}"
+                    title="הסר">
+                <i class="fas fa-times"></i>
+            </button>`;
+            listEl.appendChild(newItem);
+        }
+
+        // ─── הסר מה-dropdown ───────────────────────────────────
+        if (sel) {
+            const optToRemove = sel.querySelector(
+                `option[value="${CSS.escape(username)}"]`
+            );
+            if (optToRemove) optToRemove.remove();
+            sel.value = '';
+        }
+
+        // ─── עדכן מונה ─────────────────────────────────────────
+        const countEl = document.getElementById(`srvPermCount_${listId}`);
+        if (countEl) countEl.textContent = list.length;
+
+        this.showToast(`✅ ${username} נוסף`, 'success');
+    }
+
+    // ─── הסר משתמש מרשימה ────────────────────────────────────────
+    _removePermUser(listId, username, modal) {
+        if (!this._permData) return;
+
+        if (listId === 'admins') {
+
+            // ─── הגנה 1: אדמין קשיח של המערכת ───────────────────────
+            const isSystemAdmin = (this.systemAdmins || []).some(
+                sa => sa.toLowerCase() === username.toLowerCase()
+            );
+            if (isSystemAdmin) {
+                this.showToast(
+                    `לא ניתן להסיר אדמין מערכת: ${username}`,
+                    'error'
+                );
+                return;
+            }
+
+            // ─── הגנה 2: המשתמש הנוכחי ───────────────────────────────
+            if (username.toLowerCase() ===
+                this.currentUser.toLowerCase()) {
+                this.showToast('לא ניתן להסיר את עצמך', 'error');
+                return;
+            }
+        }
+
+        const list = this._permData[listId] || [];
+        this._permData[listId] = list.filter(
+            u => u.toLowerCase() !== username.toLowerCase()
+        );
+
+        // ─── עדכן UI ────────────────────────────────────────────────
+        const listEl = document.getElementById(
+            `srvPermList_${listId}`
+        );
+        if (listEl) {
+            const item = listEl.querySelector(
+                `.srv-perm-remove-btn[data-user="${username}"]`
+            )?.closest('.srv-perm-user-item');
+
+            if (item) {
+                item.style.transition =
+                    'opacity 0.2s, transform 0.2s';
+                item.style.opacity = '0';
+                item.style.transform = 'translateX(10px)';
+                setTimeout(() => {
+                    item.remove();
+                    if (listEl.children.length === 0) {
+                        listEl.innerHTML = `
+                        <div style="color:#555;font-size:0.78rem;
+                                    padding:8px;font-style:italic">
+                            אין משתמשים ברשימה
+                        </div>`;
+                    }
+                }, 200);
+            }
+        }
+
+        // ─── החזר למשתמש ל-dropdown ──────────────────────────────────
+        const sel = document.getElementById(
+            `srvPermSelect_${listId}`
+        );
+        if (sel) {
+            const opt = document.createElement('option');
+            opt.value = username;
+            opt.textContent = username;
+            sel.appendChild(opt);
+        }
+
+        // ─── עדכן מונה ───────────────────────────────────────────────
+        const countEl = document.getElementById(
+            `srvPermCount_${listId}`
+        );
+        if (countEl) {
+            countEl.textContent = this._permData[listId].length;
+        }
+
+        this.showToast(`🗑️ ${username} הוסר`, 'info');
+    }
+
+    // ─── שמור הרשאות לשרת ────────────────────────────────────────
+    async _savePermissions(modal) {
+        const saveBtn = document.getElementById('srvPermSave');
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.innerHTML =
+                '<i class="fas fa-spinner fa-spin"></i> שומר...';
+        }
+
+        try {
+            const payload = {
+                admins: this._permData?.admins || [],
+                editors: this._permData?.editors || [],
+                lastUpdated: '',
+                updatedBy: ''
+            };
+
+            const res = await fetch('/Servers/SavePermissions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+            if (!data.success)
+                throw new Error(data.error || 'שגיאה בשמירה');
+
+            modal.remove();
+            this.showToast('✅ הרשאות נשמרו בהצלחה', 'success');
+
+        } catch (err) {
+            console.error('_savePermissions error:', err);
+            this.showToast('שגיאה: ' + err.message, 'error');
+
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML =
+                    '<i class="fas fa-save"></i> שמור הרשאות';
+            }
+        }
+    }
+
     // ─── הרחב עמודת PING ──────────────────────────────────────────
     _expandPingColumn() {
         if (this._pingColumnExpanded) return; // ← כבר הורחבה
@@ -7578,8 +8540,8 @@ class ServersDashboard {
         // ─── בנה badge לפי שדה וערך ───
         const badgeHtml = this._getInlineBadge(field, displayVal);
 
-        // ─── אם לא אדמין - הצג רק badge ───
-        if (!this.isAdmin) {
+        // ─── רק אדמין או עורך ───────────────────────────────────
+        if (!this.isAdmin && !this.isEditor) {
             return badgeHtml;
         }
 
@@ -8598,6 +9560,12 @@ class ServersDashboard {
     // מודל עריכת הערה
     // ══════════════════════════════════════════════════════════
     openNoteModal(serverName) {
+
+        // ─── בדוק הרשאות ────────────────────────────────────────
+        if (!this.isAdmin && !this.isEditor) {
+            this.showToast('אין הרשאה לעריכת הערות', 'error');
+            return;
+        }
         const existing = document.getElementById('srvNoteModal');
         if (existing) existing.remove();
 
@@ -9388,7 +10356,7 @@ class ServersDashboard {
             const rowEditBtn = e.target.closest('.srv-row-edit-btn');
             if (rowEditBtn) {
                 e.stopPropagation();
-                if (!this.isAdmin) {
+                if (!this.isAdmin && !this.isEditor) {
                     this.showToast('אין הרשאה לעריכה', 'error');
                     return;
                 }
@@ -9601,6 +10569,12 @@ class ServersDashboard {
                 }
                 return;
             }
+
+            // ─── ניהול הרשאות ───
+            if (e.target.closest('#srvPermissionsBtn')) {
+                this.openPermissionsModal();
+                return;
+            }
         });
 
         document.addEventListener('dblclick', e => {
@@ -9609,7 +10583,7 @@ class ServersDashboard {
             if (this.viewMode !== 'table') return;
 
             // ─── בדוק שהמשתמש אדמין ───
-            if (!this.isAdmin) return;
+            if (!this.isAdmin && !this.isEditor) return;
 
             // ─── מצא את השורה שנלחצה ───
             const row = e.target.closest('tr.srv-tr');
@@ -11473,17 +12447,17 @@ class ServersDashboard {
             Object.entries(this.filters).forEach(([k, v]) => {
                 filtersToSave[k] = v instanceof Set ? [...v] : v;
             });
-            localStorage.setItem(this.LS_FILTERS, JSON.stringify(filtersToSave));
-            localStorage.setItem(this.LS_SORT,
+            userSettings.setItem(this.LS_FILTERS, JSON.stringify(filtersToSave));
+            userSettings.setItem(this.LS_SORT,
                 JSON.stringify({ col: this.sortColumn, dir: this.sortDirection }));
-            localStorage.setItem(this.LS_VIEW, this.viewMode);
-            localStorage.setItem(this.LS_PAGE_SIZE, String(this.pageSize));
+            userSettings.setItem(this.LS_VIEW, this.viewMode);
+            userSettings.setItem(this.LS_PAGE_SIZE, String(this.pageSize));
         } catch (e) { }
     }
 
     _loadPreferences() {
         try {
-            const f = localStorage.getItem(this.LS_FILTERS);
+            const f = userSettings.getItem(this.LS_FILTERS);
             if (f) {
                 const parsed = JSON.parse(f);
                 // המר מערכים חזרה ל-Sets
@@ -11491,15 +12465,15 @@ class ServersDashboard {
                     this.filters[k] = Array.isArray(v) ? new Set(v) : v;
                 });
             }
-            const s = localStorage.getItem(this.LS_SORT);
+            const s = userSettings.getItem(this.LS_SORT);
             if (s) {
                 const { col, dir } = JSON.parse(s);
                 this.sortColumn = col || 'name';
                 this.sortDirection = dir || 'asc';
             }
-            const v = localStorage.getItem(this.LS_VIEW);
+            const v = userSettings.getItem(this.LS_VIEW);
             if (v) this.viewMode = v;
-            const ps = localStorage.getItem(this.LS_PAGE_SIZE);
+            const ps = userSettings.getItem(this.LS_PAGE_SIZE);
             if (ps) this.pageSize = parseInt(ps) || 50;
         } catch (e) { }
     }
@@ -14284,7 +15258,7 @@ class ServersDashboard {
             opacity: 0;
             pointer-events: none;
             transition: all 0.3s ease;
-            z-index: 999999;
+            z-index: 9999999;
             direction: rtl;
             white-space: nowrap;
         }
@@ -14629,37 +15603,192 @@ class ServersDashboard {
             gap: 14px;
             padding: 16px;
         }
+
         .srv-card {
-            background: rgba(0,0,0,0.03);
-            border: 1px solid rgba(255,255,255,0.07);
-            border-radius: 10px;
+            background: linear-gradient(
+                145deg,
+                rgba(30, 30, 50, 0.95),
+                rgba(20, 20, 40, 0.98)
+            );
+            border: 1px solid rgba(99, 102, 241, 0.18);
+            border-radius: 12px;
             overflow: hidden;
-            transition: transform 0.15s, box-shadow 0.15s;
+            transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         }
+
         .srv-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
-            border-color: rgba(99,102,241,0.3);
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.2),
+                        0 4px 12px rgba(0, 0, 0, 0.4);
+            border-color: rgba(99, 102, 241, 0.45);
         }
+
         .srv-card-header {
             display: flex;
             align-items: flex-start;
             gap: 10px;
-            padding: 12px 14px 10px;
-            background: rgba(255,255,255,0.03);
-            border-bottom: 1px solid rgba(255,255,255,0.05);
+            padding: 14px 14px 10px;
+            background: linear-gradient(
+                135deg,
+                rgba(99, 102, 241, 0.12),
+                rgba(124, 58, 237, 0.06)
+            );
+            border-bottom: 1px solid rgba(99, 102, 241, 0.15);
         }
+
         .srv-card-icon {
-            width: 36px;
-            height: 36px;
-            border-radius: 8px;
-            background: rgba(99,102,241,0.15);
+            width: 38px;
+            height: 38px;
+            border-radius: 9px;
+            background: linear-gradient(
+                135deg,
+                rgba(99, 102, 241, 0.25),
+                rgba(124, 58, 237, 0.2)
+            );
             display: flex;
             align-items: center;
             justify-content: center;
             color: #a5b4fc;
             font-size: 1rem;
             flex-shrink: 0;
+            box-shadow: 0 2px 6px rgba(99, 102, 241, 0.2);
+        }
+
+        /* ══ Card Row - שיפור עיקרי ══ */
+        .srv-card-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.79rem;
+            color: #c8cce0;           /* ← ניטרלי, עובד בשני המצבים */
+            padding: 5px 8px;
+            border-radius: 6px;
+            transition: background 0.15s;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .srv-card-row:last-child {
+            border-bottom: none;
+        }
+
+        .srv-card-row:hover {
+            background: rgba(99, 102, 241, 0.07);
+            color: #e0e4f8;
+        }
+
+        .srv-card-row i {
+            width: 16px;
+            text-align: center;
+            color: #6366f1;
+            font-size: 0.72rem;
+            flex-shrink: 0;
+            opacity: 0.85;
+        }
+
+        .srv-card-footer {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px 10px;
+            border-top: 1px solid rgba(99, 102, 241, 0.12);
+            background: rgba(99, 102, 241, 0.04);
+            flex-wrap: wrap;
+        }
+
+        .srv-card-notes {
+            padding: 7px 14px 10px;
+            font-size: 0.75rem;
+            color: #7a7fa8;
+            display: flex;
+            gap: 6px;
+            align-items: flex-start;
+            border-top: 1px dashed rgba(99, 102, 241, 0.12);
+            background: rgba(0, 0, 0, 0.1);
+            font-style: italic;
+        }
+
+        .srv-card-notes i {
+            color: #6366f1;
+            flex-shrink: 0;
+            margin-top: 2px;
+            opacity: 0.7;
+        }
+
+        /* ══ Light Mode - Cards ══ */
+        [data-theme="light"] .srv-card {
+            background: linear-gradient(
+                145deg,
+                #ffffff,
+                #f8f8ff
+            );
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.08),
+                        0 1px 3px rgba(0, 0, 0, 0.06);
+        }
+
+        [data-theme="light"] .srv-card:hover {
+            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.15),
+                        0 4px 12px rgba(0, 0, 0, 0.08);
+            border-color: rgba(99, 102, 241, 0.4);
+        }
+
+        [data-theme="light"] .srv-card-header {
+            background: linear-gradient(
+                135deg,
+                rgba(99, 102, 241, 0.08),
+                rgba(124, 58, 237, 0.04)
+            );
+            border-bottom: 1px solid rgba(99, 102, 241, 0.12);
+        }
+
+        [data-theme="light"] .srv-card-icon {
+            background: linear-gradient(
+                135deg,
+                rgba(99, 102, 241, 0.15),
+                rgba(124, 58, 237, 0.1)
+            );
+            color: #4338ca;
+            box-shadow: 0 2px 6px rgba(99, 102, 241, 0.15);
+        }
+
+        [data-theme="light"] .srv-card-name {
+            color: #1a1a2e;
+        }
+
+        [data-theme="light"] .srv-card-system {
+            color: #6b7280;
+        }
+
+        /* ══ Card Row - Light Mode ══ */
+        [data-theme="light"] .srv-card-row {
+            color: #374151;           /* ← כהה וברור על רקע בהיר */
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        [data-theme="light"] .srv-card-row:hover {
+            background: rgba(99, 102, 241, 0.05);
+            color: #1a1a2e;
+        }
+
+        [data-theme="light"] .srv-card-row i {
+            color: #4338ca;
+            opacity: 0.9;
+        }
+
+        [data-theme="light"] .srv-card-footer {
+            border-top: 1px solid rgba(99, 102, 241, 0.1);
+            background: rgba(99, 102, 241, 0.03);
+        }
+
+        [data-theme="light"] .srv-card-notes {
+            color: #6b7280;
+            border-top: 1px dashed rgba(99, 102, 241, 0.1);
+            background: rgba(0, 0, 0, 0.02);
+        }
+
+        [data-theme="light"] .srv-card-notes i {
+            color: #4338ca;
         }
         .srv-card-title-wrap { flex: 1; min-width: 0; }
         .srv-card-name {
@@ -14687,17 +15816,11 @@ class ServersDashboard {
             flex-shrink: 0;
         }
         .srv-card-body {
-            padding: 10px 14px;
+            padding: 12px 14px;
             display: flex;
             flex-direction: column;
-            gap: 5px;
-        }
-        .srv-card-row {
-            display: flex;
-            align-items: center;
-            gap: 7px;
-            font-size: 0.78rem;
-            color: #5c5c5c;
+            gap: 0;
+            background: transparent;
         }
         .srv-card-row i {
             width: 14px;
@@ -14705,6 +15828,11 @@ class ServersDashboard {
             color: #555;
             font-size: 0.72rem;
             flex-shrink: 0;
+        }
+
+        /* Dark Mode */
+        [data-theme="dark"] .srv-card-row {
+            color: white;
         }
         .srv-card-footer {
             display: flex;
@@ -14895,7 +16023,7 @@ class ServersDashboard {
             position: fixed;
             inset: 0;
             background: rgba(0,0,0,0.75);
-            z-index: 99999;
+            z-index: 9999;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -19939,6 +21067,12 @@ class ServersDashboard {
             transition: all 0.2s;
             white-space: nowrap;
         }
+        /* ══ Light Mode ══ */
+        [data-theme="light"]  #srvBulkGapsBtn {
+            background: rgba(245,158,11,0.12);
+            border: 1px solid rgba(245,158,11,0.4);
+            color: #b45309;
+        }
         #srvBulkGapsBtn:hover {
             background: rgba(245,158,11,0.22);
             border-color: rgba(245,158,11,0.6);
@@ -20071,6 +21205,320 @@ class ServersDashboard {
             border-bottom-color: rgba(99,102,241,0.1);
             color: #555;
         }
+        /* ══ Rename Button ══ */
+        .srv-rename-btn {
+            background: rgba(245,158,11,0.12);
+            border: 1px solid rgba(245,158,11,0.3);
+            border-radius: 5px;
+            color: #fcd34d;
+            cursor: pointer;
+            font-size: 0.7rem;
+            padding: 3px 7px;
+            margin-right: 6px;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            vertical-align: middle;
+        }
+
+        .srv-rename-btn:hover {
+            background: rgba(245,158,11,0.25);
+            border-color: rgba(245,158,11,0.6);
+            color: #fde68a;
+            transform: scale(1.05);
+        }
+
+        [data-theme="light"] .srv-rename-btn {
+            background: rgba(245,158,11,0.1);
+            border-color: rgba(245,158,11,0.35);
+            color: #b45309;
+        }
+        /* ══ Permissions Modal ══ */
+        .srv-permissions-btn {
+            padding: 6px 10px;
+            background: rgba(99,102,241,0.12);
+            border: 1px solid rgba(99,102,241,0.35);
+            border-radius: 6px;
+            color: #a5b4fc;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .srv-permissions-btn:hover {
+            background: rgba(99,102,241,0.25);
+            border-color: rgba(99,102,241,0.6);
+        }
+        .srv-perm-section {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .srv-perm-section-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: rgba(255,255,255,0.03);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            font-size: 0.82rem;
+        }
+        .srv-perm-count {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 20px;
+            height: 18px;
+            padding: 0 6px;
+            border-radius: 9px;
+            font-size: 0.68rem;
+            font-weight: 700;
+            margin-right: auto;
+        }
+        .srv-perm-user-list {
+            padding: 6px 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            max-height: 160px;
+            overflow-y: auto;
+        }
+        .srv-perm-user-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 8px;
+            border-radius: 5px;
+            transition: background 0.12s;
+            font-size: 0.8rem;
+        }
+        .srv-perm-user-item:hover {
+            background: rgba(255,255,255,0.04);
+        }
+        .srv-perm-user-name {
+            flex: 1;
+            color: #ccc;
+            font-family: monospace;
+        }
+        /* ══ Permissions Modal ══ */
+        .srv-permissions-btn {
+            padding: 6px 10px;
+            background: rgba(99,102,241,0.12);
+            border: 1px solid rgba(99,102,241,0.35);
+            border-radius: 6px;
+            color: #a5b4fc;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .srv-permissions-btn:hover {
+            background: rgba(99,102,241,0.25);
+            border-color: rgba(99,102,241,0.6);
+        }
+        .srv-perm-section {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .srv-perm-section-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: rgba(255,255,255,0.03);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            font-size: 0.82rem;
+        }
+        .srv-perm-count {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 20px;
+            height: 18px;
+            padding: 0 6px;
+            border-radius: 9px;
+            font-size: 0.68rem;
+            font-weight: 700;
+            margin-right: auto;
+        }
+        .srv-perm-user-list {
+            padding: 6px 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            max-height: 160px;
+            overflow-y: auto;
+        }
+        .srv-perm-user-list::-webkit-scrollbar { width: 5px; }
+        .srv-perm-user-list::-webkit-scrollbar-track { background: #111; }
+        .srv-perm-user-list::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 3px;
+        }
+        .srv-perm-user-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 8px;
+            border-radius: 5px;
+            transition: background 0.12s;
+            font-size: 0.8rem;
+        }
+        .srv-perm-user-item:hover {
+            background: rgba(255,255,255,0.04);
+        }
+        .srv-perm-user-name {
+            flex: 1;
+            color: #ccc;
+            font-family: monospace;
+        }
+        .srv-perm-remove-btn {
+            background: none;
+            border: 1px solid transparent;
+            border-radius: 4px;
+            color: #444;
+            cursor: pointer;
+            font-size: 0.65rem;
+            padding: 2px 5px;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+        .srv-perm-remove-btn:hover {
+            background: rgba(239,68,68,0.15);
+            border-color: rgba(239,68,68,0.35);
+            color: #fca5a5;
+        }
+        .srv-perm-add-row {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            padding: 8px 10px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            background: rgba(255,255,255,0.01);
+        }
+        .srv-perm-add-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 30px;
+            height: 30px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: all 0.15s;
+            flex-shrink: 0;
+        }
+        .srv-perm-add-btn:hover {
+            filter: brightness(1.3);
+            transform: scale(1.05);
+        }
+
+        /* ── Light Mode ── */
+        [data-theme="light"] .srv-perm-section {
+            background: #fff;
+            border: 1px solid #e0e0f0;
+        }
+        [data-theme="light"] .srv-perm-section-header {
+            background: #f5f5ff;
+            border-bottom: 1px solid #e8e8f8;
+        }
+        [data-theme="light"] .srv-perm-user-item:hover {
+            background: rgba(0,0,0,0.03);
+        }
+        [data-theme="light"] .srv-perm-user-name {
+            color: #333;
+        }
+        [data-theme="light"] .srv-perm-remove-btn {
+            color: #bbb;
+        }
+        [data-theme="light"] .srv-perm-remove-btn:hover {
+            background: rgba(239,68,68,0.08);
+            border-color: rgba(239,68,68,0.25);
+            color: #dc2626;
+        }
+        [data-theme="light"] .srv-perm-add-row {
+            background: rgba(0,0,0,0.01);
+            border-top: 1px solid #eee;
+        }
+        [data-theme="light"] .srv-permissions-btn {
+            background: rgba(99,102,241,0.08);
+            border-color: rgba(99,102,241,0.3);
+            color: #4338ca;
+        }
+        [data-theme="light"] .srv-permissions-btn:hover {
+            background: rgba(99,102,241,0.15);
+        }
+        /* ══ Permissions Legend ══ */
+        .srv-perm-legend {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.07);
+            border-radius: 8px;
+            padding: 12px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .srv-perm-legend-title {
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: #777;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 2px;
+        }
+        .srv-perm-legend-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.78rem;
+        }
+        .srv-perm-legend-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            border-radius: 8px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            border: 1px solid;
+            white-space: nowrap;
+            flex-shrink: 0;
+            min-width: 80px;
+            justify-content: center;
+        }
+        .srv-perm-legend-desc {
+            color: #888;
+            font-size: 0.75rem;
+            line-height: 1.4;
+        }
+
+        /* ── Admin Badge ── */
+        .srv-admin-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            border-radius: 8px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            border: 1px solid;
+            cursor: default;
+            transition: all 0.2s;
+        }
+
+        /* ── Light Mode ── */
+        [data-theme="light"] .srv-perm-legend {
+            background: rgba(0,0,0,0.02);
+            border: 1px solid rgba(0,0,0,0.06);
+        }
+        [data-theme="light"] .srv-perm-legend-title { color: #555; }
+        [data-theme="light"] .srv-perm-legend-desc  { color: #666; }
         `;
         document.head.appendChild(style);
     }

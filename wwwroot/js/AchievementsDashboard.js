@@ -5,7 +5,7 @@ class AchievementsDashboard {
         this.achievements = [];
         this.searchTerm = '';
         this.filterCategory = 'ALL';
-        this.sortMode = localStorage.getItem('achSortMode') || 'date_desc';
+        this.sortMode = userSettings.getItem('achSortMode') || 'date_desc';
         this.currentUser = null;
         this.isPrivileged = false;
         this.isCanEdit = false;
@@ -14,14 +14,15 @@ class AchievementsDashboard {
 
         // *** צבעי קטגוריות ***
         this.CATEGORY_COLORS = {
-            'נוהל': { bg: '#e0f2fe', border: '#0284c7', icon: 'fa-file-alt', text: '#0369a1' },
-            'תקלה': { bg: '#fef3c7', border: '#d97706', icon: 'fa-tools', text: '#92400e' },
-            'שיפור': { bg: '#d1fae5', border: '#059669', icon: 'fa-chart-line', text: '#065f46' },
-            'הדרכה': { bg: '#ede9fe', border: '#7c3aed', icon: 'fa-chalkboard-teacher', text: '#4c1d95' },
-            'פרויקט': { bg: '#fce7f3', border: '#db2777', icon: 'fa-project-diagram', text: '#9d174d' },
-            'דשבורדים': { bg: '#ecfdf5', border: '#10b981', icon: 'fa-chart-bar', text: '#064e3b' },
-            'תיעוד': { bg: '#fff7ed', border: '#ea580c', icon: 'fa-book', text: '#7c2d12' },
-            'אחר': { bg: '#f1f5f9', border: '#64748b', icon: 'fa-star', text: '#334155' },
+            'נוהל': { bg: '#dbeafe', border: '#1d4ed8', icon: 'fa-file-alt', text: '#1e3a8a' }, // 🔵 כחול כהה
+            'שיפור': { bg: '#bbf7d0', border: '#16a34a', icon: 'fa-chart-line', text: '#14532d' }, // 🟢 ירוק בוהק
+            'הדרכה': { bg: '#fde68a', border: '#d97706', icon: 'fa-chalkboard-teacher', text: '#78350f' }, // 🟡 צהוב-כתום
+            'פרויקט': { bg: '#fecaca', border: '#dc2626', icon: 'fa-project-diagram', text: '#7f1d1d' }, // 🔴 אדום
+            'מודול': { bg: '#fef3c7', border: '#f59e0b', icon: 'fa-puzzle-piece', text: '#92400e' }, // 🟠 כתום-זהב
+            'דשבורד': { bg: '#cffafe', border: '#0891b2', icon: 'fa-chart-bar', text: '#164e63' }, // 🩵 ציאן
+            'תיעוד': { bg: '#fce7f3', border: '#be185d', icon: 'fa-book', text: '#831843' }, // 🩷 ורוד עמוק
+            'אוטומציה': { bg: '#d1fae5', border: '#059669', icon: 'fa-robot', text: '#064e3b' }, // 💚 טורקיז-ירוק
+            'אחר': { bg: '#e2e8f0', border: '#475569', icon: 'fa-star', text: '#1e293b' }, // ⚫ אפור כהה
         };
 
         // *** תצורת השפעה (במקום עדיפות) ***
@@ -358,8 +359,7 @@ class AchievementsDashboard {
                 <i class="fas fa-trophy"></i>
             </div>
             <div class="ach-stat-info">
-                <div class="ach-stat-label">סה"כ השגים</div>
-                <div class="ach-stat-value">${total}</div>
+                <div class="ach-stat-label">סה"כ ${total} השגים</div>
             </div>
         </div>
 
@@ -510,8 +510,8 @@ class AchievementsDashboard {
                 ${this.escHtml(ach.title)}
                 ${ach.description ? `
                 <div class="ach-table-desc">
-                    ${this.escHtml(ach.description.substring(0, 80))}
-                    ${ach.description.length > 80 ? '...' : ''}
+                    ${this.escHtml(ach.description.substring(0, 240))}
+                    ${ach.description.length > 240 ? '...' : ''}
                 </div>` : ''}
             </td>
             <td>
@@ -1373,7 +1373,7 @@ class AchievementsDashboard {
             }
             if (e.target.id === 'achSortSelect') {
                 this.sortMode = e.target.value;
-                localStorage.setItem('achSortMode', this.sortMode);
+                userSettings.setItem('achSortMode', this.sortMode);
                 this.renderBoard();
             }
             // ייבוא אקסל - בחירת קובץ
@@ -1577,10 +1577,12 @@ class AchievementsDashboard {
         /* ===== כל הסגנונות הקיימים + תוספות ===== */
 
         .ach-root {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
             background: #1a1a2e; color: #e0e0e0;
             font-family: 'Segoe UI', Arial, sans-serif;
-            min-height: 100vh; display: flex;
-            flex-direction: column; direction: rtl;
         }
         .ach-header {
             display: flex; align-items: center;
@@ -1770,7 +1772,8 @@ class AchievementsDashboard {
 
         /* ===== לוח ===== */
         .ach-board {
-            flex: 1; overflow-y: auto; padding: 16px;
+            flex: 1;
+            overflow: hidden;
             background: radial-gradient(ellipse at top,
                 #1e1e3a 0%, #111122 100%);
         }
@@ -1803,9 +1806,14 @@ class AchievementsDashboard {
 
         /* ===== תצוגת כרטיסים ===== */
         .ach-board-cards {
+            padding: 16px;
+            height: 100%;
+            overflow-y: auto;
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 16px; align-content: start;
+            gap: 16px;
+            align-content: start;
+            box-sizing: border-box;
         }
         .ach-card {
             background: #1e1e30; border: 1px solid #2a2a4e;
@@ -1925,11 +1933,32 @@ class AchievementsDashboard {
             border-color: rgba(239,68,68,0.5); color: #fca5a5;
         }
 
+        .dashboard-content {
+            height: 100%;
+        }
+
         /* ===== תצוגת טבלה ===== */
-        .ach-board-table { padding: 16px; }
+        .ach-board-table {
+            padding: 16px;
+            height: 100%;
+            box-sizing: border-box;
+            overflow: hidden;
+            display: flex; 
+            flex-direction: column;
+        }
         .ach-table-wrapper {
-            overflow-x: auto; border-radius: 10px;
+            overflow-x: auto;
+            overflow-y: auto;
+            flex: 1;
+            min-height: 0; 
+            border-radius: 10px;
             border: 1px solid #2a2a4e;
+            box-sizing: border-box;
+        }
+        .ach-table thead {
+            position: sticky;
+            top: 0;
+            z-index: 10;
         }
         .ach-table {
             width: 100%; border-collapse: collapse; direction: rtl;
@@ -1962,7 +1991,12 @@ class AchievementsDashboard {
         .ach-table tbody tr:hover .ach-table-actions { opacity: 1; }
 
         /* ===== ציר זמן ===== */
-        .ach-board-timeline { padding: 16px; }
+        .ach-board-timeline {
+            padding: 16px;
+            height: 100%;
+            overflow-y: auto;
+            box-sizing: border-box;
+        }
         .ach-timeline { max-width: 900px; margin: 0 auto; }
         .ach-timeline-section { margin-bottom: 32px; }
         .ach-timeline-month {
@@ -2155,7 +2189,7 @@ class AchievementsDashboard {
             background: #fff; border-color: #e0e0e0;
             box-shadow: 0 2px 8px rgba(0,0,0,0.08);
         }
-                [data-theme="light"] .ach-card-title { color: #1a1a2e; }
+        [data-theme="light"] .ach-card-title { color: #1a1a2e; }
         [data-theme="light"] .ach-card-desc { color: #666; }
         [data-theme="light"] .ach-card-footer { border-top-color: #eee; }
         [data-theme="light"] .ach-card-date { color: #888; }

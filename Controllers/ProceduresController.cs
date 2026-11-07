@@ -18,15 +18,15 @@ namespace MyWebApp.Controllers
         private readonly string _pdfCachePath; 
         private readonly string _metadataPath; 
         private readonly string _quickProceduresPath;
-        private readonly string _baseFilesPath;
 
-        public ProceduresController(IWebHostEnvironment env)
+        public ProceduresController()
         {
-            _baseFilesPath = Path.Combine(env.WebRootPath, "assets", "files");
-            _proceduresPath = Path.Combine(_baseFilesPath, "Procedures");
+            _proceduresPath = PortalPaths.UnderFiles("Procedures");
             _pdfCachePath = Path.Combine(Path.GetTempPath(), "ProceduresPdfCache");
-            _metadataPath = Path.Combine(_baseFilesPath, "Procedures", "Metadata");
-            _quickProceduresPath = Path.Combine(_baseFilesPath, "Procedures", "QuickProcedures");
+            _metadataPath = Path.Combine(PortalPaths.UnderFiles(@"Procedures"), "Metadata");
+            _quickProceduresPath = Path.Combine(
+                PortalPaths.UnderFiles(@"Procedures"), 
+                "QuickProcedures");
 
             // Create cache directory if it doesn't exist
             if (!Directory.Exists(_pdfCachePath))
@@ -534,7 +534,7 @@ namespace MyWebApp.Controllers
             try
             {
                 // Path to images folder
-                var imagesPath = Path.Combine(_baseFilesPath, "ProcedureImages");
+                var imagesPath = PortalPaths.UnderFiles(@"ProcedureImages");
                 var imagePath = Path.Combine(imagesPath, fileName);
                 
                 if (!System.IO.File.Exists(imagePath))

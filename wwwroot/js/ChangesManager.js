@@ -7,7 +7,7 @@ class ChangesManager {
 
         // מצב בקשת רענון חיצוני
         this.REFRESH_API_URL =
-            'https://prod-api-cloudbeat.menora.co.il/cases/api/case/3863' +
+            'https://prod-api-cloudbeat.menora.co.il/cases/api/case/3872' +
             '/run?apiKey=54ae6a3c-c475-48f1-a50d-b200ea335fa5';
         this._refreshPending = false;  // האם כבר שלחנו בקשת רענון
         this._postRefreshTimeout = null;   // טיימר ל-10 דקות
@@ -20,8 +20,16 @@ class ChangesManager {
         this.tableSearch = '';
 
         // מצב לוח שנה
-        this.calendarMonth = new Date().getMonth() + 1; // 1-12
+        this.calendarMonth = new Date().getMonth() + 1;
         this.calendarYear = new Date().getFullYear();
+
+        // ── מנגנון התראות שינויים ──────────────────────────────
+        this.changeAlarmInterval = null;
+        this.ALARM_CHECK_MINUTES = 1;           // בדיקה כל דקה
+        this.ALARM_BEFORE_MINUTES = 5;         // התראה 10 דקות לפני
+        this.shownChangeAlarms = new Set();     // התראות שכבר הוצגו
+        this.shownAlarmEmails = new Set(); // מניעת כפילות במיילים
+        // ──────────────────────────────────────────────────────
 
         this.setupViewToggle();
         this.setupImportOldSystem();
@@ -31,6 +39,549 @@ class ChangesManager {
         // טעינה ראשונית לפי תצוגה
         this.loadCurrentView();
         this.startAutoRefresh();
+        this.startChangeAlarmMonitoring(); // ← הפעלת מנגנון התראות
+    }
+
+    // ==========================================================
+    // מנגנון התראות שינויים קרובים
+    // ==========================================================
+
+    /**
+     * מתחיל את הבדיקה התקופתית של שינויים קרובים
+     */
+    startChangeAlarmMonitoring() {
+        this.stopChangeAlarmMonitoring();
+
+        // בדיקה ראשונית מיידית
+        this.checkUpcomingChanges();
+
+        // בדיקה כל דקה
+        this.changeAlarmInterval = setInterval(() => {
+            this.checkUpcomingChanges();
+        }, this.ALARM_CHECK_MINUTES * 60 * 1000);
+    }
+
+    /**
+     * עוצר את הבדיקה התקופתית
+     */
+    stopChangeAlarmMonitoring() {
+        if (this.changeAlarmInterval) {
+            clearInterval(this.changeAlarmInterval);
+            this.changeAlarmInterval = null;
+        }
+    }
+
+    /**
+     * בודק אם יש שינויים שעומדים להתחיל או להסתיים
+     * ומציג התראה 10 דקות לפני
+     */
+    checkUpcomingChanges() {
+        if (!this.changesData || this.changesData.length === 0) return;
+
+        const now = new Date();
+
+        this.changesData.forEach(change => {
+            // ── סנן מבוטלים ──────────────────────────────────────
+            const status = (change.status || '').toLowerCase().trim();
+            if (['cancelled', 'canceled', 'בוטל', 'pending', 'ממתין']
+                .includes(status)) return;
+
+            // ── בדוק תאריך התחלה ─────────────────────────────────
+            this._checkSingleAlarm(change, 'start', now);
+
+            // ── בדוק תאריך סיום ──────────────────────────────────
+            this._checkSingleAlarm(change, 'end', now);
+        });
+    }
+
+    /**
+     * בודק ומציג התראה לאירוע בודד (התחלה או סיום)
+     * @param {Object} change - אובייקט השינוי
+     * @param {'start'|'end'} type - סוג האירוע
+     * @param {Date} now - הזמן הנוכחי
+     */
+    _checkSingleAlarm(change, type, now) {
+        // ── קבל את זמן האירוע ─────────────────────────────────
+        const timeStr = type === 'start'
+            ? this._getEffectiveStartTime(change)
+            : this._getEffectiveEndTime(change);
+
+        if (!timeStr) return;
+
+        const eventTime = this.parseDateWithTime(timeStr);
+        if (!eventTime || isNaN(eventTime.getTime())) return;
+
+        const diffMs = eventTime.getTime() - now.getTime();
+        const diffMinutes = diffMs / (1000 * 60);
+
+        if (diffMinutes >= 1 && diffMinutes <= 10) {
+
+            // מפתח ייחודי לפי שעה - לא מילישניות
+            const eventDateKey =
+                `${eventTime.getFullYear()}-` +
+                `${eventTime.getMonth()}-` +
+                `${eventTime.getDate()}-` +
+                `${eventTime.getHours()}`;
+
+            const emailKey =
+                `EMAIL_${change.number}_${type}_${eventDateKey}`;
+
+            // ── סנן כפילויות בצד הלקוח קודם (מהיר) ──────────────
+            if (!this.shownAlarmEmails.has(emailKey)) {
+                this.shownAlarmEmails.add(emailKey);
+
+                // ── בדוק בשרת אם כבר נשלח (atomic check + mark) ──
+                this._sendAlarmEmailIfNotSent(change, type, eventTime, diffMinutes, emailKey);
+            }
+        }
+
+        // ── פופאפ: חלון -1 עד +5 דקות ──
+        if (diffMinutes < -1 || diffMinutes > this.ALARM_BEFORE_MINUTES) return;
+
+        // ── מפתח ייחודי למניעת כפילויות ──────────────────────
+        const alarmKey = `${change.number}_${type}_${eventTime.toISOString()}`;
+        if (this.shownChangeAlarms.has(alarmKey)) return;
+
+        // ── הצג את ההתראה ─────────────────────────────────────
+        this._showChangeAlarmPopup(change, type, eventTime, diffMinutes);
+        this.shownChangeAlarms.add(alarmKey);
+
+        // ── נקה מהזיכרון אחרי 20 דקות ────────────────────────
+        setTimeout(() => {
+            this.shownChangeAlarms.delete(alarmKey);
+        }, 20 * 60 * 1000);
+    }
+
+    // -------------------------------------------------------
+    // Wrapper: בודק בשרת לפני שליחה
+    // -------------------------------------------------------
+    async _sendAlarmEmailIfNotSent(change, type, eventTime, diffMinutes, emailKey) {
+        try {
+            // ── שאל את השרת: האם לשלוח? ──────────────────────
+            const checkRes = await fetch('/Changes/CheckAndMarkAlarmEmail', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ emailKey })
+            });
+
+            const checkData = await checkRes.json();
+
+            // ── אם השרת אמר לא - עצור ────────────────────────
+            if (!checkData.shouldSend) {
+                console.log(
+                    `[AlarmEmail] מייל כבר נשלח - דילוג: ${emailKey}`
+                );
+                return;
+            }
+
+            // ── שרת אישר - שלח ───────────────────────────────
+            await this._sendAlarmEmail(
+                change, type, eventTime, diffMinutes
+            );
+
+        } catch (err) {
+            console.warn('[AlarmEmail] שגיאה בבדיקת שרת:', err);
+            // במקרה של שגיאת תקשורת - שלח בכל זאת
+            await this._sendAlarmEmail(change, type, eventTime, diffMinutes);
+        }
+    }
+
+    /**
+     * מציג פופאפ התראה לשינוי קרוב
+     * @param {Object} change - אובייקט השינוי
+     * @param {'start'|'end'} type - סוג האירוע
+     * @param {Date} eventTime - זמן האירוע
+     * @param {number} diffMinutes - הפרש דקות מהעכשיו
+     */
+    _showChangeAlarmPopup(change, type, eventTime, diffMinutes) {
+        // ── עיצוב מחרוזת הזמן ────────────────────────────────
+        const pad = n => String(n).padStart(2, '0');
+        const timeDisplay =
+            `${pad(eventTime.getHours())}:${pad(eventTime.getMinutes())}`;
+
+        const dateDisplay = this.formatDateForDisplay(
+            type === 'start'
+                ? this._getEffectiveStartTime(change)
+                : this._getEffectiveEndTime(change)
+        );
+
+        // ── בניית הודעה ───────────────────────────────────────
+        const isStarting = type === 'start';
+        const minutesLeft = Math.round(Math.abs(diffMinutes));
+        const isNow = minutesLeft <= 1;
+
+        const eventLabel = isStarting ? 'תחילת' : 'סיום';
+        const actionMsg = isStarting
+            ? 'יש לוודא התחלה בזמן המתוכנן מול מוביל הפעילות ולעדכן את קבוצת ה־WhatsApp בהתאם.'
+            : 'אנא ודא שהפעילות הסתיימה בהצלחה ועדכן בהתאם בקבוצת ה-WhatsApp';
+
+        const titleText = isNow
+            ? `⏰ ${eventLabel} פעילות עכשיו!`
+            : `⏰ ${eventLabel} פעילות בעוד ${minutesLeft} דקות`;
+
+        const iconClass = isStarting ? 'fa-play-circle' : 'fa-stop-circle';
+        const iconColor = isStarting ? '#22c55e' : '#ef4444';
+        const borderColor = isStarting ? '#22c55e' : '#ef4444';
+        const headerBg = isStarting
+            ? 'linear-gradient(135deg,#14532d,#166534)'
+            : 'linear-gradient(135deg, #153c64, #1b3099)';
+
+        // ── יצירת אלמנט ה-DOM ────────────────────────────────
+        const popupId = `changeAlarm_${change.number}_${type}`;
+
+        // הסר פופאפ קיים לאותו שינוי
+        document.getElementById(popupId)?.remove();
+
+        const popup = document.createElement('div');
+        popup.id = popupId;
+        popup.className = 'change-alarm-popup';
+        popup.setAttribute('role', 'alertdialog');
+        popup.setAttribute('aria-live', 'assertive');
+
+        popup.innerHTML = `
+            <div class="change-alarm-content" 
+                 style="border-right: 4px solid ${borderColor};">
+
+                <!-- כפתור סגירה -->
+                <button class="change-alarm-close-btn"
+                        onclick="this.closest('.change-alarm-popup').remove()"
+                        aria-label="סגור התראה">
+                    <i class="fas fa-times"></i>
+                </button>
+
+                <!-- כותרת -->
+                <div class="change-alarm-header"
+                     style="background: ${headerBg};">
+                    <div class="change-alarm-title">
+                        <h3>${titleText}</h3>
+                        <span class="change-alarm-subtitle">
+                            שינוי מספר: ${change.number}
+                        </span>
+                    </div>
+                </div>
+
+                <!-- גוף ההתראה -->
+                <div class="change-alarm-body">
+
+                    <!-- מספר שינוי -->
+                    <div class="change-alarm-row change-alarm-id">
+                        <i class="fas fa-hashtag" style="color:#a78bfa;"></i>
+                        <span class="change-alarm-label">מספר שינוי:</span>
+                        <strong class="change-alarm-value">
+                            ${change.number || ''}
+                        </strong>
+                    </div>
+
+                    <!-- שם הפעילות -->
+                    <div class="change-alarm-row change-alarm-name">
+                        <i class="fas fa-tag" style="color:#a78bfa;"></i>
+                        <span class="change-alarm-label">שם פעילות:</span>
+                        <strong class="change-alarm-value">
+                            ${change.name || ''}
+                        </strong>
+                    </div>
+
+                    <!-- שעה -->
+                    <div class="change-alarm-row">
+                        <i class="fas fa-clock" style="color:#60a5fa;"></i>
+                        <span class="change-alarm-label">
+                            שעת ${eventLabel} פעילות:
+                        </span>
+                        <strong class="change-alarm-value">
+                            ${timeDisplay}
+                            <span class="change-alarm-date">
+                                (${dateDisplay})
+                            </span>
+                        </strong>
+                    </div>
+
+                    <!-- מובילי פעילות -->
+                    <div class="change-alarm-row change-alarm-presenters">
+                        <i class="fas fa-users" style="color:#22c55e;"></i>
+                        <span class="change-alarm-label">מובילי פעילות:</span>
+                        <strong class="change-alarm-value">
+                            ${this.cleanPresenters(change.presenters)}
+                        </strong>
+                    </div>
+
+                    <!-- סטטוס -->
+                    ${change.status ? `
+                    <div class="change-alarm-row">
+                        <i class="fas fa-info-circle" style="color:#fbbf24;"></i>
+                        <span class="change-alarm-label">סטטוס:</span>
+                        <span class="change-alarm-value">
+                            ${this.mapStatus(change.status)}
+                        </span>
+                    </div>` : ''}
+
+                    <!-- הודעת פעולה -->
+                    <div class="change-alarm-message">
+                        <i class="fas fa-bullhorn"></i>
+                        <p>
+                            שים לב! פעילות
+                            <strong>${change.name || change.number}</strong>
+                            עומדת ל${isStarting ? 'התחיל' : 'הסתיים'}
+                            ב-<strong>${timeDisplay}</strong>.
+                            <br>${actionMsg}
+                        </p>
+                    </div>
+
+                </div>
+
+                <!-- כפתורי פעולה -->
+                <div class="change-alarm-footer">
+
+                    ${change.link ? `
+                    <a href="${change.link}"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       class="change-alarm-btn change-alarm-btn-link"
+                       onclick="event.stopPropagation()">
+                        <i class="fas fa-external-link-alt"></i>
+                        פתח קישור
+                    </a>` : ''}
+
+                    <button class="change-alarm-btn change-alarm-btn-snooze"
+                            onclick="window.changesManager
+                                ._snoozeChangeAlarm(
+                                    '${change.number}',
+                                    '${type}',
+                                    '${eventTime.toISOString()}',
+                                    this.closest('.change-alarm-popup')
+                                )">
+                        <i class="fas fa-bell-slash"></i>
+                        דחה 5 דקות
+                    </button>
+
+                    <button class="change-alarm-btn change-alarm-btn-close"
+                            onclick="this.closest('.change-alarm-popup').remove()">
+                        <i class="fas fa-check"></i>
+                        הבנתי
+                    </button>
+
+                </div>
+
+            </div>
+        `;
+
+        document.body.appendChild(popup);
+
+        // ── אנימציה ───────────────────────────────────────────
+        requestAnimationFrame(() => {
+            popup.classList.add('show');
+        });
+
+        // ── סגירה אוטומטית אחרי 3 דקות ──────────────────────
+        setTimeout(() => {
+            if (popup.parentNode) {
+                popup.classList.remove('show');
+                setTimeout(() => popup.remove(), 400);
+            }
+        }, 3 * 60 * 1000);
+    }
+
+    // -------------------------------------------------------
+    // שליחת מייל התראה לשינוי קרוב
+    // -------------------------------------------------------
+    async _sendAlarmEmail(change, type, eventTime, diffMinutes) {
+        try {
+            const pad = n => String(n).padStart(2, '0');
+            const timeDisplay =
+                `${pad(eventTime.getHours())}:${pad(eventTime.getMinutes())}`;
+            const dateDisplay = this.formatDateForDisplay(
+                type === 'start'
+                    ? this._getEffectiveStartTime(change)
+                    : this._getEffectiveEndTime(change)
+            );
+
+            const minutesLeft = Math.round(Math.abs(diffMinutes));
+            const isNow       = minutesLeft <= 1;
+
+            const payload = {
+                toEmail:      'noc@menoramivt.co.il',
+                toName:       'NOC',
+                changeNumber: change.number  || '',
+                changeName:   change.name    || '',
+                eventType:    type,
+                eventTime:    timeDisplay,
+                eventDate:    dateDisplay,
+                presenters:   this.cleanPresenters(change.presenters || ''),
+                status:       this.mapStatus(change.status || ''),
+                system:       change.system  || '',
+                link:         change.link    || '',
+                minutesLeft:  minutesLeft,
+                isNow:        isNow
+            };
+
+            await fetch('/Changes/SendAlarmEmail', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify(payload)
+            });
+
+        } catch (err) {
+            console.warn('[ChangeAlarm] שגיאה בשליחת מייל התראה:', err);
+        }
+    }
+
+    /**
+     * דחיית התראה ב-5 דקות
+     */
+    _snoozeChangeAlarm(changeNumber, type, eventTimeISO, popupEl) {
+        // סגור פופאפ נוכחי
+        if (popupEl) {
+            popupEl.classList.remove('show');
+            setTimeout(() => popupEl.remove(), 400);
+        }
+
+        // מחק מהסט כדי שתוצג שוב
+        const change = this.changesData.find(c => c.number === changeNumber);
+        if (!change) return;
+
+        const eventTime = new Date(eventTimeISO);
+        const alarmKey =
+            `${changeNumber}_${type}_${eventTime.toISOString()}`;
+        this.shownChangeAlarms.delete(alarmKey);
+
+        // הצג שוב אחרי 5 דקות
+        setTimeout(() => {
+            const now = new Date();
+            const diffMinutes =
+                (eventTime.getTime() - now.getTime()) / (1000 * 60);
+            if (change) {
+                this._showChangeAlarmPopup(change, type, eventTime, diffMinutes);
+            }
+        }, 5 * 60 * 1000);
+
+        // הצג הודעת אישור
+        this._showSnoozeToast(5);
+    }
+
+    /**
+     * מציג הודעת "נדחה" קצרה
+     */
+    _showSnoozeToast(minutes) {
+        const toast = document.createElement('div');
+        toast.className = 'change-alarm-snooze-toast';
+        toast.innerHTML = `
+            <i class="fas fa-bell-slash"></i>
+            ההתראה נדחתה ב-${minutes} דקות
+        `;
+        document.body.appendChild(toast);
+
+        requestAnimationFrame(() => toast.classList.add('show'));
+
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => toast.remove(), 400);
+        }, 3000);
+    }
+
+    // טעינת נתוני שינויים מהשרת
+    async loadChanges() {
+        try {
+            // בדיקת רענון חיצוני - מאחורי הקלעים, לא חוסמת
+            this.checkAndTriggerExternalRefresh(); // ← לא await - רץ ברקע
+            this.showLoading(true);
+
+            const response = await fetch('/Changes/GetChanges');
+            const data = await response.json();
+
+            this.showLoading(false);
+
+            if (!data.success) {
+                console.error('Error loading changes:', data.message);
+                this.showError('שגיאה בטעינת נתוני שינויים');
+                return;
+            }
+
+            this.changesData = data.changes || [];
+
+            // ── תיקון: שימוש ב-this במקום changesManager ──────
+            this.loadCurrentView();
+
+            // ── לאחר טעינה - בדוק התראות ─────────────────────
+            this.checkUpcomingChanges();
+
+        } catch (error) {
+            console.error('Error fetching changes:', error);
+            this.showLoading(false);
+            this.showError('שגיאה בטעינת נתוני שינויים');
+        }
+    }
+
+    // -------------------------------------------------------
+    // טעינת עמוד טבלה מהשרת
+    // -------------------------------------------------------
+    async loadTablePage(page = 1) {
+        try {
+            this.showLoading(true);
+            this.tablePage = page;
+
+            const params = new URLSearchParams({
+                page: this.tablePage,
+                pageSize: this.tablePageSize,
+                search: this.tableSearch
+            });
+
+            const response = await fetch(`/Changes/GetChanges?${params}`);
+            const data = await response.json();
+
+            this.showLoading(false);
+
+            if (!data.success) {
+                this.showError('שגיאה בטעינת נתוני שינויים: ' + data.message);
+                return;
+            }
+
+            this.changesData = data.changes || [];
+            this.tableTotalPages = data.pagination.totalPages;
+            this.tableTotalCount = data.pagination.totalCount;
+
+            this.displayChangesTable();
+
+            // ── בדוק התראות אחרי עדכון הנתונים ───────────────
+            this.checkUpcomingChanges();
+
+        } catch (error) {
+            this.showLoading(false);
+            this.showError('שגיאת תקשורת: ' + error.message);
+        }
+    }
+
+    // -------------------------------------------------------
+    // טעינת חודש ספציפי ללוח שנה
+    // -------------------------------------------------------
+    async loadCalendarMonth(month, year) {
+        try {
+            this.showLoading(true);
+            this.calendarMonth = month;
+            this.calendarYear = year;
+
+            const params = new URLSearchParams({ month, year });
+            const response =
+                await fetch(`/Changes/GetChangesByMonth?${params}`);
+            const data = await response.json();
+
+            this.showLoading(false);
+
+            if (!data.success) {
+                this.showError(
+                    'שגיאה בטעינת שינויים לחודש: ' + data.message
+                );
+                return;
+            }
+
+            this.changesData = data.changes || [];
+            this.displayCalendarView(month, year);
+
+            // ── בדוק התראות אחרי עדכון הנתונים ───────────────
+            this.checkUpcomingChanges();
+
+        } catch (error) {
+            this.showLoading(false);
+            this.showError('שגיאת תקשורת: ' + error.message);
+        }
     }
 
     // -------------------------------------------------------
@@ -115,70 +666,6 @@ class ChangesManager {
         }
     }
 
-
-    // -------------------------------------------------------
-    // טעינת עמוד טבלה מהשרת
-    // -------------------------------------------------------
-    async loadTablePage(page = 1) {
-        try {
-            this.showLoading(true);
-            this.tablePage = page;
-
-            const params = new URLSearchParams({
-                page: this.tablePage,
-                pageSize: this.tablePageSize,
-                search: this.tableSearch
-            });
-
-            const response = await fetch(`/Changes/GetChanges?${params}`);
-            const data = await response.json();
-
-            this.showLoading(false);
-
-            if (!data.success) {
-                this.showError('שגיאה בטעינת נתוני שינויים: ' + data.message);
-                return;
-            }
-
-            this.changesData = data.changes || [];
-            this.tableTotalPages = data.pagination.totalPages;
-            this.tableTotalCount = data.pagination.totalCount;
-
-            this.displayChangesTable();
-        } catch (error) {
-            this.showLoading(false);
-            this.showError('שגיאת תקשורת: ' + error.message);
-        }
-    }
-
-    // -------------------------------------------------------
-    // טעינת חודש ספציפי ללוח שנה
-    // -------------------------------------------------------
-    async loadCalendarMonth(month, year) {
-        try {
-            this.showLoading(true);
-            this.calendarMonth = month;
-            this.calendarYear = year;
-
-            const params = new URLSearchParams({ month, year });
-            const response = await fetch(`/Changes/GetChangesByMonth?${params}`);
-            const data = await response.json();
-
-            this.showLoading(false);
-
-            if (!data.success) {
-                this.showError('שגיאה בטעינת שינויים לחודש: ' + data.message);
-                return;
-            }
-
-            this.changesData = data.changes || [];
-            this.displayCalendarView(month, year);
-        } catch (error) {
-            this.showLoading(false);
-            this.showError('שגיאת תקשורת: ' + error.message);
-        }
-    }
-
     // -------------------------------------------------------
     // הצגת טבלה עם pagination
     // -------------------------------------------------------
@@ -186,13 +673,13 @@ class ChangesManager {
         const container = document.getElementById('changesTableContainer');
         if (!container) return;
 
-        // *** סנן מבוטלים ***
+        // *** סנן מבוטלים ו-pending - לא משנה את this.changesData ***
         const visibleChanges = (this.changesData || []).filter(c => {
             const s = (c.status || '').toLowerCase().trim();
-            return s !== 'cancelled' && s !== 'canceled' && s !== 'בוטל';
+            return !['cancelled', 'canceled', 'בוטל', 'pending', 'ממתין'].includes(s);
         });
-        this.changesData = visibleChanges;
-        if (!this.changesData || this.changesData.length === 0) {
+
+        if (!visibleChanges || visibleChanges.length === 0) {
             container.innerHTML = '<p class="no-data-message">לא נמצאו שינויים</p>';
             return;
         }
@@ -214,7 +701,7 @@ class ChangesManager {
             <tbody>
     `;
 
-        this.changesData.forEach(change => {
+        visibleChanges.forEach(change => {
             const isToday = this.isChangeToday(change.date);
             const link = change.link
                 ? `<a href="${change.link}" target="_blank" class="change-link">${change.number}</a>`
@@ -246,14 +733,13 @@ class ChangesManager {
         container.querySelectorAll('tbody tr').forEach(row => {
             row.addEventListener('click', () => {
                 const number = row.getAttribute('data-number');
-                const change = this.changesData.find(c => c.number === number);
+                const change = visibleChanges.find(c => c.number === number);
                 if (change) this.showChangePopup(change);
             });
         });
 
         this.attachPaginationListeners(container);
     }
-
     // -------------------------------------------------------
     // בניית HTML לפקדי pagination
     // -------------------------------------------------------
@@ -359,15 +845,14 @@ class ChangesManager {
         const container = document.getElementById('changesTableContainer');
         if (!container) return;
 
-        // *** סנן מבוטלים לפני ארגון לפי תאריך ***
-        const originalData = this.changesData;
-        this.changesData = (this.changesData || []).filter(c => {
+        // *** סנן מבוטלים ו-pending - שמור בנפרד ***
+        const filteredChanges = (this.changesData || []).filter(c => {
             const s = (c.status || '').toLowerCase().trim();
-            return s !== 'cancelled' && s !== 'canceled' && s !== 'בוטל';
+            return !['cancelled', 'canceled', 'בוטל', 'pending', 'ממתין'].includes(s);
         });
-        this.changesData = originalData;
-        // ארגון השינויים לפי תאריך
-        const changesByDate = this.organizeChangesByDate();
+
+        // *** השתמש ב-filteredChanges לארגון לפי תאריך ***
+        const changesByDate = this._organizeChangesByDateFiltered(filteredChanges);
 
         let html = `
             <div class="calendar-container">
@@ -418,6 +903,24 @@ class ChangesManager {
         this.attachChangeClickListeners(container);
     }
 
+    _organizeChangesByDateFiltered(changes) {
+        const byDate = {};
+        (changes || []).forEach(change => {
+            const rawDate = this._getEffectiveStartTime(change);
+            const dateObj = this.parseDateString(rawDate);
+            if (!dateObj) return;
+
+            const dateStr = this.formatDateString(
+                dateObj.getDate(),
+                dateObj.getMonth() + 1,
+                dateObj.getFullYear()
+            );
+
+            if (!byDate[dateStr]) byDate[dateStr] = [];
+            byDate[dateStr].push(change);
+        });
+        return byDate;
+    }
     // -------------------------------------------------------
     // חיפוש
     // -------------------------------------------------------
@@ -2521,6 +3024,45 @@ class ChangesManager {
     }
 
     // -------------------------------------------------------
+    // זיהוי ימי הקפאה - 2 ימי עסקים ראשונים + 2 אחרונים
+    // -------------------------------------------------------
+    _getFreezeDays(year, month) {
+        // month: 0-11
+        const isBusinessDay = (date) => {
+            const dow = date.getDay();
+            return dow !== 5 && dow !== 6; // לא שישי ולא שבת
+        };
+
+        const firstBusinessDays = [];
+        const lastBusinessDays = [];
+
+        // 2 ימי עסקים ראשונים
+        let d = new Date(year, month, 1);
+        while (firstBusinessDays.length < 2) {
+            if (isBusinessDay(d)) {
+                firstBusinessDays.push(d.getDate());
+            }
+            d.setDate(d.getDate() + 1);
+        }
+
+        // 2 ימי עסקים אחרונים
+        const lastDay = new Date(year, month + 1, 0).getDate();
+        d = new Date(year, month, lastDay);
+        while (lastBusinessDays.length < 2) {
+            if (isBusinessDay(d)) {
+                lastBusinessDays.push(d.getDate());
+            }
+            d.setDate(d.getDate() - 1);
+        }
+
+        return new Set([...firstBusinessDays, ...lastBusinessDays]);
+    }
+
+    _isFreezeDay(year, month, day) {
+        return this._getFreezeDays(year, month).has(day);
+    }
+
+    // -------------------------------------------------------
     // יצירת ימי לוח שנה
     // -------------------------------------------------------
     generateCalendarDays(month, year, changesByDate) {
@@ -2542,14 +3084,21 @@ class ChangesManager {
             const changesForDay = changesByDate[dateStr] || [];
             const isToday = this.isToday(day, month, year);
             const hasChanges = changesForDay.length > 0;
+            // *** חדש: בדיקת יום הקפאה ***
+            const isFreeze = this._isFreezeDay(year, month, day);
 
             let classes = 'calendar-day';
             if (isToday) classes += ' today';
             if (hasChanges) classes += ' has-changes';
+            if (isFreeze) classes += ' freeze-day';  // *** חדש ***
 
             html += `
                 <div class="${classes}">
-                    <div class="day-number">${day}</div>
+                    <div class="day-number">${day}
+                    ${isFreeze ? `
+                    <div class="freeze-badge" title="יום הקפאה">
+                        ❄️ יום הקפאה
+                    </div>` : ''}</div>
                     ${hasChanges ? this.generateChangesForDay(changesForDay) : ''}
                 </div>
             `;
@@ -2588,25 +3137,12 @@ class ChangesManager {
     // פונקציות עזר
     // -------------------------------------------------------
     organizeChangesByDate() {
-        const byDate = {};
-
-        this.changesData.forEach(change => {
-            // *** נסה plannedStartTime קודם, אחר כך date ***
-            const rawDate = this._getEffectiveStartTime(change);
-            const dateObj = this.parseDateString(rawDate);
-            if (!dateObj) return;
-
-            const dateStr = this.formatDateString(
-                dateObj.getDate(),
-                dateObj.getMonth() + 1,
-                dateObj.getFullYear()
-            );
-
-            if (!byDate[dateStr]) byDate[dateStr] = [];
-            byDate[dateStr].push(change);
+        // *** סנן מבוטלים לפני ארגון ***
+        const filtered = (this.changesData || []).filter(c => {
+            const s = (c.status || '').toLowerCase().trim();
+            return !['cancelled', 'canceled', 'בוטל', 'pending', 'ממתין'].includes(s);
         });
-
-        return byDate;
+        return this._organizeChangesByDateFiltered(filtered);
     }
 
     formatDateString(day, month, year) {

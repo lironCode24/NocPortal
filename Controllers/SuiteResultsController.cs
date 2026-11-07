@@ -6,43 +6,41 @@ using System.Threading.Tasks;
 using System.Text.Json;
 using System.Collections.Generic;
 using System.Linq;
+using NocPortal.Services;
 
 [Route("[controller]/[action]")]
 public class SuiteResultsController : Controller
 {
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly SuiteConfigController _suiteConfig;
+
+    private readonly UserService _userService;
     private readonly SecretsService _secrets;
-    private readonly IWebHostEnvironment _env;
 
     private string _elasticBaseUrl => _secrets.ElasticBaseUrl;
     private string _elasticUser    => _secrets.ElasticUsername;
     private string _elasticPassword => _secrets.ElasticPassword;
 
     // *** נתיב קובץ אנשי קשר ***
-    private readonly string _contactsFilePath;
-    private readonly string _downtimeSystemsPath;
-    private readonly string _phoneDirectoryCsvPath;
+    private readonly string _contactsFilePath = PortalPaths.UnderFiles(@"test_contacts.csv");
+    private readonly string _downtimeSystemsPath = PortalPaths.UnderFiles(@"downtime_systems.csv");
 
-    private readonly string _runAllLockFilePath;
+    private readonly string _runAllLockFilePath = 
+        PortalPaths.UnderFiles(@"runall_lock.txt");
+    private readonly string _permissionsPath =
+        PortalPaths.UnderFiles(@"suite_permissions.json");
 
+    private static readonly object _suitesPermLock = new object();
     private readonly TimeSpan _lockDuration = TimeSpan.FromMinutes(5);
 
     public SuiteResultsController(
         IHttpClientFactory httpClientFactory,
         SecretsService secrets,
-        IWebHostEnvironment env,
-        // הזרקת ה-controller כ-service — או צור instance ישיר
-        SuiteConfigController suiteConfig)
+        SuiteConfigController suiteConfig,
+        UserService userService)
     {
         _httpClientFactory = httpClientFactory;
         _secrets           = secrets;
-        _suiteConfig       = suiteConfig;
-        _env               = env;
-        _contactsFilePath = Path.Combine(env.WebRootPath, "assets", "files", "test_contacts.csv");
-        _downtimeSystemsPath = Path.Combine(env.WebRootPath, "assets", "files", "downtime_systems.csv");
-        _phoneDirectoryCsvPath = Path.Combine(env.WebRootPath, "assets", "files", "phone_directory.csv");
-        _runAllLockFilePath = Path.Combine(env.WebRootPath, "assets", "files", "runall_lock.txt");
+        _userService  = userService;
     }
 
     // ==========================================
@@ -57,7 +55,8 @@ public class SuiteResultsController : Controller
             // return GenerateMockResults(suitesCount: 50, testsPerSuite: 17,patchSuitesCount: 4);
             
             // 1. קרא את רשימת הסוויטות מהקובץ
-            var configEntries = _suiteConfig.ReadSuitesFromCsv();
+            var suiteConfig = new SuiteConfigController(_httpClientFactory, _secrets);
+            var configEntries = suiteConfig.ReadSuitesFromCsv();
 
             if (configEntries.Count == 0)
             {
@@ -988,77 +987,262 @@ public class SuiteResultsController : Controller
     // ==========================================
     // *** בדיקת הרשאת bypass — Admin + Automation team ***
     // ==========================================
-    private bool IsPrivilegedUser()
+    private SuitePermissions LoadSuitePermissions()
     {
-        var username = User?.Identity?.Name ?? "";
-        if (username.Contains('\\'))
-            username = username.Split('\\').Last();
-        username = username.ToLower().Trim();
+        lock (_suitesPermLock)
+        {
+            if (!System.IO.File.Exists(_permissionsPath))
+                return GetDefaultSuitePermissions();
+            try
+            {
+                var json = System.IO.File.ReadAllText(
+                    _permissionsPath, Encoding.UTF8);
+                return JsonSerializer.Deserialize<SuitePermissions>(
+                    json,
+                    new JsonSerializerOptions 
+                    { PropertyNameCaseInsensitive = true }
+                ) ?? GetDefaultSuitePermissions();
+            }
+            catch { return GetDefaultSuitePermissions(); }
+        }
+    }
 
-        // *** קרא רשימת משתמשים מורשים מ-appsettings ***
-        var privilegedUsers = _secrets.PrivilegedUsers
-            .Select(u => u.ToLower().Trim())
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    private void SaveSuitePermissionsPrivate(SuitePermissions perms)
+    {
+        lock (_suitesPermLock)
+        {
+            var dir = Path.GetDirectoryName(_permissionsPath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
 
-        if (privilegedUsers.Contains(username)) return true;
+            var json = JsonSerializer.Serialize(perms,
+                new JsonSerializerOptions { WriteIndented = true });
+            System.IO.File.WriteAllText(_permissionsPath, json, Encoding.UTF8);
+        }
+    }
 
-        // *** Admin role — בדוק גם את ה-claim וגם את ה-role ***
+    private SuitePermissions GetDefaultSuitePermissions() =>
+    new SuitePermissions
+    {
+        Admins  = new List<string> { "talyoh" },
+        Editors = new List<string>(),
+        Runners = new List<string>(),
+        Viewers = new List<string>(),
+
+        LastUpdated = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
+        UpdatedBy = "system"
+    };
+
+    private string GetCurrentUsername()
+    {
+        var name = User?.Identity?.Name ?? "";
+        if (name.Contains('\\'))
+            name = name.Split('\\').Last();
+        return name.ToLower().Trim();
+    }
+
+    private bool IsSuiteAdmin()
+    {
+        var username = GetCurrentUsername();
+        var perms    = LoadSuitePermissions();
+
+        if (perms.Admins.Contains(username,
+                StringComparer.OrdinalIgnoreCase)) return true;
         if (User?.IsInRole("Admin") == true) return true;
 
-        // *** בדיקה נוספת לפי claim ישיר ***
         var roleClaim = User?.Claims?
-            .FirstOrDefault(c => 
+            .FirstOrDefault(c =>
                 c.Type == System.Security.Claims.ClaimTypes.Role ||
-                c.Type == "role")?
-            .Value ?? "";
-        
-        if (roleClaim.Equals("Admin", 
-                StringComparison.OrdinalIgnoreCase)) 
-            return true;
+                c.Type == "role")?.Value ?? "";
+
+        return roleClaim.Equals("Admin",
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool CanRunSuites()
+    {
+        var username = GetCurrentUsername();
+        var perms    = LoadSuitePermissions();
+
+        if (IsSuiteAdmin()) return true;
+        if (perms.Runners.Contains(username,
+                StringComparer.OrdinalIgnoreCase)) return true;
+        if (User?.IsInRole("NOC") == true) return true;
 
         return false;
+    }
+
+    private bool IsPrivilegedUser()
+    {
+        return IsSuiteAdmin();
     }
 
     // ==========================================
     // GET: בדיקת מצב נעילת Run All
     // ==========================================
-   [HttpGet]
+    [HttpGet]
     public IActionResult GetRunAllLockStatus()
     {
         try
         {
             bool isPrivileged = IsPrivilegedUser();
             var lockStatus    = CheckRunAllLock();
-
-            // *** isLockedForUser — רק NOC חסום ***
-            // *** אבל triggeredBy/At מוחזרים לכולם ***
             bool isLockedForUser = !isPrivileged && lockStatus.IsLocked;
 
             return Json(new
             {
-                success      = true,
-                isLocked     = isLockedForUser,
+                success       = true,
+                isLocked      = isLockedForUser,
                 isPrivileged,
-                // *** האם יש נעילה פעילה בכלל (גם לפריווילג'ד) ***
                 hasActiveLock = lockStatus.IsLocked,
-                timeLeftSecs = isLockedForUser ? lockStatus.TimeLeftSecs : 0,
-                timeLeftStr  = isLockedForUser ? lockStatus.TimeLeftStr  : "",
-                canRun       = !isLockedForUser,
-                // *** מוחזר לכולם — גם לאדמין ***
-                triggeredBy  = lockStatus.TriggeredBy,
-                triggeredAt  = lockStatus.TriggeredAt
+                timeLeftSecs  = isLockedForUser ? lockStatus.TimeLeftSecs : 0,
+                timeLeftStr   = isLockedForUser ? lockStatus.TimeLeftStr  : "",
+                canRun        = !isLockedForUser,
+                triggeredBy   = lockStatus.TriggeredBy,
+                triggeredAt   = lockStatus.TriggeredAt,
+                privilegedUsers = LoadSuitePermissions().Admins
             });
         }
         catch (Exception ex)
         {
             return Json(new
             {
-                success      = false,
-                message      = ex.Message,
-                canRun       = true,
-                isLocked     = false,
+                success       = false,
+                message       = ex.Message,
+                canRun        = true,
+                isLocked      = false,
                 hasActiveLock = false
             });
+        }
+    }
+
+    // ─── GET: קבל הרשאות סוויטות ───
+    [HttpGet]
+    public IActionResult GetSuitePermissions()
+    {
+        try
+        {
+            if (!IsSuiteAdmin())
+                return Json(new { success = false, 
+                                message = "אין הרשאה" });
+
+            var perms = LoadSuitePermissions();
+            return Json(new { success = true, permissions = perms });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, message = ex.Message });
+        }
+    }
+
+    // ─── POST: שמור הרשאות סוויטות ───
+    [HttpPost]
+    public IActionResult SaveSuitePermissions(
+        [FromBody] SuitePermissions request)
+    {
+        try
+        {
+            if (!IsSuiteAdmin())
+                return Json(new { success = false, 
+                                message = "אין הרשאה" });
+
+            if (request == null)
+                return Json(new { success = false, 
+                                message = "בקשה לא תקינה" });
+
+            // ─── וודא שהמשתמש הנוכחי נשאר אדמין ───
+            var currentUser = GetCurrentUsername();
+            if (!request.Admins.Contains(currentUser,
+                    StringComparer.OrdinalIgnoreCase))
+                request.Admins.Add(currentUser);
+
+            // ─── הסר כפילויות ───
+            request.Admins  = request.Admins
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            request.Runners = request.Runners
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            request.Viewers = request.Viewers
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            request.Editors = (request.Editors ?? new List<string>())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            request.LastUpdated = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+            request.UpdatedBy   = currentUser;
+
+            SaveSuitePermissionsPrivate(request);
+
+            return Json(new
+            {
+                success     = true,
+                message     = "הרשאות נשמרו בהצלחה",
+                permissions = request
+            });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, message = ex.Message });
+        }
+    }
+
+    // ─── GET: קבל משתמש נוכחי + הרשאות ───
+    [HttpGet]
+    public IActionResult GetCurrentUser()
+    {
+        try
+        {
+            var username = GetCurrentUsername();
+            var perms    = LoadSuitePermissions();
+
+            return Json(new
+            {
+                success = true,
+                username,
+                isAdmin = IsSuiteAdmin(),
+                canRun = CanRunSuites(),
+
+                role = IsSuiteAdmin() ? "Admin"
+                    : User?.IsInRole("NOC") == true ? "NOC"
+                    : CanRunSuites() ? "Runner"
+                    : "Viewer",
+
+                privilegedUsers = perms.Admins,
+                editors = perms.Editors,
+                runners = perms.Runners,
+                viewers = perms.Viewers
+            });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    // ─── GET: קבל רשימת משתמשים ─────────────────────────────────
+    [HttpGet]
+    public IActionResult GetAllUsers()
+    {
+        try
+        {
+            if (!IsSuiteAdmin())
+                return Json(new { success = false, message = "אין הרשאה" });
+
+            // ─── קרא משתמשים מ-UserService ───
+            var users = _userService.GetAllUsers();
+            
+            return Json(new
+            {
+                success = true,
+                users = users.Select(u => new
+                {
+                    username    = u.Username,
+                    displayName = u.DisplayName ?? u.Username,
+                    role        = u.Role.ToString()     // ← המרה ל-string
+                }).OrderBy(u => u.displayName).ToList()
+            });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
         }
     }
 
@@ -2362,7 +2546,7 @@ public class SuiteResultsController : Controller
     {
         try
         {
-            var suiteConfig   = new SuiteConfigController(_httpClientFactory, _secrets, _env);
+            var suiteConfig   = new SuiteConfigController(_httpClientFactory, _secrets);
             var configEntries = suiteConfig.ReadSuitesFromCsv();
 
             if (!configEntries.Any())
@@ -2500,7 +2684,7 @@ public class SuiteResultsController : Controller
                 });
 
             var suiteConfig = new SuiteConfigController(
-                _httpClientFactory, _secrets, _env);
+                _httpClientFactory, _secrets);
             var all = suiteConfig.ReadSuitesFromCsv();
 
             int updatedCount = 0;
@@ -2585,7 +2769,7 @@ public class SuiteResultsController : Controller
                 string.IsNullOrWhiteSpace(email))
                 return Json(new { success = false, phone = "" });
 
-            var csvPath = _phoneDirectoryCsvPath;
+            var csvPath = PortalPaths.UnderFiles(@"phone_directory.csv");
 
             if (!System.IO.File.Exists(csvPath))
                 return Json(new { success = false, phone = "" });
@@ -3084,4 +3268,14 @@ public class RunCaseRequest
 {
     public string CloudBeatId { get; set; } = "";
     public string RunnerType  { get; set; } = "automation";
+}
+
+public class SuitePermissions
+{
+    public List<string> Admins      { get; set; } = new();
+    public List<string> Runners     { get; set; } = new();
+    public List<string> Viewers     { get; set; } = new();
+    public List<string> Editors { get; set; } = new();
+    public string       LastUpdated { get; set; } = "";
+    public string?      UpdatedBy   { get; set; }
 }

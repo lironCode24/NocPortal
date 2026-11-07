@@ -1,0 +1,63 @@
+{
+  "alertsColumnOrder": [
+    "hostAddress",
+    "modified",
+    "notes",
+    "message",
+    "host",
+    "email",
+    "contacts",
+    "timestamp",
+    "priority",
+    "severity",
+    "status",
+    "actions",
+    "checkbox"
+  ],
+  "alertsVisibleColumns": {
+    "hostAddress": true,
+    "modified": true,
+    "notes": true,
+    "message": true,
+    "host": true,
+    "email": true,
+    "contacts": true,
+    "timestamp": true,
+    "priority": true,
+    "severity": true,
+    "status": true,
+    "actions": true,
+    "checkbox": true
+  },
+  "alertsActiveFilterState": {
+    "severityFilters": [
+      "CRITICAL",
+      "MAJOR",
+      "UNKNOWN"
+    ],
+    "statusFilters": [
+      "OPEN",
+      "ACK",
+      "ASSIGN"
+    ],
+    "searchTerm": "",
+    "sortColumn": null,
+    "sortDirection": "asc",
+    "timestamp": "2026-11-07T08:03:39.493Z"
+  },
+  "lastSelectedEmployee": "\u05D8\u05DC",
+  "sectionStates": {
+    "shifts": true,
+    "employeeTasks": false,
+    "phoneDirectory": false,
+    "activityManagement": false,
+    "procedures": false,
+    "messages": false,
+    "dailyTasks": false,
+    "teamLinks": false,
+    "datacenter": true,
+    "alerts": false,
+    "changes": false
+  },
+  "dashboardColorTheme": "dark"
+}

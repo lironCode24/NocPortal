@@ -26,33 +26,31 @@ class DataCenterManager {
     }
 
     /**
- * שליפת נתוני המשתמש הנוכחי מהשרת
+ * שליפת נתוני המשתמש + הרשאות Data Center מהשרת
  */
     async fetchCurrentUser() {
         try {
-            const response = await fetch('/Auth/Me', {
-                credentials: 'include'
-            });
+            // ─── שלב 1: שלוף משתמש נוכחי ───
+            const userRes = await fetch('/Auth/Me', { credentials: 'include' });
+            if (!userRes.ok) return null;
+            this.currentUser = await userRes.json();
 
-            if (!response.ok) {
-                if (response.status === 401) {
-                    return null;
+            // ─── שלב 2: שלוף הרשאות Data Center ───
+            const permRes = await fetch('/DataCenter/GetMyPermissions',
+                { credentials: 'include' });
+            if (permRes.ok) {
+                const permData = await permRes.json();
+                if (permData.success) {
+                    // ─── canEdit מגיע ישירות מהשרת ───
+                    this._serverCanEdit = permData.canEdit ?? false;
+                    this._isAdminOrNoc = permData.isAdminOrNoc ?? false;
+                    this._dcPermissions = permData.permissions;
                 }
-                throw new Error(`HTTP error: ${response.status}`);
             }
 
-            const user = await response.json();
-            this.currentUser = user;
-            return user;
-
+            return this.currentUser;
         } catch (error) {
             console.error('Error fetching current user:', error);
-            // *** fallback: נסה מ-sessionStorage ***
-            const cached = sessionStorage.getItem('currentUser');
-            if (cached) {
-                this.currentUser = JSON.parse(cached);
-                return this.currentUser;
-            }
             return null;
         }
     }
@@ -62,21 +60,535 @@ class DataCenterManager {
  * @returns {boolean}
  */
     checkEditPermission() {
+        // ─── עדיפות: תשובת השרת ───
+        if (this._serverCanEdit !== undefined) {
+            return this._serverCanEdit;
+        }
+
+        // ─── fallback: בדיקה מקומית (אם השרת לא ענה) ───
         if (!this.currentUser) return false;
-
-        const { role, username } = this.currentUser;
-
-        // Admin ו-NOC רואים הכל
-        if (role === 'Admin' || role === 'NOC') return true;
-
-        // משתמש shabtayr מורשה תמיד
-        const allowedUsers = ['shabtayr'];
-        if (allowedUsers.some(u =>
-            (username || '').toUpperCase() === u.toUpperCase()
-        )) return true;
-
-        return false;
+        const { role } = this.currentUser;
+        return role === 'Admin' || role === 'NOC';
     }
+
+    /**
+ * פתח מודל ניהול הרשאות Data Center (Admin/NOC בלבד)
+ */
+    async openPermissionsModal() {
+        if (!this._isAdminOrNoc) {
+            this._notify('אין הרשאה לניהול הרשאות', 'error');
+            return;
+        }
+
+        // ─── הסר מודל קיים ───
+        document.getElementById('dcPermissionsModal')?.remove();
+
+        // ─── הצג loading ───
+        const loadingModal = document.createElement('div');
+        loadingModal.id = 'dcPermissionsModal';
+        loadingModal.className = 'modal-overlay';
+        loadingModal.innerHTML = `
+        <div class="modal-content" style="max-width:560px;width:95%">
+            <div class="modal-header">
+                <h3><i class="fas fa-user-shield"></i> ניהול הרשאות Data Center</h3>
+                <button class="modal-close"
+                        onclick="document.getElementById('dcPermissionsModal').remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body" style="padding:40px;text-align:center;color:#888">
+                <i class="fas fa-spinner fa-spin"
+                   style="font-size:1.5rem;color:#6366f1"></i>
+                <p style="margin-top:12px">טוען הרשאות...</p>
+            </div>
+        </div>`;
+        document.body.appendChild(loadingModal);
+        loadingModal.style.display = 'flex';
+        // ─── טען הרשאות מהשרת ───
+        let perms;
+        try {
+            const res = await fetch('/DataCenter/GetPermissions',
+                { credentials: 'include' });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error);
+            perms = data.permissions;
+        } catch (err) {
+            loadingModal.remove();
+            this._notify(`שגיאה בטעינת הרשאות: ${err.message}`, 'error');
+            return;
+        }
+
+        // ─── טען רשימת משתמשים ───
+        let allUsers = [];
+        try {
+            const uRes = await fetch('/DataCenter/GetAllUsers',
+                { credentials: 'include' });
+            const uData = await uRes.json();
+            if (uData.success) allUsers = uData.users || [];
+        } catch (err) {
+            console.warn('Could not load users list:', err);
+        }
+
+        // ─── שמור state מקומי ───
+        this._dcPermState = {
+            editors: [...(perms.editors || [])],
+            viewers: [...(perms.viewers || [])]
+        };
+        this._dcAllUsers = allUsers;
+
+        // ─── בנה מודל ───
+        this._renderPermissionsModal(loadingModal, perms, allUsers);
+    }
+
+    _renderPermissionsModal(modal, perms, allUsers) {
+        if (!modal) return;
+
+        const currentUsername =
+            this.currentUser?.username ||
+            this.currentUser?.userName ||
+            '';
+
+        const state = this._dcPermState || {
+            editors: [...(perms?.editors || [])],
+            viewers: [...(perms?.viewers || [])]
+        };
+
+        const userOptions = (allUsers || []).map(user => {
+            const username = user.username || '';
+            const displayName = user.displayName || username;
+
+            return `
+            <option value="${this._escapeHtml(username, true)}">
+                ${this._escapeHtml(displayName)}
+                ${displayName !== username
+                    ? ` (${this._escapeHtml(username)})`
+                    : ''}
+            </option>
+        `;
+        }).join('');
+
+        modal.innerHTML = `
+        <div class="modal-content"
+             style="max-width:720px;width:95%;direction:rtl;">
+
+            <div class="modal-header">
+                <h3>
+                    <i class="fas fa-user-shield"
+                       style="color:#6366f1;"></i>
+                    ניהול הרשאות Data Center
+                </h3>
+
+                <button class="modal-close"
+                        id="dcPermissionsCloseBtn">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div class="modal-body" style="padding:20px;">
+
+                <div style="
+                    background:#f8f9fa;
+                    border:1px solid #dee2e6;
+                    border-radius:8px;
+                    padding:12px 14px;
+                    margin-bottom:18px;
+                    font-size:0.9rem;
+                    color:#555;
+                ">
+                    <i class="fas fa-info-circle"
+                       style="color:#6366f1;"></i>
+
+                    Admin ו-NOC מקבלים הרשאת ניהול אוטומטית.
+                    כאן ניתן להוסיף משתמשים נוספים כעורכים
+                    או כצופים.
+                </div>
+
+                <!-- Editors -->
+                <div style="
+                    border:1px solid #dee2e6;
+                    border-radius:8px;
+                    padding:16px;
+                    margin-bottom:16px;
+                ">
+                    <div style="
+                        display:flex;
+                        align-items:center;
+                        justify-content:space-between;
+                        margin-bottom:12px;
+                    ">
+                        <div>
+                            <strong>
+                                <i class="fas fa-edit"
+                                   style="color:#22c55e;"></i>
+                                עורכים
+                            </strong>
+
+                            <div style="
+                                font-size:0.78rem;
+                                color:#888;
+                                margin-top:3px;
+                            ">
+                                יכולים להוסיף, לערוך ולהסיר ציוד
+                            </div>
+                        </div>
+
+                        <span id="dcEditorsCount"
+                              style="
+                                background:#dcfce7;
+                                color:#166534;
+                                padding:3px 9px;
+                                border-radius:12px;
+                                font-size:0.78rem;
+                                font-weight:bold;
+                              ">
+                        </span>
+                    </div>
+
+                    <div style="
+                        display:flex;
+                        gap:8px;
+                        margin-bottom:12px;
+                    ">
+                        <select id="dcEditorUserSelect"
+                                style="
+                                    flex:1;
+                                    padding:8px;
+                                    border:1px solid #ced4da;
+                                    border-radius:5px;
+                                ">
+                            <option value="">בחר משתמש...</option>
+                            ${userOptions}
+                        </select>
+
+                        <button id="dcAddEditorBtn"
+                                class="btn-primary">
+                            <i class="fas fa-plus"></i>
+                            הוסף
+                        </button>
+                    </div>
+
+                    <div id="dcEditorsList"></div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <button id="dcPermissionsCancelBtn"
+                        class="btn-cancel">
+                    <i class="fas fa-times"></i>
+                    ביטול
+                </button>
+
+                <button id="dcPermissionsSaveBtn"
+                        class="btn-primary">
+                    <i class="fas fa-save"></i>
+                    שמור הרשאות
+                </button>
+            </div>
+        </div>
+    `;
+
+        const close = () => modal.remove();
+
+        document.getElementById('dcPermissionsCloseBtn')
+            ?.addEventListener('click', close);
+
+        document.getElementById('dcPermissionsCancelBtn')
+            ?.addEventListener('click', close);
+
+        document.getElementById('dcAddEditorBtn')
+            ?.addEventListener('click', () => {
+                const select =
+                    document.getElementById('dcEditorUserSelect');
+
+                const username = select?.value?.trim();
+
+                if (!username) {
+                    this._notify('יש לבחור משתמש', 'warning');
+                    return;
+                }
+
+                if (!state.editors.some(x =>
+                    x.toLowerCase() === username.toLowerCase())) {
+
+                    state.editors.push(username);
+                }
+
+                // אם הוא Editor אין צורך שיהיה Viewer
+                state.viewers = state.viewers.filter(x =>
+                    x.toLowerCase() !== username.toLowerCase());
+
+                if (select) select.value = '';
+
+                this._renderDcPermissionLists();
+            });
+
+        document.getElementById('dcAddViewerBtn')
+            ?.addEventListener('click', () => {
+                const select =
+                    document.getElementById('dcViewerUserSelect');
+
+                const username = select?.value?.trim();
+
+                if (!username) {
+                    this._notify('יש לבחור משתמש', 'warning');
+                    return;
+                }
+
+                // Editor כבר חזק יותר מ-Viewer
+                if (state.editors.some(x =>
+                    x.toLowerCase() === username.toLowerCase())) {
+
+                    this._notify(
+                        'המשתמש כבר מוגדר כעורך',
+                        'warning'
+                    );
+                    return;
+                }
+
+                if (!state.viewers.some(x =>
+                    x.toLowerCase() === username.toLowerCase())) {
+
+                    state.viewers.push(username);
+                }
+
+                if (select) select.value = '';
+
+                this._renderDcPermissionLists();
+            });
+
+        document.getElementById('dcPermissionsSaveBtn')
+            ?.addEventListener('click', () =>
+                this._saveDcPermissions(modal)
+            );
+
+        this._renderDcPermissionLists();
+    }
+
+    _renderDcPermissionLists() {
+        const state = this._dcPermState;
+
+        if (!state) return;
+
+        const findDisplayName = username => {
+            const user = (this._dcAllUsers || []).find(u =>
+                (u.username || '').toLowerCase() ===
+                (username || '').toLowerCase()
+            );
+
+            return user?.displayName || username;
+        };
+
+        const createList = (items, type) => {
+            if (!items || items.length === 0) {
+                return `
+                <div style="
+                    color:#999;
+                    text-align:center;
+                    padding:14px;
+                    font-size:0.85rem;
+                ">
+                    <i class="fas fa-user-slash"></i>
+                    אין משתמשים מוגדרים
+                </div>
+            `;
+            }
+
+            return [...items]
+                .sort((a, b) =>
+                    findDisplayName(a).localeCompare(
+                        findDisplayName(b),
+                        'he'
+                    )
+                )
+                .map(username => {
+
+                    const displayName =
+                        findDisplayName(username);
+
+                    return `
+                    <div style="
+                        display:flex;
+                        align-items:center;
+                        justify-content:space-between;
+                        border-bottom:1px solid #eee;
+                        padding:8px 4px;
+                    ">
+                        <div>
+                            <div style="font-weight:600;">
+                                ${this._escapeHtml(displayName)}
+                            </div>
+
+                            ${displayName !== username ? `
+                                <div style="
+                                    color:#999;
+                                    font-size:0.75rem;
+                                    direction:ltr;
+                                    text-align:right;
+                                ">
+                                    ${this._escapeHtml(username)}
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        <button type="button"
+                                class="dc-remove-permission"
+                                data-type="${type}"
+                                data-username="${this._escapeHtml(username, true)}"
+                                style="
+                                    border:none;
+                                    background:#fee2e2;
+                                    color:#dc2626;
+                                    border-radius:5px;
+                                    padding:5px 9px;
+                                    cursor:pointer;
+                                "
+                                title="הסר הרשאה">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                `;
+                }).join('');
+        };
+
+        const editorsList =
+            document.getElementById('dcEditorsList');
+
+        const viewersList =
+            document.getElementById('dcViewersList');
+
+        if (editorsList) {
+            editorsList.innerHTML =
+                createList(state.editors, 'editor');
+        }
+
+        if (viewersList) {
+            viewersList.innerHTML =
+                createList(state.viewers, 'viewer');
+        }
+
+        const editorsCount =
+            document.getElementById('dcEditorsCount');
+
+        const viewersCount =
+            document.getElementById('dcViewersCount');
+
+        if (editorsCount)
+            editorsCount.textContent =
+                `${state.editors.length} משתמשים`;
+
+        if (viewersCount)
+            viewersCount.textContent =
+                `${state.viewers.length} משתמשים`;
+
+        document.querySelectorAll('.dc-remove-permission')
+            .forEach(button => {
+
+                button.addEventListener('click', () => {
+
+                    const username =
+                        button.dataset.username;
+
+                    const type =
+                        button.dataset.type;
+
+                    if (type === 'editor') {
+                        state.editors =
+                            state.editors.filter(x =>
+                                x.toLowerCase() !==
+                                username.toLowerCase()
+                            );
+                    }
+
+                    if (type === 'viewer') {
+                        state.viewers =
+                            state.viewers.filter(x =>
+                                x.toLowerCase() !==
+                                username.toLowerCase()
+                            );
+                    }
+
+                    this._renderDcPermissionLists();
+                });
+            });
+    }
+
+    async _saveDcPermissions(modal) {
+        if (!this._dcPermState) return;
+
+        const saveBtn =
+            document.getElementById('dcPermissionsSaveBtn');
+
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.innerHTML =
+                '<i class="fas fa-spinner fa-spin"></i> שומר...';
+        }
+
+        try {
+            const response =
+                await fetch('/DataCenter/SavePermissions', {
+                    method: 'POST',
+                    credentials: 'include',
+
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+
+                    body: JSON.stringify({
+                        editors:
+                            this._dcPermState.editors || [],
+
+                        viewers:
+                            this._dcPermState.viewers || []
+                    })
+                });
+
+            const data = await response.json();
+
+            if (!data.success) {
+                throw new Error(
+                    data.error || 'שגיאה בשמירת הרשאות'
+                );
+            }
+
+            this._dcPermissions = data.permissions;
+
+            // טען שוב את ההרשאות של המשתמש הנוכחי
+            await this.fetchCurrentUser();
+
+            this.canEdit =
+                this.checkEditPermission();
+
+            this._notify(
+                'הרשאות Data Center נשמרו בהצלחה',
+                'success'
+            );
+
+            modal?.remove();
+
+        } catch (error) {
+
+            console.error(
+                'Error saving Data Center permissions:',
+                error
+            );
+
+            this._notify(
+                `שגיאה בשמירת הרשאות: ${error.message}`,
+                'error'
+            );
+
+        } finally {
+
+            if (saveBtn && document.body.contains(saveBtn)) {
+                saveBtn.disabled = false;
+
+                saveBtn.innerHTML =
+                    '<i class="fas fa-save"></i> שמור הרשאות';
+            }
+        }
+    }
+
     /**
  * הצגת הודעה למשתמש - עם fallback אם NotificationManager לא זמין
  * @param {string} message - הודעה להצגה
@@ -1556,6 +2068,13 @@ class DataCenterManager {
                 </div>
             </div>
             <div class="modal-footer">
+                <button id="dcPermissionsBtn"
+                        class="btn-primary"
+                        style="display:none;"
+                        onclick="dataCenterManager.openPermissionsModal()">
+                    <i class="fas fa-user-shield"></i>
+                    ניהול הרשאות
+                </button>
                 <button class="btn-primary" onclick="dataCenterManager.showAllRacks()">
                     <i class="fas fa-th-list"></i> צפה בכל הארונות
                 </button>
@@ -1579,6 +2098,16 @@ class DataCenterManager {
         if (refreshButton) {
             refreshButton.addEventListener('click',
                 () => this.refreshCurrentDataCenter());
+        }
+
+        const permBtn = document.getElementById('dcPermissionsBtn');
+
+        if (permBtn) {
+            if (this.currentUser?.role === 'Admin') {
+                permBtn.style.removeProperty('display');
+            } else {
+                permBtn.style.setProperty('display', 'none', 'important');
+            }
         }
     }
 

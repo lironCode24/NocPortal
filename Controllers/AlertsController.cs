@@ -43,11 +43,12 @@ public class AlertsController : Controller
     private static DateTime _tokenExpiry = DateTime.MinValue;
     
     // קובץ לשמירת מידע על התראות
-    private readonly string _alertsDataFilePath;
-    private readonly string _alertsCacheFilePath;
+    private readonly string _alertsDataFilePath = PortalPaths.UnderFiles(@"alerts_data.txt");
+    private readonly string _alertsCacheFilePath = PortalPaths.UnderFiles(@"alerts_cache.json");
 
     // נתיב לקובץ הסינונים השמורים
-    private readonly string _savedFiltersFilePath;
+    private readonly string _savedFiltersFilePath = 
+        PortalPaths.UnderFiles(@"saved_filters.json");
 
     private static readonly object _fileLock = new object();
 
@@ -60,12 +61,9 @@ public class AlertsController : Controller
         _httpClientFactory = httpClientFactory;
         _secrets           = secrets;
         _auditLog = auditLog;
-        _alertsDataFilePath = Path.Combine(env.WebRootPath, "assets", "files", "alerts_data.txt");
-        _alertsCacheFilePath = Path.Combine(env.WebRootPath, "assets", "files", "alerts_cache.json");
-        _savedFiltersFilePath = Path.Combine(env.WebRootPath, "assets", "files", "saved_filters.json");
         
         // וודא שהתיקייה קיימת
-        Directory.CreateDirectory(Path.GetDirectoryName(_alertsDataFilePath)!);
+        Directory.CreateDirectory(Path.GetDirectoryName(_alertsDataFilePath));
         
         // טען את המידע מהקובץ בעת אתחול הקונטרולר
         LoadAlertsData();
@@ -360,8 +358,7 @@ public class AlertsController : Controller
             ClearNotesCache();
 
             // קריאה לשירות החיצוני לקבלת התראות עדכניות
-            // var alerts = await FetchAlertsFromService();
-            var alerts = GetMockAlertsList(50);
+            var alerts = await FetchAlertsFromService();
 
             // שמירת ההתראות בקובץ מטמון
             lock (_fileLock)
@@ -521,138 +518,6 @@ public class AlertsController : Controller
         {
             throw; // זרוק את השגיאה כדי שהקורא יוכל לטפל בה
         }
-    }
-
-    [HttpGet]
-    private List<object> GetMockAlertsList(int count)
-    {
-        var mockAlerts = new List<object>();
-        var now = DateTimeOffset.UtcNow;
-        var rand = new Random();
-
-        // More comprehensive host data
-        var hostData = new[]
-        {
-            new { host = "web-prod-01", ip = "10.10.1.10", team = "Web Team", type = "web" },
-            new { host = "web-prod-02", ip = "10.10.1.11", team = "Web Team", type = "web" },
-            new { host = "web-prod-03", ip = "10.10.1.12", team = "Web Team", type = "web" },
-            new { host = "db-sql-primary", ip = "10.10.2.20", team = "Database Team", type = "database" },
-            new { host = "db-sql-secondary", ip = "10.10.2.21", team = "Database Team", type = "database" },
-            new { host = "db-redis-cache", ip = "10.10.2.30", team = "Database Team", type = "cache" },
-            new { host = "app-api-gateway", ip = "10.10.3.40", team = "Application Team", type = "app" },
-            new { host = "app-service-01", ip = "10.10.3.41", team = "Application Team", type = "app" },
-            new { host = "app-service-02", ip = "10.10.3.42", team = "Application Team", type = "app" },
-            new { host = "storage-nas-01", ip = "10.10.4.50", team = "Infrastructure Team", type = "storage" },
-            new { host = "storage-nas-02", ip = "10.10.4.51", team = "Infrastructure Team", type = "storage" },
-            new { host = "load-balancer-01", ip = "10.10.5.60", team = "Network Team", type = "network" },
-            new { host = "backup-server-01", ip = "10.10.6.70", team = "Infrastructure Team", type = "backup" }
-        };
-
-        var errorMessages = new[]
-        {
-            // Web server errors
-            new { type = "web", message = "High CPU utilization detected (95%)" },
-            new { type = "web", message = "Memory usage critical (92% of 32GB)" },
-            new { type = "web", message = "Disk space low - 5% remaining" },
-            new { type = "web", message = "Connection timeout on port 443" },
-            new { type = "web", message = "SSL certificate expiration warning - 30 days remaining" },
-            
-            // Database errors
-            new { type = "database", message = "Query performance degraded - average 5s response time" },
-            new { type = "database", message = "Replication lag detected - 120 seconds behind master" },
-            new { type = "database", message = "Transaction log full - requires maintenance" },
-            new { type = "database", message = "Connection pool exhausted" },
-            new { type = "database", message = "Backup job failed - timeout after 2 hours" },
-            
-            // Cache errors
-            new { type = "cache", message = "Redis memory threshold exceeded" },
-            new { type = "cache", message = "Cache eviction rate abnormally high" },
-            new { type = "cache", message = "Connection refused from client" },
-            
-            // Application errors
-            new { type = "app", message = "Exception rate increased 300% in last 10 minutes" },
-            new { type = "app", message = "Application health check failed" },
-            new { type = "app", message = "Dependency service unavailable" },
-            new { type = "app", message = "Memory leak detected - steadily increasing allocation" },
-            new { type = "app", message = "Request queue depth exceeding limits" },
-            
-            // Storage errors
-            new { type = "storage", message = "RAID array degraded - one disk failure detected" },
-            new { type = "storage", message = "NAS responding slowly - latency 500ms+" },
-            new { type = "storage", message = "Snapshot creation failed" },
-            
-            // Network errors
-            new { type = "network", message = "Packet loss detected (2.5% of traffic)" },
-            new { type = "network", message = "BGP session with peer down" },
-            new { type = "network", message = "Load balancer failover triggered" },
-            
-            // Backup errors
-            new { type = "backup", message = "Backup window exceeded - incomplete backup" },
-            new { type = "backup", message = "Restore test failed - data corruption detected" }
-        };
-
-        var statuses = new[] { "OPEN", "ACK", "ASSIGN", "CLOSED" };
-        var severities = new[] { "CRITICAL", "MAJOR", "MINOR", "WARNING" };
-        var assignees = new[] { "John Smith", "Sarah Johnson", "Mike Chen", "Lisa Rodriguez", null };
-
-        for (int i = 1; i <= count; i++)
-        {
-            var hostInfo = hostData[rand.Next(hostData.Length)];
-            var errorMsg = errorMessages.Where(e => e.type == hostInfo.type).OrderBy(x => rand.Next()).First();
-            
-            // Weight severity based on time - more recent alerts tend to be more critical
-            var minutesAgo = rand.Next(5, 240);
-            var severity = minutesAgo < 30 ? "CRITICAL" : (minutesAgo < 90 ? "MAJOR" : (rand.Next(2) == 0 ? "MAJOR" : "MINOR"));
-            
-            // Status distribution: mostly OPEN, some ACK, fewer ASSIGN
-            var status = rand.Next(100) < 60 ? "OPEN" : (rand.Next(100) < 70 ? "ACK" : (rand.Next(100) < 85 ? "ASSIGN" : "CLOSED"));
-            
-            // Older or assigned alerts have modified times and assignees
-            long? modified = status != "OPEN" ? now.AddMinutes(-rand.Next(5, 60)).ToUnixTimeMilliseconds() : (long?)null;
-            string assignee = status == "ASSIGN" ? assignees[rand.Next(assignees.Length)] : null;
-
-            // Some notes for acknowledged/assigned alerts
-            string notes = null;
-            if (status != "OPEN" && rand.Next(100) < 70)
-            {
-                var noteOptions = new[]
-                {
-                    "Investigating the issue",
-                    "Escalated to senior engineer",
-                    "Waiting for resource availability",
-                    "Temporary mitigation in place",
-                    "Root cause identified, fix in progress",
-                    "Scheduled maintenance - expected resolution in 2 hours"
-                };
-                notes = noteOptions[rand.Next(noteOptions.Length)];
-            }
-
-            var alert = new
-            {
-                id = Guid.NewGuid().ToString("N").Substring(0, 16),
-                idHelix = $"bme_event_{1000000 + i}",
-                host = hostInfo.host,
-                message = errorMsg.message,
-                timestamp = now.AddMinutes(-minutesAgo).ToUnixTimeMilliseconds(),
-                severity = severity,
-                status = status,
-                hostAddress = hostInfo.ip,
-                contacts = hostInfo.team,
-                notes = notes,
-                modified = modified,
-                assignee = assignee,
-                priority = status == "CRITICAL" ? 1 : (status == "MAJOR" ? 2 : (status == "MINOR" ? 3 : 4))
-            };
-            
-            mockAlerts.Add(alert);
-        }
-        
-        // Sort by timestamp descending (most recent first) with some weighting towards critical
-        return mockAlerts
-            .Cast<dynamic>()
-            .OrderByDescending(a => a.severity == "CRITICAL" ? 1 : (a.severity == "MAJOR" ? 2 : (a.severity == "MINOR" ? 3 : 4)))
-            .ThenByDescending(a => a.timestamp)
-            .ToList();
     }
 
     // פונקציה חדשה לביצוע שאילתת התראות ועיבוד התוצאות
@@ -1858,146 +1723,169 @@ public class AlertsController : Controller
             if (string.IsNullOrWhiteSpace(request.Subject))
                 return Json(new { success = false, error = "חסר נושא" });
 
-            // ── שלוף התראות מהקאש לפי IDs ───────────────────────────
-            var alerts = GetAlertsFromCacheByIds(request.AlertIds ?? new List<string>());
+            string htmlBody;
 
-            if (alerts.Count == 0)
-                return Json(new { success = false, error = "לא נמצאו התראות" });
-
-            // ── שעון ישראל ───────────────────────────────────────────
-            var israelTz = TimeZoneInfo.FindSystemTimeZoneById("Israel Standard Time");
-
-            // ── בנה שורות טבלה ───────────────────────────────────────
-            var rows = new System.Text.StringBuilder();
-
-            foreach (var a in alerts)
+            // *** אם סופק גוף HTML מותאם — השתמש בו ישירות ***
+            if (!string.IsNullOrWhiteSpace(request.CustomHtmlBody))
             {
-                string host        = GetAlertField(a, "host");
-                string hostAddress = GetAlertField(a, "hostAddress");
-                string message     = GetAlertField(a, "message");
-                string severity    = GetAlertField(a, "severity");
+                htmlBody = WrapInEmailTemplate(request.CustomHtmlBody);
+            }
+            else
+            {
+                // ── שלוף התראות מהקאש לפי IDs ───────────────────────────
+                var alerts = GetAlertsFromCacheByIds(request.AlertIds ?? new List<string>());
 
-                // תאריך פתיחה
-                string openedDate = "-";
-                if (a.TryGetProperty("timestamp", out var tsProp) &&
-                    tsProp.ValueKind == JsonValueKind.Number)
+                if (alerts.Count == 0)
+                    return Json(new { success = false, error = "לא נמצאו התראות" });
+
+                // ── שעון ישראל ───────────────────────────────────────────
+                var israelTz = TimeZoneInfo.FindSystemTimeZoneById("Israel Standard Time");
+
+                // ── בניית שורות עם מספר קריאה אם קיים ──
+                var rows = new System.Text.StringBuilder();
+
+                bool hasIncidents = request.IsReminder &&
+                                request.IncidentNumbers != null &&
+                                request.IncidentNumbers.Count > 0;
+
+                foreach (var a in alerts)
                 {
-                    var dt = TimeZoneInfo.ConvertTime(
-                        DateTimeOffset.FromUnixTimeMilliseconds(
-                            tsProp.GetInt64()).UtcDateTime,
-                        israelTz);
-                    openedDate = dt.ToString("dd/MM/yyyy HH:mm");
+                    string alertId     = GetAlertField(a, "id");
+                    string host        = GetAlertField(a, "host");
+                    string hostAddress = GetAlertField(a, "hostAddress");
+                    string message     = GetAlertField(a, "message");
+                    string severity    = GetAlertField(a, "severity");
+
+                    string openedDate = "-";
+                    if (a.TryGetProperty("timestamp", out var tsProp) &&
+                        tsProp.ValueKind == JsonValueKind.Number)
+                    {
+                        var dt = TimeZoneInfo.ConvertTime(
+                            DateTimeOffset.FromUnixTimeMilliseconds(
+                                tsProp.GetInt64()).UtcDateTime,
+                            israelTz);
+                        openedDate = dt.ToString("dd/MM/yyyy HH:mm");
+                    }
+
+                    string bg = (severity?.ToUpper()) switch
+                    {
+                        "CRITICAL" => "#e53e3e",
+                        "MAJOR"    => "#dd6b20",
+                        "UNKNOWN"  => "#805ad5",
+                        _          => "#718096"
+                    };
+
+                    string incidentCell = "";
+                    if (hasIncidents)
+                    {
+                        string incNum = "-";
+                        if (request.IncidentNumbers.TryGetValue(alertId, out var inc) &&
+                            !string.IsNullOrEmpty(inc))
+                            incNum = inc;
+
+                        incidentCell = $@"
+                        <td style=""padding:8px 12px;border:1px solid #ddd;font-size:13px;
+                                    text-align:center;vertical-align:middle;
+                                    font-weight:700;color:#0d6efd;"">
+                            {System.Web.HttpUtility.HtmlEncode(incNum)}
+                        </td>";
+                    }
+
+                    rows.Append($@"
+                <tr>
+                    <td style=""padding:8px 12px;border:1px solid #ddd;font-size:13px;
+                                text-align:center;vertical-align:middle;"">
+                        {System.Web.HttpUtility.HtmlEncode(message)}
+                    </td>
+                    <td style=""padding:8px 12px;border:1px solid #ddd;font-size:13px;
+                                text-align:center;vertical-align:middle;"">
+                        {System.Web.HttpUtility.HtmlEncode(hostAddress)}
+                    </td>
+                    <td style=""padding:8px 12px;border:1px solid #ddd;font-size:13px;
+                                text-align:center;vertical-align:middle;"">
+                        {System.Web.HttpUtility.HtmlEncode(host)}
+                    </td>
+                    <td style=""padding:8px 12px;border:1px solid #ddd;
+                                text-align:center;vertical-align:middle;"">
+                        <span style=""display:inline-block;padding:3px 10px;border-radius:12px;
+                                    font-size:11px;font-weight:700;
+                                    background:{bg};color:#fff;"">
+                        {System.Web.HttpUtility.HtmlEncode(severity ?? "UNKNOWN")}
+                        </span>
+                    </td>
+                    <td style=""padding:8px 12px;border:1px solid #ddd;font-size:13px;
+                                text-align:center;vertical-align:middle;white-space:nowrap;"">
+                        {System.Web.HttpUtility.HtmlEncode(openedDate)}
+                    </td>
+                    {incidentCell}
+                </tr>");
                 }
 
-                // צבע severity
-                string bg = (severity?.ToUpper()) switch
-                {
-                    "CRITICAL" => "#e53e3e",
-                    "MAJOR"    => "#dd6b20",
-                    "UNKNOWN"  => "#805ad5",
-                    _          => "#718096"
-                };
+                bool isSingle   = alerts.Count == 1;
+                string introText = isSingle
+                    ? "התראה זו פתוחה לטיפול במסך ההתראות:"
+                    : "התראות אלו פתוחות לטיפול במסך ההתראות:";
 
-                rows.Append($@"
-    <tr>
-        <td style=""padding:8px 12px;border:1px solid #ddd;font-size:13px;
-                    text-align:center;vertical-align:middle;"">
-            {System.Web.HttpUtility.HtmlEncode(message)}
-        </td>
-        <td style=""padding:8px 12px;border:1px solid #ddd;font-size:13px;
-                    text-align:center;vertical-align:middle;"">
-            {System.Web.HttpUtility.HtmlEncode(hostAddress)}
-        </td>
-        <td style=""padding:8px 12px;border:1px solid #ddd;font-size:13px;
-                    text-align:center;vertical-align:middle;"">
-            {System.Web.HttpUtility.HtmlEncode(host)}
-        </td>
-        <td style=""padding:8px 12px;border:1px solid #ddd;
-                    text-align:center;vertical-align:middle;"">
-            <span style=""display:inline-block;padding:3px 10px;border-radius:12px;
-                        font-size:11px;font-weight:700;
-                        background:{bg};color:#fff;"">
-            {System.Web.HttpUtility.HtmlEncode(severity ?? "UNKNOWN")}
-            </span>
-        </td>
-        <td style=""padding:8px 12px;border:1px solid #ddd;font-size:13px;
-                    text-align:center;vertical-align:middle;white-space:nowrap;"">
-            {System.Web.HttpUtility.HtmlEncode(openedDate)}
-        </td>
-    </tr>");
+                string tableTitle = isSingle
+                    ? "פרטי ההתראה:"
+                    : "פרטי ההתראות:";
+
+                var signaturePath = System.IO.Path.Combine(
+                    AppDomain.CurrentDomain.BaseDirectory,
+                    "wwwroot", "images", "noc_signature.png");
+                bool hasSignature = System.IO.File.Exists(signaturePath);
+
+                var signatureHtml = hasSignature
+                    ? @"<img src=""cid:noc_signature"" alt=""NOC Team""
+                            style=""max-width:300px;height:auto;
+                                    display:block;margin-top:8px;""/>"
+                    : @"<p style=""margin:4px 0 0;font-size:13px;
+                                color:#64748B;"">חדר מחשב - NOC</p>";
+
+                string bodyContent = $@"
+        <p style=""margin:0 0 8px 0;"">היי,</p>
+        <p style=""margin:0 0 16px 0;"">
+            {introText}
+        </p>
+
+        <p style=""margin:0 0 8px 0;font-weight:700;color:#1e293b;"">
+            {tableTitle}
+        </p>
+
+        <table style=""width:100%;border-collapse:collapse;
+                    direction:rtl;margin-bottom:24px;"">
+            <thead>
+            <tr style=""background:#320F5B;"">
+                <th style=""padding:10px 12px;border:1px solid #4a1a7a;
+                        color:#fff;font-size:13px;font-weight:700;
+                        text-align:center;vertical-align:middle;"">Message</th>
+                <th style=""padding:10px 12px;border:1px solid #4a1a7a;
+                        color:#fff;font-size:13px;font-weight:700;
+                        text-align:center;vertical-align:middle;"">IP Address</th>
+                <th style=""padding:10px 12px;border:1px solid #4a1a7a;
+                        color:#fff;font-size:13px;font-weight:700;
+                        text-align:center;vertical-align:middle;"">Host Name</th>
+                <th style=""padding:10px 12px;border:1px solid #4a1a7a;
+                        color:#fff;font-size:13px;font-weight:700;
+                        text-align:center;vertical-align:middle;"">Severity</th>
+                <th style=""padding:10px 12px;border:1px solid #4a1a7a;
+                        color:#fff;font-size:13px;font-weight:700;
+                        text-align:center;vertical-align:middle;direction:ltr;"">Date & Time</th>
+                {(hasIncidents ? @"<th style=""padding:10px 12px;border:1px solid #4a1a7a;
+                        color:#fff;font-size:13px;font-weight:700;
+                        text-align:center;vertical-align:middle;"">מספר קריאה</th>" : "")}        
+            </tr>
+            </thead>
+            <tbody>
+            {rows}
+            </tbody>
+        </table>
+
+        <br>
+        {signatureHtml}";
+
+                htmlBody = WrapInEmailTemplate(bodyContent);
             }
-
-            // ── כותרת דינמית לפי מספר התראות ────────────────────────
-            bool isSingle   = alerts.Count == 1;
-            string introText = isSingle
-                ? "התראה זו פתוחה לטיפול במסך ההתראות:"
-                : "התראות אלו פתוחות לטיפול במסך ההתראות:";
-
-            string tableTitle = isSingle
-                ? "פרטי ההתראה:"
-                : "פרטי ההתראות:";
-
-            // ── חתימה ────────────────────────────────────────────────
-            var signaturePath = System.IO.Path.Combine(
-                AppDomain.CurrentDomain.BaseDirectory,
-                "wwwroot", "images", "noc_signature.png");
-            bool hasSignature = System.IO.File.Exists(signaturePath);
-
-            var signatureHtml = hasSignature
-                ? @"<img src=""cid:noc_signature"" alt=""NOC Team""
-                        style=""max-width:300px;height:auto;
-                                display:block;margin-top:8px;""/>"
-                : @"<p style=""margin:4px 0 0;font-size:13px;
-                            color:#64748B;"">חדר מחשב - NOC</p>";
-
-            // ── בנה HTML מלא ─────────────────────────────────────────
-            var htmlBody = $@"<!DOCTYPE html>
-    <html dir=""rtl"" lang=""he"">
-    <head><meta charset=""UTF-8""></head>
-    <body style=""font-family:Arial,Helvetica,sans-serif;direction:rtl;
-                font-size:14px;color:#333;line-height:1.7;
-                padding:20px;margin:0;"">
-
-    <p style=""margin:0 0 8px 0;"">היי,</p>
-    <p style=""margin:0 0 16px 0;"">
-        {introText}
-    </p>
-
-    <p style=""margin:0 0 8px 0;font-weight:700;color:#1e293b;"">
-        {tableTitle}
-    </p>
-
-    <table style=""width:100%;border-collapse:collapse;
-                direction:rtl;margin-bottom:24px;"">
-        <thead>
-        <tr style=""background:#320F5B;"">
-            <th style=""padding:10px 12px;border:1px solid #4a1a7a;
-                    color:#fff;font-size:13px;font-weight:700;
-                    text-align:center;vertical-align:middle;"">Message</th>
-            <th style=""padding:10px 12px;border:1px solid #4a1a7a;
-                    color:#fff;font-size:13px;font-weight:700;
-                    text-align:center;vertical-align:middle;"">IP Address</th>
-            <th style=""padding:10px 12px;border:1px solid #4a1a7a;
-                    color:#fff;font-size:13px;font-weight:700;
-                    text-align:center;vertical-align:middle;"">Host Name</th>
-            <th style=""padding:10px 12px;border:1px solid #4a1a7a;
-                    color:#fff;font-size:13px;font-weight:700;
-                    text-align:center;vertical-align:middle;"">Severity</th>
-            <th style=""padding:10px 12px;border:1px solid #4a1a7a;
-                    color:#fff;font-size:13px;font-weight:700;
-                    text-align:center;vertical-align:middle;direction:ltr;"">Date & Time</th>
-        </tr>
-        </thead>
-        <tbody>
-        {rows}
-        </tbody>
-    </table>
-
-    <br>
-    {signatureHtml}
-
-    </body>
-    </html>";
 
             // ── שלח SMTP ─────────────────────────────────────────────
             using var smtp = new System.Net.Mail.SmtpClient("172.22.28.25", 25)
@@ -2021,25 +1909,28 @@ public class AlertsController : Controller
             mail.BodyEncoding    = System.Text.Encoding.UTF8;
             mail.HeadersEncoding = System.Text.Encoding.UTF8;
 
-            // ── נמענים (To) ──────────────────────────────────────────
             foreach (var addr in request.To.Where(a =>
                 !string.IsNullOrWhiteSpace(a) && a.Contains('@')))
                 mail.To.Add(addr.Trim());
 
-            // ── עותק (CC) ────────────────────────────────────────────
             foreach (var addr in (request.Cc ?? new List<string>()).Where(a =>
                 !string.IsNullOrWhiteSpace(a) && a.Contains('@')))
                 mail.CC.Add(addr.Trim());
 
             // ── HTML View ────────────────────────────────────────────
+            var signaturePathForMail = System.IO.Path.Combine(
+                AppDomain.CurrentDomain.BaseDirectory,
+                "wwwroot", "images", "noc_signature.png");
+            bool hasSignatureForMail = System.IO.File.Exists(signaturePathForMail);
+
             var htmlView = System.Net.Mail.AlternateView
                 .CreateAlternateViewFromString(
                     htmlBody, System.Text.Encoding.UTF8, "text/html");
 
-            if (hasSignature)
+            if (hasSignatureForMail && string.IsNullOrWhiteSpace(request.CustomHtmlBody))
             {
                 var sig = new System.Net.Mail.LinkedResource(
-                    signaturePath, "image/png")
+                    signaturePathForMail, "image/png")
                 {
                     ContentId        = "noc_signature",
                     TransferEncoding = System.Net.Mime.TransferEncoding.Base64
@@ -2049,6 +1940,7 @@ public class AlertsController : Controller
 
             mail.AlternateViews.Add(htmlView);
             await smtp.SendMailAsync(mail);
+            
             _auditLog?.Log(new AuditLogEntry
             {
                 EventType = AuditEventTypes.EmailSent,
@@ -2057,15 +1949,12 @@ public class AlertsController : Controller
                 Details   = $"[SendAlertEmail] Email sent | To={string.Join(", ", request.To)}",
                 Success   = true
             });
-            Console.WriteLine(
-                $"[SendAlertEmail] נשלח אל {string.Join(", ", request.To)} | " +
-                $"alertIds: {string.Join(", ", request.AlertIds ?? new List<string>())}");
 
-            return Json(new { success = true, count = alerts.Count });
+            return Json(new { success = true, count = request.AlertIds?.Count ?? 0 });
         }
         catch (System.Net.Mail.SmtpException ex)
         {
-             _auditLog?.Log(new AuditLogEntry
+            _auditLog?.Log(new AuditLogEntry
             {
                 EventType = AuditEventTypes.EmailFailed,
                 Username  = "system",
@@ -2079,7 +1968,7 @@ public class AlertsController : Controller
         }
         catch (Exception ex)
         {
-             _auditLog?.Log(new AuditLogEntry
+            _auditLog?.Log(new AuditLogEntry
             {
                 EventType = AuditEventTypes.EmailFailed,
                 Username  = "system",
@@ -2090,6 +1979,20 @@ public class AlertsController : Controller
             Console.Error.WriteLine($"[SendAlertEmail] {ex.Message}");
             return Json(new { success = false, error = ex.Message });
         }
+    }
+
+    // ── עזר: עטוף תוכן HTML בתבנית מייל מלאה ──────────────────────────
+    private string WrapInEmailTemplate(string bodyContent)
+    {
+        return $@"<!DOCTYPE html>
+    <html dir=""rtl"" lang=""he"">
+    <head><meta charset=""UTF-8""></head>
+    <body style=""font-family:Arial,Helvetica,sans-serif;direction:rtl;
+                font-size:14px;color:#333;line-height:1.7;
+                padding:20px;margin:0;"">
+    {bodyContent}
+    </body>
+    </html>";
     }
 
     private async Task EnsureValidToken()
@@ -2218,10 +2121,15 @@ public class AlertsController : Controller
 // ── DTO מאוחד לשליחת מייל (יחיד ומרובה) ──────────────────────────
 public class SendAlertEmailRequest
 {
-    public List<string> AlertIds { get; set; } = new();
-    public List<string> To       { get; set; } = new();
-    public List<string> Cc       { get; set; } = new();
-    public string       Subject  { get; set; } = "";
+    public List<string> AlertIds   { get; set; } = new();
+    public List<string> To         { get; set; } = new();
+    public List<string> Cc         { get; set; } = new();
+    public string       Subject    { get; set; } = "";
+    public bool         IsReminder { get; set; } = false;
+    public Dictionary<string,string> IncidentNumbers  { get; set; } = new();
+    // *** גוף HTML מותאם אישית (לתזכורת מרוכזת לפי צוותים) ***
+    public string CustomHtmlBody { get; set; } = null;
+
 }
 
 // מחלקה לשמירת מידע על התראות

@@ -9,6 +9,9 @@ class ShiftsManager {
         this.editPassword = 'Menora99'; // Password for edit mode
         this.autoRefreshInterval = null; // Auto refresh interval
 
+        this.currentUser = null;
+        this.isAdmin = false;
+
         // Employee colors map 
         this.employeeColors = {
             'אריה': '#4BAB46',
@@ -54,14 +57,14 @@ class ShiftsManager {
         if (validModes.includes(mode)) {
             this.colorMode = mode;
             // Save preference to localStorage
-            localStorage.setItem('shiftsColorMode', mode);
+            userSettings.setItem('shiftsColorMode', mode);
             this.loadShiftsTable(); // Reload table with new color mode
         }
     }
 
     // Load color mode preference
     loadColorModePreference() {
-        const savedMode = localStorage.getItem('shiftsColorMode');
+        const savedMode = userSettings.getItem('shiftsColorMode');
         if (savedMode) {
             this.colorMode = savedMode;
             // Update selector if exists
@@ -1554,10 +1557,63 @@ ${htmlBody}`;
         return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
     }
 
+    async loadCurrentUser() {
+        try {
+            // *** נסה קודם מ-sessionStorage ***
+            const cached = sessionStorage.getItem('currentUser');
+            if (cached) {
+                this.currentUser = JSON.parse(cached);
+                return;
+            }
+
+            const response = await fetch('/Auth/Me', {
+                credentials: 'include'
+            });
+            if (response.ok) {
+                this.currentUser = await response.json();
+                sessionStorage.setItem(
+                    'currentUser',
+                    JSON.stringify(this.currentUser)
+                );
+            }
+        } catch (err) {
+            console.warn('Could not load current user:', err);
+            this.currentUser = null;
+        }
+    }
+
+    isUserAdmin() {
+        if (!this.currentUser) return false;
+        return this.currentUser.role === 'Admin' || 
+            this.isAdmin === true;  // ← גם הדגל מה-Dashboard
+    }
+
+    // Check if current user is authorized to edit without password
+    isAuthorizedUser() {
+        try {
+            // Get current user info from the page
+            this.loadCurrentUser();
+            if (this.currentUser === 'galitb' || this.isUserAdmin()) {
+                return true;
+            }
+
+            return false;
+        } catch (error) {
+            console.error('Error checking authorized user:', error);
+            return false;
+        }
+    }
+
     // Toggle Edit Mode with password protection
     toggleEditMode() {
         // Check password before entering edit mode
         if (!this.isEditMode) {
+            // Check if current user is authorized (no password needed)
+            if (this.isAuthorizedUser()) {
+                this.enterEditMode();
+                return;
+            }
+
             // Check if password is cached
             if (this.isPasswordCached()) {
                 this.enterEditMode();
@@ -1708,7 +1764,7 @@ ${htmlBody}`;
 
         // Check localStorage
         try {
-            const cached = localStorage.getItem('shiftsPasswordCache');
+            const cached = userSettings.getItem('shiftsPasswordCache');
             if (cached) {
                 const data = JSON.parse(cached);
                 const now = Date.now();
@@ -1729,7 +1785,7 @@ ${htmlBody}`;
                     return true;
                 } else {
                     // Expired - clear it
-                    localStorage.removeItem('shiftsPasswordCache');
+                    userSettings.removeItem('shiftsPasswordCache');
                 }
             }
         } catch (error) {
@@ -1747,7 +1803,7 @@ ${htmlBody}`;
         this.passwordCache.timestamp = Date.now();
 
         // Save to localStorage
-        localStorage.setItem('shiftsPasswordCache', JSON.stringify({
+        userSettings.setItem('shiftsPasswordCache', JSON.stringify({
             isAuthenticated: true,
             timestamp: this.passwordCache.timestamp
         }));
@@ -1769,7 +1825,7 @@ ${htmlBody}`;
         this.passwordCache.timestamp = Date.now();
 
         // Update localStorage
-        localStorage.setItem('shiftsPasswordCache', JSON.stringify({
+        userSettings.setItem('shiftsPasswordCache', JSON.stringify({
             isAuthenticated: true,
             timestamp: this.passwordCache.timestamp
         }));
@@ -1792,7 +1848,7 @@ ${htmlBody}`;
         this.passwordCache.timestamp = null;
 
         // Clear from localStorage
-        localStorage.removeItem('shiftsPasswordCache');
+        userSettings.removeItem('shiftsPasswordCache');
 
         if (this.passwordCache.timeoutId) {
             clearTimeout(this.passwordCache.timeoutId);

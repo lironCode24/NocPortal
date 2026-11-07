@@ -9,16 +9,12 @@ using System.Text;
 public class OrgTreeController : Controller
 {
     // ─── תיקיית קבצי עץ ארגוני ───────────────────────────────────
-    private readonly string _treeFolder;
+    private readonly string _treeFolder =
+        PortalPaths.UnderFiles(@"Helix_Employees_Export\BuildTree");
 
     // ─── ספר טלפונים (לצירוף מידע נוסף) ─────────────────────────
-    private readonly string _phoneCsvPath;
-
-    public OrgTreeController(IWebHostEnvironment env)
-    {
-        _treeFolder = Path.Combine(env.WebRootPath, "assets", "files", "Helix_Employees_Export", "BuildTree");
-        _phoneCsvPath = Path.Combine(env.WebRootPath, "assets", "files", "phone_directory.csv");
-    }
+    private readonly string _phoneCsvPath =
+        PortalPaths.UnderFiles(@"phone_directory.csv");
 
     // ══════════════════════════════════════════════════════════════
     // GET /OrgTree/GetOrgTree

@@ -13,12 +13,26 @@ using NocPortal.Services;
 
 public class ChangesController : Controller
 {
-    private static string CHANGES_FILE_PATH;
-    private static string AGGREGATED_CHANGES_PATH;
-    private static string OLD_SYSTEM_JSON_PATH;
-    private static string CAB_DECISIONS_PATH;
-    private static string ATTACHMENTS_BASE_PATH;
-    private static string OLD_SYSTEM_CSV_PATH;
+    private static readonly string CHANGES_FILE_PATH =
+        PortalPaths.UnderFiles(@"CAB_Automation\results");
+    private static readonly string AGGREGATED_CHANGES_PATH =
+        PortalPaths.UnderFiles(@"CAB_Automation\aggregated_changes.json");
+    private static readonly string OLD_SYSTEM_JSON_PATH =
+        PortalPaths.UnderFiles(@"CAB_Automation\ONIT is going down\All regular changes requests - ONIT.json");
+    private static readonly string CAB_DECISIONS_PATH =
+        PortalPaths.UnderFiles(@"CAB_Automation\cab_decisions.json");
+
+    private static readonly string ATTACHMENTS_BASE_PATH =
+        PortalPaths.UnderFiles(@"CAB_Automation\attachments");
+
+    private static readonly string CAB_NOTICE_TEMPLATE_PATH =
+        PortalPaths.UnderFiles(@"CAB_Automation\cab_notice_template.json");
+
+    // *** הוספה: נתיב קובץ ה-CSV של המערכת הישנה להעשרת נתונים ***
+    private static readonly string OLD_SYSTEM_CSV_PATH =
+        PortalPaths.UnderFiles(@"CAB_Automation\Changes_NOC_Portal_ServiceNow.csv");
+    private static readonly string SENT_EMAILS_LOG_PATH =
+        PortalPaths.UnderFiles(@"CAB_Automation\sent_alarm_emails.json");
 
     private static readonly string _emailHtmlCachePath =
         Path.Combine(Path.GetTempPath(), "EmailHtmlCache");
@@ -34,16 +48,9 @@ public class ChangesController : Controller
     private static readonly object _cabTimerLock = new object();
     private static AuditLogService _auditLog;
 
-    public ChangesController(AuditLogService auditLog, IWebHostEnvironment env)
+    public ChangesController(AuditLogService auditLog)
     {
         _auditLog = auditLog;
-        var basePath = Path.Combine(env.WebRootPath, "assets", "files", "CAB_Automation");
-        CHANGES_FILE_PATH = Path.Combine(basePath, "results");
-        AGGREGATED_CHANGES_PATH = Path.Combine(basePath, "aggregated_changes.json");
-        OLD_SYSTEM_JSON_PATH = Path.Combine(basePath, "ONIT is going down", "All regular changes requests - ONIT.json");
-        CAB_DECISIONS_PATH = Path.Combine(basePath, "cab_decisions.json");
-        ATTACHMENTS_BASE_PATH = Path.Combine(basePath, "attachments");
-        OLD_SYSTEM_CSV_PATH = Path.Combine(basePath, "Changes_NOC_Portal_ServiceNow.csv");
         EnsureThursdayCabEmailTimerStarted();
     }
 
@@ -1158,17 +1165,40 @@ public class ChangesController : Controller
     }
 
     [HttpGet]
-    public IActionResult GetCabDateRange()
+    public IActionResult GetCabDateRange(int cabDay = 0, string cabDate = null)
     {
-        var (from, to) = GetCurrentCabDateRange();
+        DateTime startDate;
+
+        // *** אם נשלח תאריך ספציפי - השתמש בו ***
+        if (!string.IsNullOrWhiteSpace(cabDate) &&
+            DateTime.TryParse(cabDate, out var specificDate))
+        {
+            startDate = specificDate.Date;
+        }
+        else
+        {
+            // fallback: חישוב לפי יום בשבוע
+            if (cabDay < 0 || cabDay > 6) cabDay = 0;
+            var dayOfWeek = (DayOfWeek)cabDay;
+            var today = DateTime.Today;
+            int daysUntilCab = ((int)dayOfWeek - (int)today.DayOfWeek + 7) % 7;
+            startDate = today.AddDays(daysUntilCab);
+        }
+
+        var endDate = startDate.AddDays(7);
+
+        var dayNames = new[] { "ראשון", "שני", "שלישי", "רביעי",
+                            "חמישי", "שישי", "שבת" };
 
         return Json(new
         {
-            success  = true,
-            from     = from.ToString("dd/MM/yyyy"),
-            to       = to.ToString("dd/MM/yyyy"),
-            fromDate = from.ToString("yyyy-MM-dd"),
-            toDate   = to.ToString("yyyy-MM-dd")
+            success    = true,
+            from       = startDate.ToString("dd/MM/yyyy"),
+            to         = endDate.ToString("dd/MM/yyyy"),
+            fromDate   = startDate.ToString("yyyy-MM-dd"),
+            toDate     = endDate.ToString("yyyy-MM-dd"),
+            cabDay     = (int)startDate.DayOfWeek,
+            cabDayName = dayNames[(int)startDate.DayOfWeek]
         });
     }
 
@@ -2313,36 +2343,51 @@ public class ChangesController : Controller
     }
 
     // *** מתודה סטטית: חישוב טווח CAB הנוכחי ***
-    private static (DateTime from, DateTime to) GetCurrentCabDateRange()
+    private (DateTime StartDate, DateTime EndDate) GetCurrentCabDateRange(
+        DayOfWeek cabDay = DayOfWeek.Sunday)
     {
-        DateTime today = DateTime.Today;
+        var today = DateTime.Today;
 
-        int dow = (int)today.DayOfWeek;
+        // חשב כמה ימים עד יום ה-CAB הקרוב
+        // אם היום הוא יום ה-CAB - קח את ה-CAB הבא (7 ימים קדימה)
+        int daysUntilCab =
+            ((int)cabDay - (int)today.DayOfWeek + 7) % 7;
 
-        DateTime fromSunday;
+        DateTime cabDate = today.AddDays(daysUntilCab);
 
-        if (dow <= 1)
+        var startDate = cabDate;
+
+        // יום ראשון הקרוב
+        int daysUntilSunday =
+            ((int)DayOfWeek.Sunday - (int)cabDate.DayOfWeek + 7) % 7;
+
+        var endDate = cabDate.AddDays(daysUntilSunday);
+
+        // אם הטווח קטן מ-3 ימים, גלוש ליום ראשון של השבוע הבא
+        if ((endDate - startDate).TotalDays < 3)
         {
-            // ראשון או שני → השבוע הנוכחי
-            fromSunday = today.AddDays(-dow);
-        }
-        else
-        {
-            // שלישי ואילך → השבוע הבא
-            int daysUntilSunday = 7 - dow;
-            fromSunday = today.AddDays(daysUntilSunday);
+            endDate = endDate.AddDays(7);
         }
 
-        // *** from: תחילת היום (00:00:00) ***
-        fromSunday = fromSunday.Date;
+        return (startDate, endDate);
+    }
 
-        // *** to: סוף יום הראשון האחרון (23:59:59) ***
-        DateTime toSunday = fromSunday.AddDays(7).Date
-                                    .AddHours(23)
-                                    .AddMinutes(59)
-                                    .AddSeconds(59);
 
-        return (fromSunday, toSunday);
+    // עומס יתר סטטי לשימוש מ-BuildCabExcelBytes
+    private static (DateTime StartDate, DateTime EndDate) GetCurrentCabDateRange()
+    {
+        var today = DateTime.Today;
+
+        // חשב כמה ימים עד יום ראשון הקרוב
+        // אם היום ראשון - קח את ראשון הבא (7 ימים קדימה)
+        int daysUntilNextSunday =
+            ((int)DayOfWeek.Sunday - (int)today.DayOfWeek + 7) % 7;
+
+        var startDate = today.AddDays(daysUntilNextSunday).Date;
+        var endDate   = startDate.AddDays(7).Date
+                                .AddHours(23).AddMinutes(59).AddSeconds(59);
+
+        return (startDate, endDate);
     }
 
     [HttpGet]
@@ -2475,26 +2520,121 @@ public class ChangesController : Controller
             }
 
             Console.WriteLine(
-                $"[ThursdayCabEmail] Starting CAB export for " +
+                $"[ThursdayCabEmail] Sending CAB reminder for " +
                 $"{now:dd/MM/yyyy HH:mm:ss}");
 
-            // *** בנה את קובץ ה-Excel של CAB ***
-            byte[] excelBytes = BuildCabExcelBytes();
-
-            if (excelBytes == null || excelBytes.Length == 0)
-            {
-                Console.WriteLine(
-                    "[ThursdayCabEmail] No CAB data found - skipping email");
-                return;
-            }
-
             string dateDisplay = now.ToString("dd/MM/yyyy");
+            string cabUrl = "https://nocport-p1apw1/dashboards?dashboard=changes";
 
-            SendCabEmailWithAttachment(
-                subject:     $"דוח CAB שבועי - {dateDisplay}",
-                body:        BuildCabEmailBody(dateDisplay),
-                excelBytes:  excelBytes,
-                fileName:    $"CAB_Changes_{now:yyyy-MM-dd}.xls",
+            string subject = $"תזכורת: הכנת דוח CAB שבועי - {dateDisplay}";
+
+            string htmlBody = $@"<!DOCTYPE html>
+    <html dir=""rtl"" lang=""he"">
+    <head>
+    <meta charset=""UTF-8"">
+    </head>
+    <body style=""
+        font-family: Arial, sans-serif;
+        direction: rtl;
+        margin: 0;
+        padding: 30px;
+        background: #f0f4f8;
+        color: #1a2332;
+    "">
+        <div style=""
+            max-width: 560px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 4px 24px rgba(26,58,107,0.12);
+        "">
+            <!-- כותרת -->
+            <div style=""
+                background: linear-gradient(135deg, #1a1030, #320F5B, #4c1d95);
+                padding: 28px 32px;
+                text-align: center;
+            "">
+                <div style=""font-size: 2.5rem; margin-bottom: 12px;"">📋</div>
+                <h1 style=""
+                    margin: 0 0 8px 0;
+                    font-size: 1.4rem;
+                    font-weight: 800;
+                    color: #ffffff;
+                "">תזכורת הכנת CAB שבועי</h1>
+                <p style=""
+                    margin: 0;
+                    font-size: 0.9rem;
+                    color: rgba(255,255,255,0.7);
+                "">{dateDisplay}</p>
+            </div>
+
+            <!-- גוף -->
+            <div style=""padding: 28px 32px;"">
+                <p style=""
+                    margin: 0 0 16px 0;
+                    font-size: 15px;
+                    color: #1a2332;
+                    line-height: 1.6;
+                "">
+                    שלום,<br><br>
+                    תזכורת שבועית להכנת דוח ה-CAB לישיבה הקרובה.
+                </p>
+
+                <!-- כרטיס הנחיות -->
+                <div style=""
+                    background: #f5f3ff;
+                    border: 1px solid #c4b5fd;
+                    border-right: 4px solid #7c3aed;
+                    border-radius: 10px;
+                    padding: 16px 20px;
+                    margin: 20px 0;
+                "">
+                    <div style=""
+                        font-size: 13px;
+                        font-weight: 700;
+                        color: #5b21b6;
+                        margin-bottom: 10px;
+                        text-transform: uppercase;
+                        letter-spacing: 0.5px;
+                    "">שלבי ההכנה:</div>
+                    <ol style=""
+                        margin: 0;
+                        padding-right: 20px;
+                        font-size: 14px;
+                        color: #374151;
+                        line-height: 2;
+                    "">
+                        <li>
+                            היכנס ל-
+                            <a href=""{cabUrl}""
+                            style=""color:#7c3aed; font-weight:700; text-decoration:none;"">
+                                NOC Portal
+                            </a>
+                            ← לחץ כאן
+                        </li>
+                        <li>לחץ על כפתור <strong>הכן CAB</strong></li>
+                    </ol>
+                </div>
+
+                <p style=""
+                    margin: 16px 0 0 0;
+                    font-size: 12px;
+                    color: #9ca3af;
+                    text-align: center;
+                    line-height: 1.5;
+                "">
+                    מייל זה נשלח אוטומטית מדי יום חמישי בשעה 11:05<br>
+                    NOC Portal · מנורה מבטחים
+                </p>
+            </div>
+        </div>
+    </body>
+    </html>";
+
+            SendCabReminderEmail(
+                subject:     subject,
+                htmlBody:    htmlBody,
                 toAddresses: new List<string>
                 {
                     "talyoh@menoramivt.co.il"
@@ -2506,12 +2646,83 @@ public class ChangesController : Controller
             );
 
             Console.WriteLine(
-                $"[ThursdayCabEmail] Successfully sent for {dateDisplay}");
+                $"[ThursdayCabEmail] Reminder sent successfully for {dateDisplay}");
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[ThursdayCabEmail] Error: {ex.Message}");
             Console.WriteLine($"[ThursdayCabEmail] Stack: {ex.StackTrace}");
+        }
+    }
+
+    private static void SendCabReminderEmail(
+        string       subject,
+        string       htmlBody,
+        List<string> toAddresses,
+        List<string> ccAddresses)
+    {
+        using var client = new System.Net.Mail.SmtpClient("172.22.28.25", 25)
+        {
+            EnableSsl             = false,
+            DeliveryMethod        =
+                System.Net.Mail.SmtpDeliveryMethod.Network,
+            UseDefaultCredentials = false,
+            Credentials           =
+                System.Net.CredentialCache.DefaultNetworkCredentials,
+            Timeout               = 30_000
+        };
+
+        using var mail = new System.Net.Mail.MailMessage
+        {
+            From       = new System.Net.Mail.MailAddress(
+                            "noc@menoramivt.co.il", "NOC Portal"),
+            Subject    = subject,
+            Body       = htmlBody,
+            IsBodyHtml = true
+        };
+
+        mail.SubjectEncoding = Encoding.UTF8;
+        mail.BodyEncoding    = Encoding.UTF8;
+        mail.HeadersEncoding = Encoding.UTF8;
+
+        foreach (var to in toAddresses)
+            if (!string.IsNullOrWhiteSpace(to))
+                mail.To.Add(to.Trim());
+
+        foreach (var cc in ccAddresses)
+            if (!string.IsNullOrWhiteSpace(cc))
+                mail.CC.Add(cc.Trim());
+
+        try
+        {
+            client.Send(mail);
+
+            _auditLog?.Log(new AuditLogEntry
+            {
+                EventType = AuditEventTypes.EmailSent,
+                Username  = "system",
+                IpAddress = "system",
+                Details   =
+                    $"CAB reminder email sent | " +
+                    $"To={string.Join(", ", toAddresses)} | " +
+                    $"Subject={subject}",
+                Success   = true
+            });
+        }
+        catch (Exception ex)
+        {
+            _auditLog?.Log(new AuditLogEntry
+            {
+                EventType = AuditEventTypes.EmailFailed,
+                Username  = "system",
+                IpAddress = "system",
+                Details   =
+                    $"CAB reminder email failed | " +
+                    $"To={string.Join(", ", toAddresses)} | " +
+                    $"Error={ex.Message}",
+                Success   = false
+            });
+            throw;
         }
     }
 
@@ -2713,6 +2924,7 @@ public class ChangesController : Controller
         // כאן נשתמש ב-HTML שExcel פותח כ-xls
         
         string cabDateDisplay = $"{fromD:dd/MM/yyyy} - {toD:dd/MM/yyyy}";
+        string cabDateForRow = fromD.ToString("dd/MM/yyyy");
         
         var sb = new StringBuilder();
         
@@ -2836,9 +3048,7 @@ public class ChangesController : Controller
         {
             string startStr      = StaticGetEffectiveStartTime(c);
             var    dateObj       = StaticTryParseDate(startStr);
-            string formattedDate = dateObj.HasValue
-                ? dateObj.Value.ToString("dd/MM/yyyy")
-                : "";
+            string formattedDate = cabDateForRow;
 
             string status  = StaticMapStatus(c.Status);
             string notes   = !string.IsNullOrWhiteSpace(c.Notes)
@@ -2897,6 +3107,57 @@ public class ChangesController : Controller
         return Encoding.UTF8.GetPreamble()
             .Concat(Encoding.UTF8.GetBytes(sb.ToString()))
             .ToArray();
+    }
+
+    // -------------------------------------------------------
+    // GET /Changes/GetCabNoticeTemplate
+    // טעינת תבנית "לתשומת ליבכם" השמורה
+    // -------------------------------------------------------
+    [HttpGet]
+    public IActionResult GetCabNoticeTemplate()
+    {
+        try
+        {
+            if (!System.IO.File.Exists(CAB_NOTICE_TEMPLATE_PATH))
+                return Json(new { success = true, items = (object)null });
+
+            string json = System.IO.File.ReadAllText(
+                CAB_NOTICE_TEMPLATE_PATH, Encoding.UTF8);
+
+            var items = JsonSerializer.Deserialize<List<CabNoticeItem>>(json);
+            return Json(new { success = true, items });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, message = ex.Message });
+        }
+    }
+
+    // -------------------------------------------------------
+    // POST /Changes/SaveCabNoticeTemplate
+    // שמירת תבנית "לתשומת ליבכם"
+    // -------------------------------------------------------
+    [HttpPost]
+    public IActionResult SaveCabNoticeTemplate(
+        [FromBody] List<CabNoticeItem> items)
+    {
+        if (items == null)
+            return Json(new { success = false, message = "נתונים חסרים" });
+
+        try
+        {
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            System.IO.File.WriteAllText(
+                CAB_NOTICE_TEMPLATE_PATH,
+                JsonSerializer.Serialize(items, options),
+                Encoding.UTF8);
+
+            return Json(new { success = true });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, message = ex.Message });
+        }
     }
 
     // *** עזר סטטי: קבל תאריך התחלה אפקטיבי ***
@@ -3156,6 +3417,453 @@ public class ChangesController : Controller
         }
     }
 
+    [HttpPost]
+    public IActionResult RequestAddToCab([FromBody] AddToCabRequest request)
+    {
+        if (request == null || string.IsNullOrWhiteSpace(request.ChangeNumber))
+            return Json(new { success = false, message = "נתונים חסרים" });
+
+        try
+        {
+            var allChanges = LoadAggregatedChanges();
+            var change = allChanges.FirstOrDefault(c =>
+                c.Number == request.ChangeNumber);
+
+            if (change == null)
+                return Json(new { success = false, message = "שינוי לא נמצא" });
+
+            DateTime targetCabDate;
+
+            // אם נשלח תאריך ספציפי - השתמש בו
+            if (!string.IsNullOrWhiteSpace(request.SpecificCabDate) &&
+                DateTime.TryParse(request.SpecificCabDate, out var specificDate))
+            {
+                targetCabDate = specificDate.Date;
+            }
+            else
+            {
+                // חשב לפי יום בשבוע + מספר שבועות קדימה
+                var cabDay = request.CabDay >= 0 && request.CabDay <= 6
+                    ? (DayOfWeek)request.CabDay
+                    : DayOfWeek.Sunday;
+
+                var today = DateTime.Today;
+                int daysUntilCab = ((int)cabDay - (int)today.DayOfWeek + 7) % 7;
+                
+                // אם WeeksAhead > 0 - קפוץ שבועות קדימה
+                int weeksAhead = Math.Max(0, request.WeeksAhead);
+                targetCabDate = today.AddDays(daysUntilCab + (weeksAhead * 7));
+            }
+
+            change.ManualCabDate = targetCabDate.ToString("dd/MM/yyyy");
+
+            if (!string.IsNullOrWhiteSpace(request.Note))
+            {
+                change.Notes = string.IsNullOrWhiteSpace(change.Notes)
+                    ? request.Note
+                    : $"{change.Notes} | {request.Note}";
+            }
+
+            SaveAggregatedChanges(allChanges);
+
+            return Json(new
+            {
+                success = true,
+                cabDate = targetCabDate.ToString("dd/MM/yyyy"),
+                message = $"השינוי נוסף ל-CAB בתאריך {targetCabDate:dd/MM/yyyy}"
+            });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, message = ex.Message });
+        }
+    }
+
+    // -------------------------------------------------------
+    // POST /Changes/CheckAndMarkAlarmEmail
+    // בודק אם מייל כבר נשלח - אם לא, מסמן ומחזיר true
+    // -------------------------------------------------------
+    [HttpPost]
+    public IActionResult CheckAndMarkAlarmEmail(
+        [FromBody] AlarmEmailCheckRequest request)
+    {
+        if (request == null ||
+            string.IsNullOrWhiteSpace(request.EmailKey))
+            return Json(new { shouldSend = false });
+
+        try
+        {
+            lock (_emailLogLock)
+            {
+                var log = LoadSentEmailsLog();
+
+                // *** נקה רשומות ישנות (מעל 24 שעות) ***
+                var cutoff = DateTime.Now.AddHours(-24);
+                log.RemoveAll(e => e.SentAt < cutoff);
+
+                // *** בדוק אם כבר נשלח ***
+                bool alreadySent = log.Any(e => e.EmailKey == request.EmailKey);
+
+                if (alreadySent)
+                    return Json(new { shouldSend = false });
+
+                // *** סמן כנשלח ***
+                log.Add(new SentEmailLogEntry
+                {
+                    EmailKey = request.EmailKey,
+                    SentAt   = DateTime.Now
+                });
+
+                SaveSentEmailsLog(log);
+
+                return Json(new { shouldSend = true });
+            }
+        }
+        catch (Exception ex)
+        {
+            // במקרה של שגיאה - אפשר לשלוח (עדיף מייל כפול מאשר אין מייל)
+            return Json(new { shouldSend = true, error = ex.Message });
+        }
+    }
+
+    // *** lock לגישה בו-זמנית ***
+    private static readonly object _emailLogLock = new object();
+
+    private List<SentEmailLogEntry> LoadSentEmailsLog()
+    {
+        if (!System.IO.File.Exists(SENT_EMAILS_LOG_PATH))
+            return new List<SentEmailLogEntry>();
+        try
+        {
+            var json = System.IO.File.ReadAllText(SENT_EMAILS_LOG_PATH);
+            return JsonSerializer.Deserialize<List<SentEmailLogEntry>>(json)
+                ?? new List<SentEmailLogEntry>();
+        }
+        catch { return new List<SentEmailLogEntry>(); }
+    }
+
+    private void SaveSentEmailsLog(List<SentEmailLogEntry> log)
+    {
+        var options = new JsonSerializerOptions { WriteIndented = true };
+        System.IO.File.WriteAllText(
+            SENT_EMAILS_LOG_PATH,
+            JsonSerializer.Serialize(log, options),
+            Encoding.UTF8);
+    }
+
+    // -------------------------------------------------------
+    // POST /Changes/SendAlarmEmail
+    // שליחת מייל התראה לשינוי קרוב - נקרא מה-JS
+    // -------------------------------------------------------
+    [HttpPost]
+    public async Task<IActionResult> SendAlarmEmail(
+        [FromBody] AlarmEmailRequest request)
+    {
+        if (request == null ||
+            string.IsNullOrWhiteSpace(request.ToEmail) ||
+            string.IsNullOrWhiteSpace(request.ChangeNumber))
+            return Json(new { success = false, message = "נתונים חסרים" });
+
+        try
+        {
+            var emailService = HttpContext.RequestServices
+                .GetRequiredService<NocPortal.Services.EmailService>();
+
+            // ── בניית נושא המייל ──────────────────────────────────
+            var eventLabel  = request.EventType == "start" ? "תחילת" : "סיום";
+            var titleText   = request.IsNow
+                ? $"⏰ {eventLabel} פעילות עכשיו!"
+                : $"⏰ {eventLabel} פעילות בעוד {request.MinutesLeft} דקות";
+
+            var subject = $"{titleText} | {request.ChangeNumber}" +
+                        (!string.IsNullOrWhiteSpace(request.ChangeName)
+                            ? $" - {request.ChangeName}"
+                            : "");
+
+            var actionMsg = request.EventType == "start"
+                ? "יש לוודא התחלה בזמן המתוכנן מול מוביל הפעילות " +
+                "ולעדכן את קבוצת ה WhatsApp"
+                : "אנא ודא שהפעילות הסתיימה בהצלחה " +
+                "ועדכן בהתאם בקבוצת ה WhatsApp";
+
+            var accentColor = request.EventType == "start"
+                ? "#16A34A"   // ירוק - התחלה
+                : "#4f51db";  // אדום - סיום
+
+            // ── בניית שורות המידע (BuildInfoRow) ─────────────────
+            var rows = new System.Text.StringBuilder();
+
+            rows.Append(BuildInfoRow("מספר שינוי", request.ChangeNumber));
+
+            if (!string.IsNullOrWhiteSpace(request.ChangeName))
+                rows.Append(BuildInfoRow("שם פעילות", request.ChangeName));
+
+            rows.Append(BuildInfoRow(
+                $"שעת {eventLabel} פעילות",
+                $"{request.EventTime} ({request.EventDate})"));
+
+            if (!string.IsNullOrWhiteSpace(request.Presenters))
+                rows.Append(BuildInfoRow("מובילי פעילות", request.Presenters));
+
+            if (!string.IsNullOrWhiteSpace(request.Status))
+                rows.Append(BuildInfoRow("סטטוס", request.Status));
+
+            if (!string.IsNullOrWhiteSpace(request.System))
+                rows.Append(BuildInfoRow("מערכת", request.System));
+
+            // ── קישור - שורה מיוחדת ───────────────────────────────
+            if (!string.IsNullOrWhiteSpace(request.Link))
+            {
+                rows.Append($@"
+    <tr>
+    <td style=""padding:7px 0;font-size:15px;color:#64748B;
+                width:40%;border-bottom:1px solid #E2E8F0;"">
+        קישור לשינוי
+    </td>
+    <td style=""padding:7px 0;font-size:15px;
+                font-weight:600;border-bottom:1px solid #E2E8F0;"">
+        <a href=""{request.Link}""
+        style=""color:#2563EB;text-decoration:none;font-weight:600;"">
+        פתח קישור ↗
+        </a>
+    </td>
+    </tr>");
+            }
+
+            // ── תוכן ה-body ───────────────────────────────────────
+            var bodyContent = $@"
+    <p style=""margin:0 0 16px 0;font-size:16px;color:#1E293B;"">
+    פעילות <strong>{System.Net.WebUtility.HtmlEncode(request.ChangeName)}</strong>
+    עומדת ל{(request.EventType == "start" ? "התחיל" : "הסתיים")}
+    ב <strong>{request.EventTime}</strong>.
+    </p>
+
+    <p style=""margin:16px 0 20px 0;padding:10px 14px;
+            border-right:3px solid {accentColor};
+            font-size:15px;color:#1E293B;
+            background-color:transparent;line-height:1.6;"">
+    {System.Net.WebUtility.HtmlEncode(actionMsg)}
+    </p>
+
+    <table cellpadding=""0"" cellspacing=""0"" border=""0""
+        style=""width:100%;"">
+    {rows}
+    </table>";
+
+
+            // ── בניית HTML סופי דרך EmailService ─────────────────
+            var htmlBody = emailService.BuildAlarmEmailHtml(
+                accentColor:    accentColor,
+                headerTitle:    titleText,
+                headerSubtitle: $"שינוי {request.ChangeNumber}" +
+                                (!string.IsNullOrWhiteSpace(request.ChangeName)
+                                    ? $" · {request.ChangeName}"
+                                    : ""),
+                bodyContent:    bodyContent
+            );
+
+            var (success, message) = await emailService.SendEmailAsync(
+                toEmail:        request.ToEmail,
+                toName:         request.ToName ?? "NOC",
+                subject:        subject,
+                htmlBody:       htmlBody,
+                emailEventType: AuditEventTypes.EmailSent
+            );
+
+            return Json(new { success, message });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, message = ex.Message });
+        }
+    }
+
+    // ── עזר פרטי: שורת מידע זהה ל-EmailService ───────────────────
+    private static string BuildInfoRow(string label, string value)
+    {
+        return $@"
+    <tr>
+    <td style=""padding:7px 0;font-size:15px;color:#64748B;
+                width:40%;border-bottom:1px solid #E2E8F0;"">
+        {label}
+    </td>
+    <td style=""padding:7px 0;font-size:15px;color:#1E293B;
+                font-weight:600;border-bottom:1px solid #E2E8F0;"">
+        {System.Net.WebUtility.HtmlEncode(value)}
+    </td>
+    </tr>";
+    }
+
+    // -------------------------------------------------------
+    // POST /Changes/SendCabSummaryEmail
+    // שולח מייל סיכום CAB + שומר JSON
+    // -------------------------------------------------------
+    [HttpPost]
+    public async Task<IActionResult> SendCabSummaryEmail(
+        [FromBody] CabSummaryEmailRequest request)
+    {
+        if (request == null)
+            return Json(new { success = false, message = "נתונים חסרים" });
+
+        try
+        {
+            // שמירת JSON
+            if (request.CabJson?.Count > 0)
+            {
+                await SaveCabJsonFile(request.CabJson, request.MeetingDate);
+            }
+
+            using var client = new System.Net.Mail.SmtpClient("172.22.28.25", 25)
+            {
+                EnableSsl = false,
+                DeliveryMethod = System.Net.Mail.SmtpDeliveryMethod.Network,
+                UseDefaultCredentials = false,
+                Credentials = System.Net.CredentialCache.DefaultNetworkCredentials,
+                Timeout = 30000
+            };
+
+            using var mail = new System.Net.Mail.MailMessage
+            {
+                From = new System.Net.Mail.MailAddress(
+                    "noc@menoramivt.co.il",
+                    "NOC Portal"),
+                Subject = request.Subject ?? "סיכום ישיבת CAB",
+                Body = request.BodyHtml,
+                IsBodyHtml = true
+            };
+
+            // To
+            if (request.ToAddresses != null)
+            {
+                foreach (var address in request.ToAddresses
+                            .Where(x => !string.IsNullOrWhiteSpace(x) &&
+                                        x.Contains('@')))
+                {
+                    mail.To.Add(address.Trim());
+                }
+            }
+
+            // CC
+            if (request.CcAddresses != null)
+            {
+                foreach (var address in request.CcAddresses
+                            .Where(x => !string.IsNullOrWhiteSpace(x) &&
+                                        x.Contains('@')))
+                {
+                    mail.CC.Add(address.Trim());
+                }
+            }
+
+            if (request.CabJson?.Count > 0)
+            {
+                var jsonOptions = new JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                };
+
+                var jsonContent = JsonSerializer.Serialize(
+                    request.CabJson,
+                    jsonOptions);
+
+                var jsonBytes = Encoding.UTF8.GetBytes(jsonContent);
+
+                var jsonStream = new MemoryStream(jsonBytes);
+
+                var attachment = new System.Net.Mail.Attachment(
+                    jsonStream,
+                    $"CAB_Changes_{request.MeetingDate?.Replace("/", "-")}.json",
+                    "application/json");
+
+                mail.Attachments.Add(attachment);
+            }
+
+            await client.SendMailAsync(mail);
+
+            _auditLog?.Log(new AuditLogEntry
+            {
+                EventType = AuditEventTypes.EmailSent,
+                Username = "system",
+                IpAddress = "system",
+                Details =
+                    $"סיכום CAB בJSON נשלח | To={mail.To.Count} | MeetingDate={request.MeetingDate}",
+                Success = true
+            });
+
+            return Json(new
+            {
+                success = true,
+                message = "המייל נשלח בהצלחה",
+                recipientCount = mail.To.Count
+            });
+        }
+        catch (Exception ex)
+        {
+            _auditLog?.Log(new AuditLogEntry
+            {
+                EventType = AuditEventTypes.EmailFailed,
+                Username = "system",
+                IpAddress = "system",
+                Details = $"שגיאה בשליחת סיכום CAB בJSON: {ex}",
+                Success = false
+            });
+
+            return Json(new
+            {
+                success = false,
+                message = ex.Message
+            });
+        }
+    }
+
+    // -------------------------------------------------------
+    // שמירת JSON לקובץ
+    // -------------------------------------------------------
+    private async Task SaveCabJsonFile(
+        List<CabJsonEntry> entries, string meetingDate)
+    {
+        try
+        {
+            // *** נתיב הקובץ ***
+            var cabAutomationDir =
+                PortalPaths.UnderFiles(@"CAB_Automation\CAB_JSON");
+
+            Directory.CreateDirectory(cabAutomationDir);
+
+            // שם קובץ עם תאריך
+            var safeDate = (meetingDate ?? DateTime.Now.ToString("dd-MM-yyyy"))
+                .Replace("/", "-")
+                .Replace("\\", "-");
+
+            var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            var fileName  = $"CAB_Changes_Templates-{timestamp}.json";
+            var filePath  = Path.Combine(cabAutomationDir, fileName);
+
+            // *** יצור JSON בפורמט המבוקש ***
+            var options = new JsonSerializerOptions
+            {
+                WriteIndented        = true,
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            };
+
+            var jsonContent = JsonSerializer.Serialize(entries, options);
+            await System.IO.File.WriteAllTextAsync(
+                filePath, jsonContent, Encoding.UTF8);
+
+            // *** גם שמור עם שם קבוע לגישה נוחה ***
+            var latestPath = Path.Combine(
+                cabAutomationDir, "cab_summary_latest.json");
+            await System.IO.File.WriteAllTextAsync(
+                latestPath, jsonContent, Encoding.UTF8);
+        }
+        catch (Exception ex)
+        {
+            // שגיאת שמירת JSON לא תעצור את שליחת המייל
+            Console.WriteLine(
+                $"[CAB JSON] שגיאה בשמירת JSON: {ex.Message}");
+        }
+    }
+
     // *** בניית HTML למייל ***
     private static string BuildCabHtmlEmailBody(string plainBody)
     {
@@ -3252,6 +3960,8 @@ public class ChangeItem
     public string KnowledgeGaps          { get; set; } = string.Empty;
     public string BusinessTestsRequired  { get; set; } = string.Empty;
     public string LowerEnvTestsFailed    { get; set; } = string.Empty;
+    // *** תאריך CAB שנוסף ידנית ***
+    public string ManualCabDate { get; set; } = string.Empty;
 }
 
 public class CabDecision
@@ -3303,4 +4013,75 @@ public class DeleteAttachmentRequest
 {
     public string ChangeNumber { get; set; } = string.Empty;
     public string FileName     { get; set; } = string.Empty;
+}
+
+public class AddToCabRequest
+{
+    public string ChangeNumber    { get; set; } = string.Empty;
+    public string ChangeName      { get; set; } = string.Empty;
+    public string Note            { get; set; } = string.Empty;
+    public string RequestedBy     { get; set; } = string.Empty;
+    public int    CabDay          { get; set; } = 0;
+    public int    WeeksAhead      { get; set; } = 0;
+    public string SpecificCabDate { get; set; } = string.Empty;
+}
+
+public class CabSummaryEmailRequest
+{
+    public string Subject { get; set; }
+    public string BodyHtml { get; set; }
+    public string MeetingDate { get; set; }
+
+    public List<string> ToAddresses { get; set; } = new();
+    public List<string> CcAddresses { get; set; } = new();
+
+    public List<CabJsonEntry> CabJson { get; set; } = new();
+}
+
+
+public class CabJsonEntry
+{
+    public string Date  { get; set; } = string.Empty;
+    public string Type  { get; set; } = string.Empty;
+    public string Sys   { get; set; } = string.Empty;
+    public string Owner { get; set; } = string.Empty;
+    public string Time1 { get; set; } = string.Empty;
+    public string Time2 { get; set; } = string.Empty;
+}
+
+public class AlarmEmailRequest
+{
+    public string ToEmail       { get; set; } = string.Empty;
+    public string ToName        { get; set; } = string.Empty;
+    public string ChangeNumber  { get; set; } = string.Empty;
+    public string ChangeName    { get; set; } = string.Empty;
+    public string EventType     { get; set; } = string.Empty; // "start" / "end"
+    public string EventTime     { get; set; } = string.Empty; // "HH:mm"
+    public string EventDate     { get; set; } = string.Empty; // "dd/mm/yyyy"
+    public string Presenters    { get; set; } = string.Empty;
+    public string Status        { get; set; } = string.Empty;
+    public string System        { get; set; } = string.Empty;
+    public string Link          { get; set; } = string.Empty;
+    public int    MinutesLeft   { get; set; } = 0;
+    public bool   IsNow         { get; set; } = false;
+}
+
+public class AlarmEmailCheckRequest
+{
+    public string EmailKey { get; set; } = string.Empty;
+}
+
+public class SentEmailLogEntry
+{
+    public string   EmailKey { get; set; } = string.Empty;
+    public DateTime SentAt   { get; set; } = DateTime.Now;
+}
+
+public class CabNoticeItem
+{
+    public string Type      { get; set; } = string.Empty; // "link" | "bold" | "text"
+    public string LinkText  { get; set; } = string.Empty;
+    public string LinkUrl   { get; set; } = string.Empty;
+    public string BoldText  { get; set; } = string.Empty;
+    public string AfterText { get; set; } = string.Empty;
 }

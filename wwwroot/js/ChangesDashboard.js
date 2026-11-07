@@ -52,7 +52,7 @@ class ChangesDashboard {
         this.cabSummaryMode = false;   // האם מצב סיכום פעיל
 
         this.REFRESH_API_URL =
-            'https://prod-api-cloudbeat.menora.co.il/cases/api/case/3863' +
+            'https://prod-api-cloudbeat.menora.co.il/cases/api/case/3872' +
             '/run?apiKey=54ae6a3c-c475-48f1-a50d-b200ea335fa5';
         this._refreshPending = false;
         this._postRefreshTimeout = null;
@@ -91,6 +91,38 @@ class ChangesDashboard {
         }
 
         this.startAutoRefresh();
+
+        // *** חדש: טען את ChangesManager ברקע כדי שמנגנון ההתראות ירוץ ***
+        this.ensureChangesManagerLoaded().catch(err => {
+            console.warn('Failed to load ChangesManager for alarms:', err);
+        });
+    }
+
+    getUserRole() {
+
+        const user = this.currentUser;
+        if (!user) return false;
+
+        return user.role ?? '';
+    }
+
+    _isNocUser() {
+        const role = this.getUserRole();
+        return role === 'NOC' || role === 'Admin';
+    }
+
+    _isAdminUser() {
+        const role = this.getUserRole();
+        return role === 'Admin';
+    }
+
+    _isCabViewer() {
+        const role = this.getUserRole();
+        return role === 'Viewer' || role === 'viewer';
+    }
+
+    _canViewCab() {
+        return this._isAdminUser() || this._isNocUser() || this._isCabViewer();
     }
 
     // -------------------------------------------------------
@@ -238,7 +270,16 @@ class ChangesDashboard {
     // -------------------------------------------------------
     async loadCabDateRange() {
         try {
-            const res = await fetch('/Changes/GetCabDateRange');
+            const cabDay = this.getCabDay();
+            const cabDate = this.getCabDate(); // *** חדש ***
+
+            // *** שלח גם תאריך ספציפי אם קיים ***
+            let url = `/Changes/GetCabDateRange?cabDay=${cabDay}`;
+            if (cabDate) {
+                url += `&cabDate=${encodeURIComponent(cabDate)}`;
+            }
+
+            const res = await fetch(url);
             const data = await res.json();
             if (data.success) {
                 this.cabDateRange = data;
@@ -267,6 +308,11 @@ class ChangesDashboard {
                         <i class="fas fa-play-circle"></i>
                         <span>התחל CAB</span>
                     </button>
+                    <button class="cab2-cab-day-settings-btn" id="cdCabDaySettingsBtn"
+                        title="קבע יום ישיבת CAB">
+                        <i class="fas fa-cog"></i>
+                        <span class="cab2-cab-day-label">${this._getCabDayLabel()}</span>
+                    </button>
                 </div>
                 <div class="cd-header-left">
                     <!-- כפתורי תצוגה -->
@@ -291,11 +337,13 @@ class ChangesDashboard {
                             <i class="fas fa-table"></i>
                             <span>טבלה</span>
                         </button>
+                        ${this._canViewCab() ? `
                         <button class="cd-view-btn cd-cab-btn" data-view="cab"
                             title="מצב CAB">
                             <i class="fas fa-users"></i>
                             <span>CAB</span>
                         </button>
+                        ` : ''}
                         <button class="cd-view-btn cd-start-cab-btn" id="cdStartCabBtn"
                             title="התחל ישיבת CAB" style="display:none">
                             <i class="fas fa-play-circle"></i>
@@ -361,17 +409,21 @@ class ChangesDashboard {
                         נקה סינונים
                     </button>
 
+                    ${this._canViewCab() ? `
                     <button class="cd-prepare-cab-btn" id="cdPrepareCabBtn"
                         title="הכן קובץ Excel לישיבת CAB">
                         <i class="fas fa-file-excel"></i>
                         הכן CAB
                     </button>
+                    ` : ''}
 
+                    ${this._canViewCab() ? `
                     <button class="cd-global-refresh-btn" id="cdGlobalRefreshBtn"
                         title="רענן נתונים מהשרת">
                         <i class="fas fa-sync-alt"></i>
                         רענן
                     </button>
+                    ` : ''}
                 </div>
             </div>
 
@@ -419,6 +471,13 @@ class ChangesDashboard {
                 this.switchView(view);
             });
         });
+
+        const cabDaySettingsBtn = document.getElementById('cdCabDaySettingsBtn');
+        if (cabDaySettingsBtn && this._canViewCab()) {
+            cabDaySettingsBtn.addEventListener('click', () => {
+                this.showCabDayPicker();
+            });
+        }
 
         // חיפוש
         const searchInput = document.getElementById('cdSearchInput');
@@ -602,19 +661,43 @@ class ChangesDashboard {
             prepareCabBtn.addEventListener('click', async () => {
                 try {
                     prepareCabBtn.disabled = true;
-
                     const icon = prepareCabBtn.querySelector('i');
-                    if (icon) {
-                        icon.className = 'fas fa-spinner fa-spin';
+                    if (icon) icon.className = 'fas fa-spinner fa-spin';
+
+                    // *** וודא שהנתונים טעונים ***
+                    if (!this.allChanges || this.allChanges.length === 0) {
+                        await this.loadAllChanges();
+                    }
+                    if (!this.cabDateRange) {
+                        await this.loadCabDateRange();
                     }
 
-                    const manager = await this.ensureChangesManagerLoaded();
+                    // *** השתמש באותו סינון מקומי כמו הטאב ***
+                    const cabChanges = this._filterCabChangesLocally();
 
-                    if (!manager) {
-                        throw new Error('ChangesManager לא נטען');
+                    if (!cabChanges || cabChanges.length === 0) {
+                        this._showErrorIndicator(
+                            'לא נמצאו שינויים ל-CAB בטווח הנוכחי'
+                        );
+                        return;
                     }
 
-                    await manager.buildAndDownloadExcel('cab');
+                    // *** מיין לפי תאריך ***
+                    cabChanges.sort((a, b) => {
+                        const da = this.parseDateWithTime(
+                            this._getEffectiveStartTime(a)
+                        );
+                        const db = this.parseDateWithTime(
+                            this._getEffectiveStartTime(b)
+                        );
+                        if (!da && !db) return 0;
+                        if (!da) return 1;
+                        if (!db) return -1;
+                        return da - db;
+                    });
+
+                    // *** בנה Excel ישירות מהנתונים המסוננים ***
+                    await this._exportCabChangesToExcel(cabChanges);
 
                 } catch (err) {
                     console.error('[CAB Export]', err);
@@ -623,11 +706,8 @@ class ChangesDashboard {
                     );
                 } finally {
                     prepareCabBtn.disabled = false;
-
                     const icon = prepareCabBtn.querySelector('i');
-                    if (icon) {
-                        icon.className = 'fas fa-file-excel';
-                    }
+                    if (icon) icon.className = 'fas fa-file-excel';
                 }
             });
         }
@@ -661,6 +741,231 @@ class ChangesDashboard {
                 this.showCabWelcomePopup();
             });
         }
+
+        const isLoggedIn = this.currentUser.displayName &&
+            this.currentUser.displayName.trim() !== '' &&
+            this.currentUser.displayName.trim() !== 'מערכת';
+
+        // ── כפתורי ניווט - מוסתרים כשאין משתמש ──
+        const navElementIds = [
+            'autoSwitchBtn',
+            'nextDashboardBtn',
+            'prevDashboardBtn',
+        ];
+
+        navElementIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = isLoggedIn ? '' : 'none';
+        });
+
+        // ── back-to-main-btn - מוסתר כשאין משתמש ──
+        const backBtn = document.querySelector('.back-to-main-btn');
+        if (backBtn) backBtn.style.display = isLoggedIn ? '' : 'none';
+
+        // ── user-info בתוך user-menu-section ──
+        // מוסתר כשאין משתמש (הכפתור לוגין יחליף אותו)
+        document.querySelectorAll('.user-menu-section .user-info').forEach(el => {
+            el.style.display = isLoggedIn ? '' : 'none';
+        });
+
+        // ── user-menu-section עצמו - תמיד מוצג ──
+        // (כשמחובר - מציג user-info, כשלא - מציג כפתור לוגין)
+        const userMenuSection = document.querySelector('.user-menu-section');
+        if (userMenuSection) userMenuSection.style.display = '';
+        // ── הצג כפתור עריכה גם לעורכי אוטומציה ──
+        if (this.isAutomationOnly && !this.isAdmin) {
+            document.querySelectorAll('.sc-admin-only').forEach(el => {
+                el.style.display = 'none'; // הסתר כפתורי admin
+            });
+        }
+    }
+
+    async _exportCabChangesToExcel(changes) {
+        // *** טען ספריות ***
+        if (typeof ExcelJS === 'undefined') {
+            await new Promise((res, rej) => {
+                const script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js';
+                script.onload = res;
+                script.onerror = () => rej(new Error('נכשלה טעינת ExcelJS'));
+                document.head.appendChild(script);
+            });
+        }
+        if (typeof saveAs === 'undefined') {
+            await new Promise((res, rej) => {
+                const script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js';
+                script.onload = res;
+                script.onerror = () => rej(new Error('נכשלה טעינת FileSaver'));
+                document.head.appendChild(script);
+            });
+        }
+
+        const fromStr = this.cabDateRange?.from || '';
+        const toStr = this.cabDateRange?.to || '';
+        const sheetTitle = `CAB ${fromStr} - ${toStr}`;
+        const fileName = `CAB_Changes_${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+        // ==========================================
+        // צבעים
+        // ==========================================
+        const C = {
+            headerBg: '320F5B',
+            headerFont: 'FFFFFF',
+            subHeaderBg: '667eea',
+            subHeaderFont: 'FFFFFF',
+            altRowBg: 'F0F4FF',   // כחול בהיר לשורות זוגיות
+            borderColor: 'D0D5DD',
+            numberFont: '667eea',
+            todayBg: 'FFF8E1',
+            statusYellow: 'ED7D31',   // צהוב כהה לקריאות
+            statusGreen: '1D6F42',
+            statusRed: 'DC2626',
+        };
+
+        const thinBorder = () => ({
+            top: { style: 'thin', color: { argb: 'FF' + C.borderColor } },
+            bottom: { style: 'thin', color: { argb: 'FF' + C.borderColor } },
+            left: { style: 'thin', color: { argb: 'FF' + C.borderColor } },
+            right: { style: 'thin', color: { argb: 'FF' + C.borderColor } },
+        });
+
+        const applyStyle = (cell, {
+            bgColor = null, fontColor = '000000',
+            bold = false, hAlign = 'center',
+            fontSize = 11, wrapText = false,
+        } = {}) => {
+            cell.font = {
+                name: 'Arial', size: fontSize, bold,
+                color: { argb: 'FF' + fontColor },
+            };
+            cell.alignment = {
+                horizontal: hAlign, vertical: 'middle',
+                wrapText, readingOrder: 'rightToLeft',
+            };
+            cell.border = thinBorder();
+            if (bgColor) {
+                cell.fill = {
+                    type: 'pattern', pattern: 'solid',
+                    fgColor: { argb: 'FF' + bgColor },
+                };
+            }
+        };
+
+        // *** יצירת Workbook ***
+        const wb = new ExcelJS.Workbook();
+        wb.creator = 'NOC Portal';
+        wb.created = new Date();
+
+        const wsName = sheetTitle
+            .replace(/[*?:\\/\[\]]/g, '-')
+            .substring(0, 31);
+
+        const ws = wb.addWorksheet(wsName, {
+            views: [{ rightToLeft: true, state: 'frozen', ySplit: 2 }],
+            properties: { defaultRowHeight: 18 },
+        });
+
+        // *** שורה 1 - כותרת ראשית ***
+        ws.mergeCells('A1:G1');
+        const titleCell = ws.getCell('A1');
+        titleCell.value = sheetTitle;
+        applyStyle(titleCell, {
+            bgColor: C.headerBg, fontColor: C.headerFont,
+            bold: true, hAlign: 'center', fontSize: 14,
+        });
+        ws.getRow(1).height = 30;
+
+        // *** שורה 2 - כותרות עמודות ***
+        const headers = [
+            'תאריך', 'מספר שינוי', 'שם השינוי',
+            'תאריך השינוי', 'מציגים', 'הערות', 'סטטוס'
+        ];
+        const colWidths = [14, 18, 42, 22, 22, 32, 16];
+
+        headers.forEach((h, i) => {
+            const cell = ws.getCell(2, i + 1);
+            cell.value = h;
+            applyStyle(cell, {
+                bgColor: C.subHeaderBg, fontColor: C.subHeaderFont,
+                bold: true, hAlign: 'center', fontSize: 11,
+            });
+            ws.getColumn(i + 1).width = colWidths[i];
+        });
+        ws.getRow(2).height = 22;
+
+        // *** שורות נתונים ***
+        let excelRow = 3;
+        let isAlt = false;
+
+        changes.forEach(c => {
+            const startStr = this._getEffectiveStartTime(c);
+            const dateObj = this.parseDateWithTime(startStr) || this.parseDate(startStr);
+
+            const rowBg = isAlt ? C.altRowBg : null;
+            const presentationStatus = 'טרם הוצג';
+            const rowData = [
+                fromStr,
+                c.number || '',
+                c.name || '',
+                c.date || '',
+                this.cleanPresenters(c.presenters),
+                (c.notes && c.notes.trim()) ? c.notes : (c.system || ''),
+                presentationStatus,
+            ];
+
+            rowData.forEach((val, colIdx) => {
+                const cell = ws.getCell(excelRow, colIdx + 1);
+                cell.value = val;
+                applyStyle(cell, {
+                    bgColor: rowBg,
+                    hAlign: 'center',
+                    wrapText: colIdx === 2 || colIdx === 5,
+                    fontSize: 10,
+                });
+
+                // מספר שינוי - כחול מודגש
+                if (colIdx === 1 && val) {
+                    cell.font = {
+                        name: 'Arial', size: 11, bold: true,
+                        color: { argb: 'FF' + C.numberFont },
+                    };
+                }
+                if (colIdx === 6 && val) {
+                    let statusColor = C.statusYellow; // ברירת מחדל - צהוב
+
+                    if (val.includes('טרם') || val.includes('ממתין')) {
+                        statusColor = C.statusYellow;
+                    } else if (val.includes('אושר') || val.includes('הושלם')) {
+                        statusColor = C.statusGreen;
+                    } else if (val.includes('בוטל') || val.includes('נדחה') || val.includes('לבטל')) {
+                        statusColor = C.statusRed;
+                    }
+
+                    cell.font = {
+                        name: 'Ariel',
+                        size: 11,
+                        bold: true,
+                        color: { argb: 'FF' + statusColor },
+                    };
+                }
+            });
+
+            ws.getRow(excelRow).height = 17;
+            isAlt = !isAlt;
+            excelRow++;
+        });
+
+        // *** הורד ***
+        const buffer = await wb.xlsx.writeBuffer();
+        const blob = new Blob([buffer], {
+            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        });
+        saveAs(blob, fileName);
+
+        this._showColOrderSaveIndicator(
+            `קובץ CAB יוצא בהצלחה (${changes.length} שינויים) ✓`
+        );
     }
 
     showCabWelcomePopup() {
@@ -909,18 +1214,15 @@ class ChangesDashboard {
             window.changesManager = changesManager;
             return window.changesManager;
         }
-
         // שלב 2: בדוק אם כבר קיים על window
         if (window.changesManager) {
             return window.changesManager;
         }
-
         // שלב 3: בדוק אם הקלאס קיים אבל instance לא נוצר
         if (typeof ChangesManager !== 'undefined') {
             window.changesManager = new ChangesManager();
             return window.changesManager;
         }
-
         // שלב 4: טען את הסקריפט דינמית
         return new Promise((resolve, reject) => {
             const script = document.createElement('script');
@@ -930,9 +1232,7 @@ class ChangesDashboard {
                 window.changesManager = changesManager;
                 resolve(window.changesManager);
             };
-            script.onerror = () => reject(
-                new Error('Failed to load ChangesManager')
-            );
+            script.onerror = () => reject(new Error('Failed to load ChangesManager'));
             document.head.appendChild(script);
         });
     }
@@ -1210,6 +1510,10 @@ class ChangesDashboard {
     // החלפת תצוגה
     // -------------------------------------------------------
     switchView(view) {
+        if (view === 'cab' && !this._canViewCab()) {
+            console.warn('Access denied: CAB is available only for NOC users');
+            return;
+        }
         if (view === 'cab' && this.isLoading) {
             console.warn('נתונים עדיין נטענים, אנא המתן...');
             return;
@@ -1314,20 +1618,29 @@ class ChangesDashboard {
                     (!from || cabDateObj >= from) &&
                     (!to || cabDateObj < to);
 
+                // *** הוסף: בדוק manualCabDate בטווח ***
+                const manualCabDateObj = c.manualCabDate 
+                    ? this.parseDate(c.manualCabDate) 
+                    : null;
+                const manualCabInRange = manualCabDateObj &&
+                    (!from || manualCabDateObj >= from) &&
+                    (!to || manualCabDateObj < to);
+
                 // בדוק activityDate בטווח
                 var actualStartTime = (c.actualStartTime || '').trim();
-                if (actualStartTime && actualStartTime.toLowerCase() !== 'none' && actualStartTime !== '') {
-                    actualStartTime = this._normalizeActualDate(c.actualStartTime)
+                if (actualStartTime && 
+                    actualStartTime.toLowerCase() !== 'none' && 
+                    actualStartTime !== '') {
+                    actualStartTime = this._normalizeActualDate(c.actualStartTime);
                 } else {
-                    actualStartTime = c.plannedStartTime || c.date
+                    actualStartTime = c.plannedStartTime || c.date;
                 }
                 const activityDate = this.parseDate(actualStartTime);
                 const activityInRange = activityDate &&
                     (!from || activityDate >= from) &&
                     (!to || activityDate < to);
 
-                // רק אם אחד מהם בטווח
-                return cabInRange || activityInRange;
+                return cabInRange || manualCabInRange || activityInRange;
             });
         } else {
             // ===== מצב רגיל: סינון תאריכים לפי date =====
@@ -1696,6 +2009,77 @@ class ChangesDashboard {
     }
 
     // -------------------------------------------------------
+    // זיהוי ימי הקפאה - 2 ימי עסקים ראשונים + 2 אחרונים בחודש
+    // -------------------------------------------------------
+    _getFreezedays(year, month) {
+        // month: 0-11
+        const isBusinessDay = (date) => {
+            const dow = date.getDay();
+            return dow !== 5 && dow !== 6; // לא שישי ולא שבת
+        };
+
+        const firstBusinessDays = [];
+        const lastBusinessDays = [];
+
+        // 2 ימי עסקים ראשונים
+        let d = new Date(year, month, 1);
+        while (firstBusinessDays.length < 2) {
+            if (isBusinessDay(d)) {
+                firstBusinessDays.push(d.getDate());
+            }
+            d.setDate(d.getDate() + 1);
+        }
+
+        // 2 ימי עסקים אחרונים
+        const lastDay = new Date(year, month + 1, 0).getDate();
+        d = new Date(year, month, lastDay);
+        while (lastBusinessDays.length < 2) {
+            if (isBusinessDay(d)) {
+                lastBusinessDays.push(d.getDate());
+            }
+            d.setDate(d.getDate() - 1);
+        }
+
+        return new Set([...firstBusinessDays, ...lastBusinessDays]);
+    }
+
+    _isFreezDay(year, month, day) {
+        return this._getFreezedays(year, month).has(day);
+    }
+
+    _getFreezeDayLabel(year, month, day) {
+        const freezeDays = this._getFreezedays(year, month);
+        if (!freezeDays.has(day)) return null;
+
+        // מצא את הסדר של היום (ראשון/שני מהתחלה, ראשון/שני מהסוף)
+        const isBusinessDay = (date) => {
+            const dow = date.getDay();
+            return dow !== 5 && dow !== 6;
+        };
+
+        // ימי עסקים ראשונים
+        const firstBD = [];
+        let d = new Date(year, month, 1);
+        while (firstBD.length < 2) {
+            if (isBusinessDay(d)) firstBD.push(d.getDate());
+            d.setDate(d.getDate() + 1);
+        }
+
+        // ימי עסקים אחרונים
+        const lastBD = [];
+        const lastDay = new Date(year, month + 1, 0).getDate();
+        d = new Date(year, month, lastDay);
+        while (lastBD.length < 2) {
+            if (isBusinessDay(d)) lastBD.push(d.getDate());
+            d.setDate(d.getDate() - 1);
+        }
+
+        if (firstBD.includes(day)) return '❄️ הקפאה';
+        if (lastBD.includes(day))  return '❄️ הקפאה';
+        return null;
+    }
+
+    // -------------------------------------------------------
     // תצוגת לוח שנה - חודש
     // -------------------------------------------------------
     renderCalendar() {
@@ -1726,6 +2110,14 @@ class ChangesDashboard {
             today.getDate(), today.getMonth() + 1, today.getFullYear()
         );
 
+        // *** ספור רק שינויים של החודש המוצג ***
+        const monthChangesCount = this.filteredChanges.filter(c => {
+            const startStr = this._getEffectiveStartTime(c);
+            const d = this.parseDate(startStr);
+            if (!d) return false;
+            return d.getMonth() === month && d.getFullYear() === year;
+        }).length;
+
         let html = `
     <div class="cd-calendar">
         <div class="cd-cal-nav">
@@ -1734,7 +2126,7 @@ class ChangesDashboard {
             </button>
             <h3 class="cd-cal-title">
                 ${monthNames[month]} ${year}
-                <span class="cd-cal-count">(${this.filteredChanges.length} שינויים)</span>
+                <span class="cd-cal-count">(${monthChangesCount} שינויים)</span>
             </h3>
             <button class="cd-cal-nav-btn" id="cdCalPrev">
                 <i class="fas fa-chevron-right"></i>
@@ -1803,12 +2195,20 @@ class ChangesDashboard {
                 changesClass = 'cd-day-changes--many';
             }
 
+            const isFreeze = this._isFreezDay(year, month, day);
+            const freezeLabel = this._getFreezeDayLabel(year, month, day);
+
             html += `
-        <div class="cd-cal-day 
-            ${isToday ? 'cd-today' : ''} 
-            ${hasChanges ? 'cd-has-changes' : ''} 
-            ${hasConflict ? 'cd-has-conflict' : ''}"
-            data-date="${dk}">
+            <div class="cd-cal-day 
+                ${isToday ? 'cd-today' : ''} 
+                ${hasChanges ? 'cd-has-changes' : ''} 
+                ${hasConflict ? 'cd-has-conflict' : ''}
+                ${isFreeze ? 'cd-freeze-day' : ''}"
+                data-date="${dk}">
+            ${isFreeze ? `
+                <div class="cd-freeze-badge" title="יום הקפאה">
+                    ❄️ יום הקפאה
+                </div>` : ''}
             <div class="cd-day-num">
                 ${day}
                 ${hasConflict
@@ -1913,7 +2313,9 @@ class ChangesDashboard {
         const today = new Date();
         const isToday = dk === this.formatDateKey(
             today.getDate(), today.getMonth() + 1, today.getFullYear());
-
+        const isFreeze = this._isFreezDay(
+            d.getFullYear(), d.getMonth(), d.getDate()
+        );
         const dayNames = ['ראשון', 'שני', 'שלישי', 'רביעי',
             'חמישי', 'שישי', 'שבת'];
         const fmt = dt =>
@@ -1933,7 +2335,12 @@ class ChangesDashboard {
                     <i class="fas fa-chevron-right"></i>
                 </button>
                 <button class="cd-today-btn" id="cdDayToday">היום</button>
-            </div>`;
+            </div>
+            ${isFreeze ? `
+            <div class="cd-freeze-banner">
+                <i class="fas fa-snowflake"></i>
+                <strong>יום הקפאה</strong>
+            </div>` : ''}`;
 
         if (dc.length === 0) {
             html += `
@@ -2067,15 +2474,22 @@ class ChangesDashboard {
             const isToday = fmtFull(d) === fmtFull(today);
             const hasConflict = dc.some(c => conflicts.has(c.number));
 
-            html += `
-        <div class="cd-week-col ${isToday ? 'cd-today' : ''}
-                    ${hasConflict ? 'cd-has-conflict' : ''}">
+            const isFreeze = this._isFreezDay(
+            d.getFullYear(), d.getMonth(), d.getDate()
+        );
+
+        html += `
+            <div class="cd-week-col 
+                ${isToday ? 'cd-today' : ''}
+                ${hasConflict ? 'cd-has-conflict' : ''}
+                ${isFreeze ? 'cd-freeze-day' : ''}">
             <div class="cd-week-col-header">
                 <span class="cd-week-dow">${dayNames[d.getDay()]}</span>
                 <span class="cd-week-date">${fmt(d)}</span>
-                ${dc.length
-                    ? `<span class="cd-week-count">${dc.length}</span>`
-                    : ''}
+                ${isFreeze ? `<span class="cd-freeze-chip" 
+                    title="יום הקפאה">❄️ יום הקפאה</span>` : ''}
+                ${dc.length ? 
+                    `<span class="cd-week-count">${dc.length}</span>` : ''}
             </div>
             <div class="cd-week-changes">`;
 
@@ -2147,7 +2561,7 @@ class ChangesDashboard {
 
     saveColumnOrder(order) {
         try {
-            localStorage.setItem(this._getColumnOrderKey(), JSON.stringify(order));
+            userSettings.setItem(this._getColumnOrderKey(), JSON.stringify(order));
         } catch (err) {
             console.warn('[TABLE] שגיאה בשמירת סדר עמודות:', err);
             this._showErrorIndicator('[TABLE] שגיאה בשמירת סדר עמודות');
@@ -2156,7 +2570,7 @@ class ChangesDashboard {
 
     loadColumnOrder() {
         try {
-            const raw = localStorage.getItem(this._getColumnOrderKey());
+            const raw = userSettings.getItem(this._getColumnOrderKey());
             if (!raw) return null;
             const order = JSON.parse(raw);
             if (!Array.isArray(order) || order.length === 0) return null;
@@ -2170,7 +2584,7 @@ class ChangesDashboard {
 
     clearColumnOrder() {
         try {
-            localStorage.removeItem(this._getColumnOrderKey());
+            userSettings.removeItem(this._getColumnOrderKey());
         } catch (err) {
             console.warn('[TABLE] שגיאה בניקוי סדר עמודות', err);
             this._showErrorIndicator('[TABLE] שגיאה בניקוי סדר עמודות');
@@ -2232,7 +2646,7 @@ class ChangesDashboard {
 
     saveColumnFilters() {
         try {
-            localStorage.setItem(
+            userSettings.setItem(
                 this._getColumnFilterKey(),
                 JSON.stringify(this.columnFilters)
             );
@@ -2244,7 +2658,7 @@ class ChangesDashboard {
 
     loadColumnFilters() {
         try {
-            const raw = localStorage.getItem(this._getColumnFilterKey());
+            const raw = userSettings.getItem(this._getColumnFilterKey());
             if (!raw) return {};
             return JSON.parse(raw) || {};
         } catch (err) {
@@ -2257,7 +2671,7 @@ class ChangesDashboard {
     clearColumnFilters() {
         this.columnFilters = {};
         try {
-            localStorage.removeItem(this._getColumnFilterKey());
+            userSettings.removeItem(this._getColumnFilterKey());
         } catch (err) {
             console.warn('[TABLE] שגיאה בניקוי סינוני עמודות:', err);
             this._showErrorIndicator('[TABLE] שגיאה בניקוי סינוני עמודות');
@@ -3450,7 +3864,7 @@ class ChangesDashboard {
                 changeIds: order  // גיבוי
             };
 
-            localStorage.setItem(key, JSON.stringify(payload));
+            userSettings.setItem(key, JSON.stringify(payload));
             console.log(`[CAB] סדר נשמר: ${order.length} שינויים`);
         } catch (err) {
             console.warn('[CAB] שגיאה בשמירת סדר:', err);
@@ -3462,13 +3876,31 @@ class ChangesDashboard {
     loadCabOrder() {
         try {
             const key = this._getCabCacheKey();
-            const raw = localStorage.getItem(key);
+            const raw = userSettings.getItem(key);
             if (!raw) return null;
 
             const payload = JSON.parse(raw);
 
             // בדוק תקינות
             if (!Array.isArray(payload.order) || payload.order.length === 0) {
+                return null;
+            }
+
+            // בדוק שהשמירה בוצעה בשבוע האחרון
+            if (!payload.savedAt) {
+                return null;
+            }
+
+            const savedAt = new Date(payload.savedAt);
+            const fiveDaysAgo = new Date();
+            fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+            if (isNaN(savedAt.getTime()) || savedAt < fiveDaysAgo) {
+                console.log('[CAB] סדר שמור פג תוקף:', payload.savedAt);
+
+                // אופציונלי - מחק מהאחסון
+                userSettings.removeItem(key);
+
                 return null;
             }
 
@@ -3518,7 +3950,7 @@ class ChangesDashboard {
     // ניקוי הסדר השמור
     clearCabOrder() {
         try {
-            localStorage.removeItem(this._getCabCacheKey());
+            userSettings.removeItem(this._getCabCacheKey());
             console.log('[CAB] סדר נוקה');
         } catch (err) {
             console.warn('[CAB] שגיאה בניקוי סדר:', err);
@@ -3821,21 +4253,34 @@ class ChangesDashboard {
         const toD = new Date(this.cabDateRange.toDate);
         toD.setHours(23, 59, 59, 999);
 
-        return this.filteredChanges.filter(c => {
+        return this.allChanges.filter(c => {
+            // *** סנן מבוטלים ***
             const s = (c.status || '').toLowerCase().trim();
-            if (s === 'cancelled' || s === 'canceled' || s === 'בוטל')
+            if (['cancelled', 'canceled', 'pending', 'ממתין'].includes(s))
                 return false;
 
+            // *** בדוק ManualCabDate ***
+            if (c.manualCabDate) {
+                const manualDate = this.parseDate(c.manualCabDate);
+                if (manualDate && manualDate >= fromD && manualDate <= toD) {
+                    return true;
+                }
+            }
+
+            // *** בדוק needCab ***
             const needCabVal = (c.needCab || '').toLowerCase().trim();
             const isCab = needCabVal === 'cab' ||
                 needCabVal === 'yes' ||
                 needCabVal === 'כן';
 
+            // *** בדוק cabDate בטווח ***
             const cabDateObj = this.parseToDate(c.cabDate);
-            const cabThisWeek = isCab && cabDateObj &&
-                cabDateObj >= fromD && cabDateObj <= toD;
+            const cabInRange = isCab && cabDateObj &&
+                cabDateObj >= fromD &&
+                cabDateObj <= toD;
 
-            var actualStartTime = (c.actualStartTime || '').trim();
+            // *** בדוק activityDate בטווח ***
+            let actualStartTime = (c.actualStartTime || '').trim();
             if (actualStartTime &&
                 actualStartTime.toLowerCase() !== 'none' &&
                 actualStartTime !== '') {
@@ -3844,15 +4289,20 @@ class ChangesDashboard {
                 actualStartTime = c.plannedStartTime || c.date;
             }
 
-            const d = this.parseDate(actualStartTime);
-            if (!d) return false;
+            const activityDate = this.parseDate(actualStartTime);
+            const activityInRange = activityDate &&
+                activityDate >= fromD &&
+                activityDate <= toD;
 
-            const activityThisWeek = d >= fromD && d <= toD;
-            return cabThisWeek || activityThisWeek;
+            return cabInRange || activityInRange;
         });
     }
 
     async enterCabMode() {
+        if (!this._canViewCab()) {
+            console.warn('Access denied: CAB is available only for NOC users');
+            return;
+        }
         this.cabMode = true;
         this._cleanOldDecisions();
         this.cabWeekKey = this._getCabWeekKey();
@@ -3865,27 +4315,44 @@ class ChangesDashboard {
 
         let cabList = [];
         try {
-            const res = await fetch('/Changes/GetCabChanges');
-            const data = await res.json();
-
-            if (data.success) {
-                cabList = data.changes || [];
-                if (!this.cabDateRange && data.fromDate) {
-                    this.cabDateRange = {
-                        from: data.from,
-                        to: data.to,
-                        fromDate: data.fromDate,
-                        toDate: data.toDate
-                    };
+            // טען את כל השינויים אם לא טעונים
+            if (!this.allChanges || this.allChanges.length === 0) {
+                const res = await fetch('/Changes/GetChanges?page=1&pageSize=9999');
+                const data = await res.json();
+                if (data.success) {
+                    this.allChanges = data.changes || [];
                 }
             }
+
+            // טען טווח CAB אם לא טעון
+            if (!this.cabDateRange) {
+                await this.loadCabDateRange();
+            }
+
+            // *** סנן בדיוק כמו cdCabRangeBtn ***
+            cabList = this._filterCabChangesLocally();
+
         } catch (err) {
-            console.warn('[CAB] שגיאה בטעינת שינויי CAB:', err);
+            console.warn('[CAB] שגיאה בסינון:', err);
             cabList = this._filterCabChangesLocally();
         }
 
+        // מיין לפי תאריך אם אין סדר שמור
+        const savedOrder = this.loadCabOrder();
+        console.log(savedOrder)
+        if (!savedOrder) {
+            cabList = cabList.sort((a, b) => {
+                console.log(this._getEffectiveStartTime(a))
+                console.log(this._getEffectiveStartTime(a))
+                const da = this.parseDateWithTime(this._getEffectiveStartTime(a));
+                const db = this.parseDateWithTime(this._getEffectiveStartTime(b));
+                if (!da && !db) return 0;
+                if (!da) return 1;
+                if (!db) return -1;
+                return da - db;
+            });
+        }
         cabList = this.applySavedCabOrder(cabList);
-
         // *** שמור את כל השינויים (כולל no_cab) לשימוש בסיכום ***
         this.allCabChanges = [...cabList];
 
@@ -4537,7 +5004,7 @@ class ChangesDashboard {
                             </div>
                             <span class="cab2-time-card-val cab2-time-card-val--start">
                                 ${this.escHtml(
-                this.formatDateDisplay(this._getEffectiveStartTime(c))
+                this._formatDateWithDay(this._getEffectiveStartTime(c))
             ) || '—'}
                             </span>
                         </div>
@@ -4551,7 +5018,7 @@ class ChangesDashboard {
                                 <span class="cab2-time-card-lbl">סיום</span>
                             </div>
                             <span class="cab2-time-card-val cab2-time-card-val--end">
-                                ${this.escHtml(this.formatDateDisplay(this._getEffectiveEndTime(c)))}
+                                ${this.escHtml(this._formatDateWithDay(this._getEffectiveEndTime(c)))}
                             </span>
                         </div>` : ''}
                     </div>
@@ -4731,6 +5198,210 @@ class ChangesDashboard {
             });
         this.initCabThumbDragSort();
     }
+
+    showAddToCabModal(change) {
+        document.getElementById('cdAddToCabModal')?.remove();
+
+        // חשב תאריך CAB קרוב
+        const cabDay = this.getCabDay();
+        const today = new Date();
+        let daysUntilCab = (cabDay - today.getDay() + 7) % 7;
+        const cabDate = new Date(today);
+        cabDate.setDate(today.getDate() + daysUntilCab);
+        const cabDateStr = `${String(cabDate.getDate()).padStart(2, '0')}/${String(cabDate.getMonth() + 1).padStart(2, '0')}/${cabDate.getFullYear()}`;
+
+        const weeksOptions = [0, 1, 2, 3].map(w => {
+            const d = new Date(today);
+            d.setDate(today.getDate() + daysUntilCab + (w * 7));
+            const label = w === 0 ? 'CAB קרוב' : `בעוד ${w} שבועות`;
+            return `<option value="${w}">${label} (${this._formatDateHebrew(d)})</option>`;
+        }).join('');
+
+        const modalHtml = `
+    <div id="cdAddToCabModal" style="
+        position:fixed; inset:0;
+        background:rgba(0,0,0,0.72);
+        z-index:99999;
+        display:flex; align-items:center; justify-content:center;
+        direction:rtl;
+        backdrop-filter:blur(5px);
+    ">
+        <div style="
+            background:#1f2937;
+            border:1px solid #374151;
+            border-radius:16px;
+            width:92%; max-width:480px;
+            box-shadow:0 25px 60px rgba(0,0,0,0.6);
+            overflow:hidden;
+            direction:rtl;
+        ">
+            <div style="
+                background:linear-gradient(135deg,#1a1030,#320F5B,#4c1d95);
+                padding:18px 22px;
+                display:flex; justify-content:space-between; align-items:center;
+            ">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div style="
+                        width:42px; height:42px;
+                        background:rgba(167,139,250,0.18);
+                        border:1px solid rgba(167,139,250,0.35);
+                        border-radius:11px;
+                        display:flex; align-items:center; justify-content:center;
+                        font-size:1.25rem;
+                    ">📅</div>
+                    <div>
+                        <div style="font-size:1rem; font-weight:800; color:#fff;">
+                            הוסף ל-CAB
+                        </div>
+                        <div style="font-size:0.75rem; color:rgba(255,255,255,0.6); margin-top:3px;">
+                            [${this.escHtml(change.number)}] ${this.escHtml(change.name || '')}
+                        </div>
+                    </div>
+                </div>
+                <button onclick="document.getElementById('cdAddToCabModal').remove()"
+                    style="
+                        background:rgba(255,255,255,0.1);
+                        border:1px solid rgba(255,255,255,0.2);
+                        color:rgba(255,255,255,0.8);
+                        width:32px; height:32px;
+                        border-radius:50%; cursor:pointer;
+                        font-size:0.9rem;
+                        display:flex; align-items:center; justify-content:center;
+                    ">✕</button>
+            </div>
+
+            <div style="padding:22px; display:flex; flex-direction:column; gap:16px;">
+                <!-- בחירת שבוע -->
+                <div>
+                    <label style="
+                        font-size:12px; color:#9ca3af; font-weight:700;
+                        display:block; margin-bottom:8px;
+                        text-transform:uppercase; letter-spacing:0.5px;
+                    ">
+                        תאריך CAB:
+                    </label>
+                    <select id="cdAddToCabWeeks" style="
+                        width:100%;
+                        background:#111827;
+                        border:1.5px solid #374151;
+                        border-radius:9px;
+                        color:#e0e0e0;
+                        padding:10px 13px;
+                        font-size:13px;
+                        direction:rtl;
+                        cursor:pointer;
+                        appearance:none;
+                        -webkit-appearance:none;
+                        background-image:url('data:image/svg+xml,...');
+                    ">
+                        ${weeksOptions}
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:12px; color:#9ca3af; font-weight:700;
+                                  display:block; margin-bottom:8px; text-transform:uppercase;">
+                        הערה (אופציונלי):
+                    </label>
+                    <textarea id="cdAddToCabNote"
+                        style="
+                            width:100%; min-height:80px;
+                            background:#111827;
+                            border:1.5px solid #374151;
+                            border-radius:9px; color:#e0e0e0;
+                            padding:10px 13px; font-size:13px;
+                            resize:vertical; direction:rtl;
+                            font-family:inherit; box-sizing:border-box;
+                        "
+                        placeholder="הוסף הערה לבקשת ה-CAB..."></textarea>
+                </div>
+
+                <div style="display:flex; gap:10px; justify-content:flex-end;">
+                    <button onclick="document.getElementById('cdAddToCabModal').remove()"
+                        style="
+                            padding:9px 18px;
+                            background:#374151; border:1px solid #4b5563;
+                            border-radius:8px; color:#9ca3af;
+                            cursor:pointer; font-size:13px; font-weight:600;
+                        ">ביטול</button>
+                    <button id="cdAddToCabConfirm"
+                        style="
+                            padding:9px 22px;
+                            background:linear-gradient(135deg,#320F5B,#7c3aed);
+                            border:1px solid #7c3aed;
+                            border-radius:8px; color:#fff;
+                            cursor:pointer; font-size:13px; font-weight:700;
+                            display:flex; align-items:center; gap:7px;
+                            box-shadow:0 2px 10px rgba(124,58,237,0.3);
+                        ">
+                        <i class="fas fa-calendar-plus"></i>
+                        הוסף ל-CAB
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>`;
+
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+        document.getElementById('cdAddToCabConfirm')
+            ?.addEventListener('click', async () => {
+                const note = document.getElementById('cdAddToCabNote')?.value?.trim() || '';
+
+                try {
+                    const res = await fetch('/Changes/RequestAddToCab', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            changeNumber: change.number,
+                            changeName: change.name,
+                            note: note,
+                            requestedBy: this.currentUser?.displayName || 'unknown',
+                            cabDay: this.getCabDay(),
+                            weeksAhead: parseInt(document.getElementById('cdAddToCabWeeks')?.value || '0')
+                        })
+                    });
+
+                    const data = await res.json();
+
+                    if (data.success) {
+                        document.getElementById('cdAddToCabModal')?.remove();
+                        this._showColOrderSaveIndicator(
+                            `השינוי נוסף ל-CAB בתאריך ${data.cabDate} ✓`
+                        );
+                        // רענן את הנתונים כדי שהשינוי יופיע ב-CAB
+                        await this.loadAllChanges();
+                        await this.loadCabDateRange();
+                        if (this.cabMode) {
+                            await this.enterCabMode();
+                        }
+                    } else {
+                        this._showErrorIndicator('שגיאה: ' + data.message);
+                    }
+                } catch (err) {
+                    this._showErrorIndicator('שגיאת תקשורת: ' + err.message);
+                }
+            });
+    }
+
+    // פורמט תאריך עם יום השבוע: יום א' 01/06/2026 13:30
+    _formatDateWithDay(str) {
+        if (!str) return '';
+
+        const d = this.parseDateWithTime(str) || this.parseDate(str);
+        if (!d) return this.formatDateDisplay(str);
+
+        const dayNames = ['א\'', 'ב\'', 'ג\'', 'ד\'', 'ה\'', 'ו\'', 'ש\''];
+        const dayStr = dayNames[d.getDay()];
+
+        const date = d.toLocaleDateString('he-IL');
+        const time = d.toLocaleTimeString('he-IL', {
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+
+        return `${date} יום ${dayStr} ${time}`;
+    }
+
 
     // -------------------------------------------------------
     // טעינה ורינדור קבצים מצורפים לכרטיס CAB
@@ -5765,6 +6436,10 @@ class ChangesDashboard {
                     <i class="fas fa-file-excel"></i>
                     יצוא Excel
                 </button>
+                <button class="cab2-summary-send-email-btn" id="cdSummarySendEmailBtn">
+                    <i class="fas fa-envelope"></i>
+                    שלח מייל לפני CAB
+                </button>
             </div>
         </div>
 
@@ -5834,6 +6509,11 @@ class ChangesDashboard {
         document.getElementById('cdSummaryExportBtn')
             ?.addEventListener('click', () => {
                 this.exportCabSummaryToExcel();
+            });
+
+        document.getElementById('cdSummarySendEmailBtn')
+            ?.addEventListener('click', () => {
+                this.showSendCabEmailModal();
             });
 
         document.getElementById('cdSummaryAttendanceBtn')
@@ -7197,6 +7877,14 @@ class ChangesDashboard {
                         title="הוסף ללוח שנה (.ics)">
                         <i class="fas fa-calendar-plus"></i>
                     </button>
+                    ${this._canViewCab() ? `
+                    <button class="cab2-add-to-cab-btn" id="cdAddToCabBtn"
+                        data-number="${this.escHtml(c.number)}"
+                        title="הוסף ל-CAB קרוב">
+                        <i class="fas fa-calendar-plus"></i>
+                        <span>הוסף ל-CAB</span>
+                    </button>
+                    ` : ''}
                     <button class="cd-popup-close-cab2" id="cdPopupClose">
                         <i class="fas fa-times"></i>
                     </button>
@@ -7350,7 +8038,7 @@ ${hasMultiple
                             </div>
                             <span class="cab2-time-card-val cab2-time-card-val--start">
                                 ${this.escHtml(
-                this.formatDateDisplay(this._getEffectiveStartTime(c))
+                this._formatDateWithDay(this._getEffectiveStartTime(c))
             ) || '—'}
                             </span>
                         </div>
@@ -7364,7 +8052,7 @@ ${hasMultiple
                                 <span class="cab2-time-card-lbl">סיום</span>
                             </div>
                             <span class="cab2-time-card-val cab2-time-card-val--end">
-                                ${this.escHtml(this.formatDateDisplay(this._getEffectiveEndTime(c)))}
+                                ${this.escHtml(this._formatDateWithDay(this._getEffectiveEndTime(c)))}
                             </span>
                         </div>` : ''}
                     </div>
@@ -7428,6 +8116,11 @@ ${hasMultiple
             ?.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.exportChangeToCalendar(c);
+            });
+
+        document.getElementById('cdAddToCabBtn')
+            ?.addEventListener('click', () => {
+                this.showAddToCabModal(c);
             });
 
         // Toggle היסטוריית החלטות
@@ -7602,18 +8295,34 @@ ${hasMultiple
     organizeByDate(changes) {
         const byDate = {};
         changes.forEach(c => {
+            const datesToAdd = new Set();
+
+            // תאריך ראשי (actualStart / plannedStart / date)
             var actualStartTime = (c.actualStartTime || '').trim();
-            if (actualStartTime && actualStartTime.toLowerCase() !== 'none' && actualStartTime !== '') {
-                actualStartTime = this._normalizeActualDate(c.actualStartTime)
+            if (actualStartTime && 
+                actualStartTime.toLowerCase() !== 'none' && 
+                actualStartTime !== '') {
+                actualStartTime = this._normalizeActualDate(c.actualStartTime);
             } else {
-                actualStartTime = c.plannedStartTime || c.date
+                actualStartTime = c.plannedStartTime || c.date;
             }
-            const d = this.parseDate(actualStartTime);
-            if (!d) return;
-            const key = this.formatDateKey(
-                d.getDate(), d.getMonth() + 1, d.getFullYear());
-            if (!byDate[key]) byDate[key] = [];
-            byDate[key].push(c);
+
+            const mainDate = this.parseDate(actualStartTime);
+            if (mainDate) {
+                datesToAdd.add(this.formatDateKey(
+                    mainDate.getDate(), 
+                    mainDate.getMonth() + 1, 
+                    mainDate.getFullYear()
+                ));
+            }
+
+            // הוסף את השינוי לכל התאריכים הרלוונטיים
+            datesToAdd.forEach(key => {
+                if (!byDate[key]) byDate[key] = [];
+                if (!byDate[key].find(x => x.number === c.number)) {
+                    byDate[key].push(c);
+                }
+            });
         });
         return byDate;
     }
@@ -8083,6 +8792,1542 @@ ${hasMultiple
     }
 
     // -------------------------------------------------------
+    // הצגת מודל שליחת מייל CAB לפני הישיבה
+    // -------------------------------------------------------
+    async showSendCabEmailModal() {
+        document.getElementById('cdSendCabEmailModal')?.remove();
+
+        // *** הצג loading תחילה ***
+        const loadingHtml = `
+        <div id="cdSendCabEmailModal" style="
+            position:fixed; inset:0;
+            background:rgba(0,0,0,0.75);
+            z-index:99999;
+            display:flex; align-items:center; justify-content:center;
+            direction:rtl;
+            backdrop-filter:blur(6px);
+        ">
+            <div style="
+                background:#1f2937;
+                border:1px solid #374151;
+                border-radius:16px;
+                padding:40px;
+                display:flex; flex-direction:column;
+                align-items:center; gap:16px;
+                color:#a78bfa;
+            ">
+                <i class="fas fa-spinner fa-spin" style="font-size:2rem;"></i>
+                <span style="font-size:14px; font-weight:600;">
+                    טוען נתוני מציגים...
+                </span>
+            </div>
+        </div>`;
+        document.body.insertAdjacentHTML('beforeend', loadingHtml);
+
+        // *** בנה רשימת מציגים ייחודיים ***
+        const presentersMap = new Map();
+        this.cabChanges.forEach(c => {
+            if (!c.presenters) return;
+            const name = this.cleanPresenters(c.presenters);
+            if (name && !presentersMap.has(name)) {
+                presentersMap.set(name, {
+                    name,
+                    changeNumber: c.number,
+                    changeName: c.name,
+                    email: null,        // יתמלא מהספר טלפונים
+                    loading: true
+                });
+            }
+        });
+
+        const presentersList = Array.from(presentersMap.values());
+
+        // *** שלוף מיילים מהספר טלפונים ***
+        await this._fetchPresenterEmailsFromDirectory(presentersList);
+
+        // *** הסר loading ***
+        document.getElementById('cdSendCabEmailModal')?.remove();
+
+        // *** המשך לבניית המודל עם המיילים שנשלפו ***
+        const savedTemplate = await this.loadCabNoticeTemplate();
+        this._renderSendCabEmailModal(presentersList, savedTemplate);
+    }
+
+    async _fetchPresenterEmailsFromDirectory(presentersList) {
+        const DELAY_MS = 60; // כמו ב-SystemsCatalogController
+
+        for (const presenter of presentersList) {
+            if (!presenter.name || presenter.name.trim().length < 2) {
+                presenter.loading = false;
+                continue;
+            }
+
+            // *** חלץ שם עברי אם יש " - " ***
+            const hebrewName = presenter.name.includes(' - ')
+                ? presenter.name.split(' - ')[0].trim()
+                : presenter.name.trim();
+
+            try {
+                const res = await fetch(
+                    `/PhoneDirectory/GetEmployeeOrgInfo?name=` +
+                    encodeURIComponent(hebrewName),
+                    { credentials: 'include' }
+                );
+                const data = await res.json();
+
+                if (data.success && data.employee) {
+                    // *** שלוף מייל מהספר טלפונים ***
+                    presenter.email = data.employee.email || 
+                                    data.employee.Email || 
+                                    null;
+                    presenter.domain = data.employee.domain || '';
+                    presenter.found = true;
+                } else {
+                    presenter.email = null;
+                    presenter.found = false;
+                }
+            } catch {
+                presenter.email = null;
+                presenter.found = false;
+            }
+
+            presenter.loading = false;
+
+            // *** delay בין קריאות - כמו ב-SystemsCatalogController ***
+            await new Promise(r => setTimeout(r, DELAY_MS));
+        }
+    }
+
+    // הוסף מתודה חדשה - ברירת מחדל לתיבת ההודעה
+    _getDefaultNoticeItems() {
+        return [
+            {
+                id: 'notice_1',
+                type: 'link',
+                text: 'לוח שנה',
+                url: 'https://nocport-p1apw1/dashboards?dashboard=changes',
+                description: 'לפני קביעת שינוי, נא לבדוק בלוח השנה שלא קיים שינוי נוסף באותו תאריך שעלול להתנגש או להפריע.'
+            },
+            {
+                id: 'notice_2',
+                type: 'bold',
+                text: 'עדכון NOC על התחלה, סיום או שינוי של כל פעילות',
+                description: 'נא לעדכן את חדר מחשב לפני ואחרי כל פעילות שמתבצעת.'
+            }
+        ];
+    }
+
+    // בניית HTML של תיבת ההודעה עבור המייל
+    _buildNoticeHtmlForEmail(items) {
+        if (!items || items.length === 0) return '';
+
+        const listItems = items.map(item => {
+            if (item.type === 'link') {
+                return `
+                    <li style="margin:0 0 6px 0;">
+                        <a href="${this.escHtml(item.linkUrl)}"
+                        target="_blank"
+                        style="color:#0078d4; font-weight:bold;">
+                            ${this.escHtml(item.linkText)}
+                        </a>
+                        ${item.afterText 
+                            ? `<span>&nbsp;-&nbsp;${this.escHtml(item.afterText)}</span>` 
+                            : ''}
+                    </li>`;
+            }
+            if (item.type === 'bold') {
+                return `
+                    <li style="margin:0;">
+                        <strong>${this.escHtml(item.boldText)}</strong>
+                        ${item.afterText 
+                            ? ` - ${this.escHtml(item.afterText)}` 
+                            : ''}
+                    </li>`;
+            }
+            // type === 'text'
+            return `<li style="margin:0;">${this.escHtml(item.afterText)}</li>`;
+        }).join('');
+
+        return `
+    <table border="0" cellpadding="0" cellspacing="0"
+        style="margin:0 0 5px 0; width:100%; max-width:800px;">
+        <tr>
+            <td style="
+                background:#fff8e1;
+                border:2px solid #f5a623;
+                border-radius:6px;
+                padding:14px 18px;
+            ">
+                <div style="
+                    font-family:Arial,sans-serif;
+                    font-size:11pt;
+                    font-weight:bold;
+                    color:#000;
+                    line-height:16px;
+                    margin:0 0 6px 0;
+                ">לתשומת ליבכם:</div>
+
+                <ul style="
+                    font-family:Arial,sans-serif;
+                    font-size:11pt;
+                    color:#000;
+                    line-height:16px;
+                    margin:0;
+                    padding:0;
+                    padding-right:18px;
+                    list-style-position:outside;
+                ">
+                    ${listItems}
+                </ul>
+            </td>
+        </tr>
+    </table>`;
+    }
+
+    // -------------------------------------------------------
+    // טעינת תבנית "לתשומת ליבכם" מהשרת
+    // -------------------------------------------------------
+    async loadCabNoticeTemplate() {
+        // נסה לטעון מהשרת קודם
+        const saved = await this.loadCabNoticeTemplateServer();
+        if (saved && saved.length > 0) {
+            return saved;
+        }
+        // ברירת מחדל אם אין שמור
+        return [
+            {
+                type: 'link',
+                linkText: 'לוח שנה',
+                linkUrl: 'https://nocport-p1apw1/dashboards?dashboard=changes',
+                afterText: 'לפני קביעת שינוי, נא לבדוק בלוח השנה שלא קיים שינוי נוסף באותו תאריך שעלול להתנגש או להפריע.'
+            },
+            {
+                type: 'bold',
+                boldText: 'עדכון NOC על התחלה, סיום או שינוי של כל פעילות',
+                afterText: 'נא לעדכן את חדר מחשב לפני ואחרי כל פעילות שמתבצעת.'
+            }
+        ];
+    }
+
+    async loadCabNoticeTemplateServer() {
+        try {
+            const res = await fetch('/Changes/GetCabNoticeTemplate');
+            const data = await res.json();
+            if (data.success && data.items && data.items.length > 0) {
+                return data.items;
+            }
+        } catch (err) {
+            console.warn('[CAB Notice] שגיאה בטעינת תבנית:', err);
+        }
+        return null;
+    }
+
+    // -------------------------------------------------------
+    // שמירת תבנית "לתשומת ליבכם" לשרת
+    // -------------------------------------------------------
+    async saveCabNoticeTemplate(items) {
+        try {
+            const res = await fetch('/Changes/SaveCabNoticeTemplate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(items)
+            });
+            const data = await res.json();
+            if (data.success) {
+                this._showColOrderSaveIndicator('תבנית הודעה נשמרה ✓');
+            }
+        } catch (err) {
+            console.warn('[CAB Notice] שגיאה בשמירת תבנית:', err);
+        }
+    }
+
+    _renderSendCabEmailModal(presentersList, savedTemplate = null) {
+        document.getElementById('cdSendCabEmailModal')?.remove();
+
+        const cabDate = this.cabDateRange?.from || 
+                        new Date().toLocaleDateString('he-IL');
+
+        // *** ספור כמה נמצאו אוטומטית ***
+        const foundCount = presentersList.filter(p => p.email).length;
+        const notFoundCount = presentersList.length - foundCount;
+
+        
+    // *** ברירת מחדל אם אין שמור ***
+    const defaultItems = savedTemplate || [
+        {
+            type:      'link',
+            linkText:  'לוח שנה',
+            linkUrl:   'https://nocport-p1apw1/dashboards?dashboard=changes',
+            afterText: 'לפני קביעת שינוי, נא לבדוק בלוח השנה שלא קיים שינוי נוסף באותו תאריך שעלול להתנגש או להפריע.'
+        },
+        {
+            type:      'bold',
+            boldText:  'עדכון NOC על התחלה, סיום או שינוי של כל פעילות',
+            afterText: 'נא לעדכן את חדר מחשב לפני ואחרי כל פעילות שמתבצעת.'
+        }
+    ];
+
+    // *** בנה HTML של הסעיפים דינמית לפי התבנית ***
+    const buildInitialItemsHtml = (items) => {
+        return items.map((item, index) => {
+            const itemId  = `notice_${index + 1}`;
+            const number  = index + 1;
+
+            let fieldsHtml = '';
+            let typeLabel  = '';
+
+            if (item.type === 'link') {
+                typeLabel  = 'סעיף עם קישור';
+                fieldsHtml = `
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                        <div>
+                            <label style="font-size:10px; color:#6b7280;
+                                          font-weight:700; display:block;
+                                          margin-bottom:4px;">
+                                טקסט הקישור:
+                            </label>
+                            <input type="text"
+                                   class="cd-notice-link-text"
+                                   data-item-id="${itemId}"
+                                   value="${this.escHtml(item.linkText || '')}"
+                                   style="width:100%; background:#111827;
+                                          border:1px solid #374151; border-radius:6px;
+                                          color:#e0e0e0; padding:7px 10px;
+                                          font-size:12px; direction:rtl;
+                                          box-sizing:border-box;" />
+                        </div>
+                        <div>
+                            <label style="font-size:10px; color:#6b7280;
+                                          font-weight:700; display:block;
+                                          margin-bottom:4px;">
+                                כתובת URL:
+                            </label>
+                            <input type="text"
+                                   class="cd-notice-link-url"
+                                   data-item-id="${itemId}"
+                                   value="${this.escHtml(item.linkUrl || '')}"
+                                   style="width:100%; background:#111827;
+                                          border:1px solid #374151; border-radius:6px;
+                                          color:#60a5fa; padding:7px 10px;
+                                          font-size:11px; direction:ltr;
+                                          box-sizing:border-box;
+                                          font-family:monospace;" />
+                        </div>
+                    </div>
+                    <div>
+                        <label style="font-size:10px; color:#6b7280;
+                                      font-weight:700; display:block;
+                                      margin-bottom:4px;">
+                            טקסט אחרי הקישור:
+                        </label>
+                        <textarea class="cd-notice-after-text"
+                                  data-item-id="${itemId}"
+                                  style="width:100%; min-height:60px;
+                                         background:#111827;
+                                         border:1px solid #374151; border-radius:6px;
+                                         color:#e0e0e0; padding:7px 10px;
+                                         font-size:12px; direction:rtl;
+                                         resize:vertical; font-family:inherit;
+                                         box-sizing:border-box;"
+                        >${this.escHtml(item.afterText || '')}</textarea>
+                    </div>`;
+
+            } else if (item.type === 'bold') {
+                typeLabel  = 'סעיף עם טקסט מודגש';
+                fieldsHtml = `
+                    <div>
+                        <label style="font-size:10px; color:#6b7280;
+                                      font-weight:700; display:block;
+                                      margin-bottom:4px;">
+                            טקסט מודגש:
+                        </label>
+                        <input type="text"
+                               class="cd-notice-bold-text"
+                               data-item-id="${itemId}"
+                               value="${this.escHtml(item.boldText || '')}"
+                               style="width:100%; background:#111827;
+                                      border:1px solid #374151; border-radius:6px;
+                                      color:#e0e0e0; padding:7px 10px;
+                                      font-size:12px; direction:rtl;
+                                      box-sizing:border-box;
+                                      font-weight:700;" />
+                    </div>
+                    <div style="margin-top:8px;">
+                        <label style="font-size:10px; color:#6b7280;
+                                      font-weight:700; display:block;
+                                      margin-bottom:4px;">
+                            המשך הטקסט:
+                        </label>
+                        <textarea class="cd-notice-after-text"
+                                  data-item-id="${itemId}"
+                                  style="width:100%; min-height:60px;
+                                         background:#111827;
+                                         border:1px solid #374151; border-radius:6px;
+                                         color:#e0e0e0; padding:7px 10px;
+                                         font-size:12px; direction:rtl;
+                                         resize:vertical; font-family:inherit;
+                                         box-sizing:border-box;"
+                        >${this.escHtml(item.afterText || '')}</textarea>
+                    </div>`;
+
+            } else {
+                // type === 'text'
+                typeLabel  = 'סעיף טקסט פשוט';
+                fieldsHtml = `
+                    <div>
+                        <label style="font-size:10px; color:#6b7280;
+                                      font-weight:700; display:block;
+                                      margin-bottom:4px;">
+                            טקסט:
+                        </label>
+                        <textarea class="cd-notice-after-text"
+                                  data-item-id="${itemId}"
+                                  style="width:100%; min-height:70px;
+                                         background:#111827;
+                                         border:1px solid #374151; border-radius:6px;
+                                         color:#e0e0e0; padding:7px 10px;
+                                         font-size:12px; direction:rtl;
+                                         resize:vertical; font-family:inherit;
+                                         box-sizing:border-box;"
+                        >${this.escHtml(item.afterText || '')}</textarea>
+                    </div>`;
+            }
+
+            return `
+            <div class="cd-notice-item" data-item-id="${itemId}" style="
+                background:#1f2937; border:1px solid #374151;
+                border-radius:8px; padding:12px; position:relative;
+            ">
+                <div style="display:flex; align-items:center;
+                             gap:8px; margin-bottom:10px;">
+                    <div style="
+                        width:22px; height:22px;
+                        background:rgba(251,191,36,0.2);
+                        border:1px solid rgba(251,191,36,0.4);
+                        border-radius:50%;
+                        display:flex; align-items:center; justify-content:center;
+                        font-size:11px; font-weight:800;
+                        color:#fbbf24; flex-shrink:0;
+                    ">${number}</div>
+                    <span style="font-size:12px; font-weight:700; color:#d1d5db;">
+                        ${typeLabel}
+                    </span>
+                    <button class="cd-notice-remove-btn"
+                            data-item-id="${itemId}"
+                            style="
+                                margin-right:auto;
+                                background:rgba(239,68,68,0.1);
+                                border:1px solid rgba(239,68,68,0.25);
+                                border-radius:5px; color:#f87171;
+                                padding:3px 8px; font-size:10px;
+                                cursor:pointer; font-weight:700;
+                            ">
+                        <i class="fas fa-trash-alt"></i> הסר
+                    </button>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                    ${fieldsHtml}
+                </div>
+            </div>`;
+        }).join('');
+    };
+
+    const initialItemsHtml = buildInitialItemsHtml(defaultItems);
+
+    const modalHtml = `
+    <div id="cdSendCabEmailModal" style="
+        position:fixed; inset:0;
+        background:rgba(0,0,0,0.75);
+        z-index:99999;
+        display:flex; align-items:center; justify-content:center;
+        direction:rtl;
+        backdrop-filter:blur(6px);
+        animation: cdFadeIn 0.2s ease;
+    ">
+        <div style="
+            background:#1f2937;
+            border:1px solid #374151;
+            border-radius:16px;
+            width:92%; max-width:980px;
+            max-height:90vh;
+            overflow:hidden;
+            display:flex; flex-direction:column;
+            box-shadow:0 25px 60px rgba(0,0,0,0.6);
+            animation: cdPopupIn 0.25s cubic-bezier(0.34,1.56,0.64,1);
+            direction:rtl;
+        ">
+            <!-- כותרת -->
+            <div style="
+                background:linear-gradient(135deg,#1a1030,#320F5B,#4c1d95);
+                padding:18px 22px;
+                display:flex; justify-content:space-between; align-items:center;
+                flex-shrink:0;
+            ">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div style="
+                        width:42px; height:42px;
+                        background:rgba(167,139,250,0.18);
+                        border:1px solid rgba(167,139,250,0.35);
+                        border-radius:11px;
+                        display:flex; align-items:center; justify-content:center;
+                        font-size:1.3rem;
+                    ">📧</div>
+                    <div>
+                        <div style="font-size:1rem; font-weight:800; color:#fff;">
+                            שלח מייל CAB לפני הישיבה
+                        </div>
+                        <div style="font-size:0.75rem; color:rgba(255,255,255,0.6); margin-top:3px;">
+                            ישיבת CAB ${this.escHtml(cabDate)}
+                        </div>
+                    </div>
+                </div>
+                <button onclick="document.getElementById('cdSendCabEmailModal').remove()"
+                    style="
+                        background:rgba(255,255,255,0.1);
+                        border:1px solid rgba(255,255,255,0.2);
+                        color:rgba(255,255,255,0.8);
+                        width:32px; height:32px;
+                        border-radius:50%; cursor:pointer;
+                        font-size:0.9rem;
+                        display:flex; align-items:center; justify-content:center;
+                    ">✕</button>
+            </div>
+
+            <!-- גוף - גלילה -->
+            <div style="padding:22px; overflow-y:auto; 
+                        display:flex; flex-direction:column; gap:16px; flex:1;">
+
+                <!-- תאריך הישיבה -->
+                <div>
+                    <label style="
+                        font-size:12px; color:#9ca3af; font-weight:700;
+                        display:block; margin-bottom:8px;
+                        text-transform:uppercase; letter-spacing:0.5px;
+                    ">תאריך הישיבה:</label>
+                    <input type="text" id="cdCabEmailDate"
+                        value="${this.escHtml(cabDate)}"
+                        style="
+                            width:100%; background:#111827;
+                            border:1.5px solid #374151; border-radius:9px;
+                            color:#e0e0e0; padding:10px 13px; font-size:13px;
+                            direction:rtl; box-sizing:border-box;
+                        "
+                        placeholder="dd/mm/yyyy" />
+                </div>
+
+                <!-- קישור לפגישה -->
+                <div>
+                    <label style="
+                        font-size:12px; color:#9ca3af; font-weight:700;
+                        display:block; margin-bottom:8px;
+                        text-transform:uppercase; letter-spacing:0.5px;
+                    ">קישור לפגישת Teams (אופציונלי):</label>
+                    <input type="text" id="cdCabEmailMeetingLink"
+                        value="https://teams.microsoft.com/meet/31658206539457?p=9fYR8V8e1zV2cKH96S"
+                        style="
+                            width:100%; background:#111827;
+                            border:1.5px solid #374151; border-radius:9px;
+                            color:#e0e0e0; padding:10px 13px; font-size:13px;
+                            direction:ltr; box-sizing:border-box;
+                        "
+                        placeholder="https://teams.microsoft.com/..." />
+                </div>
+
+                <!-- ===== עורך "לתשומת ליבכם" ===== -->
+                <div>
+                    <!-- תיבת הסעיפים - דינמי לפי תבנית שמורה -->
+                    <div id="cdNoticeItemsList" style="...">
+                        ${initialItemsHtml}
+                    </div>
+                    <!-- תצוגה מקדימה של התיבה -->
+                    <div style="margin-top:10px;">
+                        <div style="
+                            font-size:10px; color:#6b7280; font-weight:700;
+                            text-transform:uppercase; letter-spacing:0.5px;
+                            margin-bottom:6px;
+                        ">
+                            <i class="fas fa-eye" style="margin-left:4px;"></i>
+                            תצוגה מקדימה:
+                        </div>
+                        <div id="cdNoticePreview" style="
+                            background:#fff8e1;
+                            border:2px solid #f5a623;
+                            border-radius:6px;
+                            padding:12px 16px;
+                            direction:rtl;
+                            font-family:Arial,sans-serif;
+                            font-size:12px;
+                        ">
+                            <!-- מתעדכן דינמית -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- סטטוס שליפת מיילים -->
+                ${foundCount > 0 || notFoundCount > 0 ? `
+                <div style="
+                    background:rgba(34,197,94,0.08);
+                    border:1px solid rgba(34,197,94,0.2);
+                    border-radius:8px; padding:10px 14px;
+                    font-size:12px; color:#4ade80;
+                    display:flex; align-items:center; gap:8px;
+                ">
+                    <i class="fas fa-address-book"></i>
+                    <span>
+                        נמצאו <strong>${foundCount}</strong> מיילים מספר הטלפונים
+                        ${notFoundCount > 0 
+                            ? `<span style="color:#fbbf24;"> | ${notFoundCount} לא נמצאו (ניתן להזין ידנית)</span>` 
+                            : ''}
+                    </span>
+                </div>` : ''}
+
+                <!-- רשימת מציגים -->
+                <div>
+                    <label style="
+                        font-size:12px; color:#9ca3af; font-weight:700;
+                        display:block; margin-bottom:8px;
+                        text-transform:uppercase; letter-spacing:0.5px;
+                    ">
+                        מציגים (${presentersList.length}):
+                    </label>
+                    <div style="
+                        background:#111827;
+                        border:1px solid #374151;
+                        border-radius:9px;
+                        overflow:hidden;
+                        max-height:200px;
+                        overflow-y:auto;
+                    ">
+                        ${presentersList.length === 0 
+                            ? `<div style="padding:16px; text-align:center; 
+                                        color:#6b7280; font-size:13px;">
+                                אין מציגים לישיבה זו
+                            </div>`
+                            : presentersList.map((p, i) => `
+                            <div style="
+                                display:flex; align-items:center; gap:10px;
+                                padding:10px 14px;
+                                border-bottom:${i < presentersList.length - 1 
+                                    ? '1px solid #1f2937' : 'none'};
+                            ">
+                                <!-- אווטאר -->
+                                <div style="
+                                    width:32px; height:32px;
+                                    background:${p.email 
+                                        ? 'rgba(34,197,94,0.2)' 
+                                        : 'rgba(124,58,237,0.2)'};
+                                    border-radius:50%;
+                                    display:flex; align-items:center; 
+                                    justify-content:center;
+                                    font-size:12px; font-weight:700;
+                                    color:${p.email ? '#4ade80' : '#a78bfa'};
+                                    flex-shrink:0;
+                                ">
+                                    ${p.email 
+                                        ? '<i class="fas fa-check" style="font-size:11px;"></i>'
+                                        : this.escHtml(p.name.charAt(0))}
+                                </div>
+                                <!-- שם -->
+                                <div style="flex:1; min-width:0;">
+                                    <div style="
+                                        font-size:13px; font-weight:600; 
+                                        color:#e0e0e0;
+                                        overflow:hidden; text-overflow:ellipsis;
+                                        white-space:nowrap;
+                                    ">
+                                        ${this.escHtml(p.name)}
+                                    </div>
+                                    <div style="font-size:11px; color:#6b7280;">
+                                        ${this.escHtml(p.changeNumber)}
+                                    </div>
+                                </div>
+                                <!-- מייל - אוטומטי או ידני -->
+                                <input type="email"
+                                    id="cdPresenterEmail_${i}"
+                                    data-presenter="${this.escHtml(p.name)}"
+                                    value="${p.email ? this.escHtml(p.email) : ''}"
+                                    placeholder="${p.email ? '' : 'email@company.com'}"
+                                    style="
+                                        width:200px; 
+                                        background:${p.email 
+                                            ? 'rgba(34,197,94,0.08)' 
+                                            : '#1f2937'};
+                                        border:1px solid ${p.email 
+                                            ? 'rgba(34,197,94,0.3)' 
+                                            : '#374151'};
+                                        border-radius:6px;
+                                        color:#e0e0e0; padding:6px 10px;
+                                        font-size:12px; direction:ltr;
+                                        flex-shrink:0;
+                                    " />
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <!-- CC קבועים -->
+                <div>
+                    <label style="
+                        font-size:12px; color:#9ca3af; font-weight:700;
+                        display:block; margin-bottom:8px;
+                        text-transform:uppercase; letter-spacing:0.5px;
+                    ">CC:</label>
+                    <input type="text" id="cdCabEmailCc"
+                        value="PDL-MANAGEMENTINFORMATIONCAB@menoramivt.net; PDL-ITDEPTMGR@menoramivt.net"
+                        style="
+                            width:100%; background:#111827;
+                            border:1.5px solid #374151; border-radius:9px;
+                            color:#e0e0e0; padding:10px 13px; font-size:13px;
+                            direction:ltr; box-sizing:border-box;
+                        "
+                        placeholder="email1@company.com, email2@company.com" />
+                </div>
+
+                <!-- אינדיקטור שליחה -->
+                <div id="cdCabEmailStatus" style="display:none;
+                    padding:10px 14px; border-radius:8px;
+                    font-size:13px; font-weight:600;
+                    align-items:center; gap:8px;
+                "></div>
+
+                <!-- כפתורי פעולה -->
+                <div style="display:flex; gap:10px; justify-content:flex-end;">
+                    <button id="cdCabEmailSaveTemplate"
+                        style="
+                            padding:9px 18px;
+                            background:rgba(34,197,94,0.15);
+                            border:1px solid rgba(34,197,94,0.35);
+                            border-radius:8px; color:#4ade80;
+                            cursor:pointer; font-size:13px; font-weight:700;
+                            display:flex; align-items:center; gap:7px;
+                            transition:all 0.2s;
+                        "
+                        title="שמור את הסעיפים כתבנית ברירת מחדל">
+                        <i class="fas fa-save"></i>
+                        שמור תבנית
+                    </button>
+                    <button onclick="document.getElementById('cdSendCabEmailModal').remove()"
+                        style="
+                            padding:9px 18px;
+                            background:#374151; border:1px solid #4b5563;
+                            border-radius:8px; color:#9ca3af;
+                            cursor:pointer; font-size:13px; font-weight:600;
+                        ">ביטול</button>
+                    <button id="cdCabEmailSendBtn"
+                        style="
+                            padding:9px 22px;
+                            background:linear-gradient(135deg,#320F5B,#7c3aed);
+                            border:1px solid #7c3aed;
+                            border-radius:8px; color:#fff;
+                            cursor:pointer; font-size:13px; font-weight:700;
+                            display:flex; align-items:center; gap:7px;
+                            box-shadow:0 2px 10px rgba(124,58,237,0.3);
+                        ">
+                        <i class="fas fa-paper-plane"></i>
+                        הורד מייל מוכן לשליחה
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>`;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // *** עדכן תצוגה מקדימה ***
+    this._updateNoticePreview();
+
+    // *** אירועי עדכון תצוגה מקדימה בזמן אמת ***
+    document.getElementById('cdNoticeItemsList')
+        ?.addEventListener('input', () => {
+            this._updateNoticePreview();
+        });
+
+    // *** כפתור הוספת סעיף ***
+    document.getElementById('cdAddNoticeItem')
+        ?.addEventListener('click', () => {
+            this._addNoticeItem();
+        });
+
+    // *** כפתורי הסרת סעיף ***
+    document.getElementById('cdNoticeItemsList')
+        ?.addEventListener('click', (e) => {
+            const removeBtn = e.target.closest('.cd-notice-remove-btn');
+            if (removeBtn) {
+                const itemId = removeBtn.getAttribute('data-item-id');
+                document.querySelector(
+                    `.cd-notice-item[data-item-id="${itemId}"]`
+                )?.remove();
+                this._updateNoticePreview();
+                this._renumberNoticeItems();
+            }
+        });
+
+        document.getElementById('cdCabEmailSaveTemplate')
+            ?.addEventListener('click', async () => {
+                const items = this._collectNoticeItems();
+                if (items.length === 0) {
+                    this._showErrorIndicator('אין סעיפים לשמירה');
+                    return;
+                }
+                
+                // המר לפורמט שמתאים לשרת
+                const serverItems = items.map(item => ({
+                    type:      item.type,
+                    linkText:  item.linkText  || '',
+                    linkUrl:   item.linkUrl   || '',
+                    boldText:  item.boldText  || '',
+                    afterText: item.afterText || ''
+                }));
+                
+                await this.saveCabNoticeTemplate(serverItems);
+            });
+
+    // *** אירוע שליחה ***
+    document.getElementById('cdCabEmailSendBtn')
+        ?.addEventListener('click', () => {
+            const btn = document.getElementById('cdCabEmailSendBtn');
+            const statusEl = document.getElementById('cdCabEmailStatus');
+
+            const presenterEmailMap = {};
+            const toAddresses = [];
+
+            presentersList.forEach((p, i) => {
+                const emailInput = document.getElementById(`cdPresenterEmail_${i}`);
+                const email = emailInput?.value?.trim();
+                if (email && email.includes('@')) {
+                    presenterEmailMap[p.name] = email;
+                    toAddresses.push({ name: p.name, email });
+                }
+            });
+
+            const ccRaw = document.getElementById('cdCabEmailCc')
+                ?.value?.trim() || '';
+            const ccAddresses = ccRaw
+                .split(/[,;]/)
+                .map(e => e.trim())
+                .filter(e => e.includes('@'));
+
+            const cabDateVal = document.getElementById('cdCabEmailDate')
+                ?.value?.trim() || cabDate;
+
+            const meetingLink = document.getElementById('cdCabEmailMeetingLink')
+                ?.value?.trim() || '';
+
+                            // *** קרא לפונקציה עם הסעיפים הנוכחיים ***
+                const noticeItems = this._collectNoticeItems();
+
+                try {
+                    if (btn) {
+                        btn.disabled = true;
+                        btn.innerHTML = 
+                            '<i class="fas fa-spinner fa-spin"></i> מכין קובץ...';
+                    }
+
+                    this._buildAndDownloadCabEml({
+                        toAddresses,
+                        ccAddresses,
+                        cabDate: cabDateVal,
+                        meetingLink,
+                        presentersList,
+                        noticeItems        // *** העבר את הסעיפים ***
+                    });
+
+                    if (statusEl) {
+                        statusEl.style.display = 'flex';
+                        statusEl.style.background = 'rgba(34,197,94,0.1)';
+                        statusEl.style.border = '1px solid rgba(34,197,94,0.3)';
+                        statusEl.style.color = '#4ade80';
+                        statusEl.innerHTML =
+                            `<i class="fas fa-check-circle"></i> ` +
+                            `קובץ מייל הורד - פתח ב-Outlook ושלח`;
+                    }
+
+                } catch (err) {
+                    if (statusEl) {
+                        statusEl.style.display = 'flex';
+                        statusEl.style.background = 'rgba(239,68,68,0.1)';
+                        statusEl.style.border = '1px solid rgba(239,68,68,0.3)';
+                        statusEl.style.color = '#f87171';
+                        statusEl.innerHTML =
+                            `<i class="fas fa-exclamation-triangle"></i> ` +
+                            `שגיאה: ${err.message}`;
+                    }
+                } finally {
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerHTML =
+                            '<i class="fas fa-file-download"></i> הורד מייל מוכן';
+                    }
+                }
+            });
+
+    // ---- סגירה ב-Escape ----
+    const onEsc = (e) => {
+        if (e.key === 'Escape') {
+            document.getElementById('cdSendCabEmailModal')?.remove();
+            document.removeEventListener('keydown', onEsc);
+        }
+    };
+    document.addEventListener('keydown', onEsc);
+}
+
+    _collectNoticeItems() {
+        const items = [];
+        
+        document.querySelectorAll('#cdNoticeItemsList .cd-notice-item')
+            .forEach(itemEl => {
+                const itemId = itemEl.getAttribute('data-item-id');
+                
+                // בדוק סוג: קישור
+                const linkText = itemEl.querySelector(
+                    `.cd-notice-link-text[data-item-id="${itemId}"]`
+                )?.value?.trim();
+                
+                const linkUrl = itemEl.querySelector(
+                    `.cd-notice-link-url[data-item-id="${itemId}"]`
+                )?.value?.trim();
+                
+                // בדוק סוג: טקסט מודגש
+                const boldText = itemEl.querySelector(
+                    `.cd-notice-bold-text[data-item-id="${itemId}"]`
+                )?.value?.trim();
+                
+                // טקסט אחרי (משותף לשניהם)
+                const afterText = itemEl.querySelector(
+                    `.cd-notice-after-text[data-item-id="${itemId}"]`
+                )?.value?.trim() || '';
+
+                if (linkText || linkUrl) {
+                    // סעיף עם קישור
+                    items.push({
+                        type: 'link',
+                        linkText: linkText || '',
+                        linkUrl:  linkUrl  || '#',
+                        afterText
+                    });
+                } else if (boldText) {
+                    // סעיף עם טקסט מודגש
+                    items.push({
+                        type: 'bold',
+                        boldText,
+                        afterText
+                    });
+                } else if (afterText) {
+                    // סעיף טקסט רגיל בלבד
+                    items.push({
+                        type: 'text',
+                        afterText
+                    });
+                }
+            });
+
+        return items;
+    }
+
+    _updateNoticePreview() {
+        const previewEl = document.getElementById('cdNoticePreview');
+        if (!previewEl) return;
+
+        const items = this._collectNoticeItems();
+
+        if (items.length === 0) {
+            previewEl.innerHTML = `
+                <span style="color:#aaa; font-style:italic; font-size:11px;">
+                    אין סעיפים
+                </span>`;
+            return;
+        }
+
+        const listItems = items.map(item => {
+            if (item.type === 'link') {
+                return `
+                    <li style="margin-bottom:6px;">
+                        <a href="${this.escHtml(item.linkUrl)}"
+                        style="color:#0078d4; font-weight:bold; font-size:11px;">
+                            ${this.escHtml(item.linkText)}
+                        </a>
+                        ${item.afterText 
+                            ? `<span style="font-size:11px; color:#333;">
+                                &nbsp;-&nbsp;${this.escHtml(item.afterText)}
+                            </span>` 
+                            : ''}
+                    </li>`;
+            }
+            if (item.type === 'bold') {
+                return `
+                    <li style="margin-bottom:6px; font-size:11px; color:#333;">
+                        <strong>${this.escHtml(item.boldText)}</strong>
+                        ${item.afterText 
+                            ? `<span> - ${this.escHtml(item.afterText)}</span>` 
+                            : ''}
+                    </li>`;
+            }
+            // type === 'text'
+            return `
+                <li style="margin-bottom:6px; font-size:11px; color:#333;">
+                    ${this.escHtml(item.afterText)}
+                </li>`;
+        }).join('');
+
+        previewEl.innerHTML = `
+            <div style="
+                font-family:Arial,sans-serif;
+                font-size:11pt;
+                font-weight:bold;
+                color:#000;
+                margin-bottom:6px;
+            ">לתשומת ליבכם:</div>
+            <ul style="
+                margin:0; padding:0;
+                padding-right:18px;
+                list-style-type:disc;
+                font-family:Arial,sans-serif;
+            ">
+                ${listItems}
+            </ul>`;
+    }
+
+    _addNoticeItem() {
+        const list = document.getElementById('cdNoticeItemsList');
+        if (!list) return;
+
+        // צור ID ייחודי
+        const newId = 'notice_' + Date.now();
+
+        // ספור סעיפים קיימים לצורך מספור
+        const currentCount = list.querySelectorAll('.cd-notice-item').length + 1;
+
+        // פופאפ בחירת סוג
+        const choiceHtml = `
+            <div id="cdNoticeTypeChoice" style="
+                position:fixed; inset:0;
+                background:rgba(0,0,0,0.6);
+                z-index:999999;
+                display:flex; align-items:center; justify-content:center;
+                direction:rtl;
+            ">
+                <div style="
+                    background:#1f2937;
+                    border:1px solid #374151;
+                    border-radius:14px;
+                    padding:24px;
+                    width:320px;
+                    display:flex; flex-direction:column; gap:12px;
+                    box-shadow:0 20px 50px rgba(0,0,0,0.5);
+                    direction:rtl;
+                ">
+                    <div style="font-size:14px; font-weight:800; color:#fff; margin-bottom:4px;">
+                        בחר סוג סעיף:
+                    </div>
+
+                    <button id="cdChoiceLink" style="
+                        padding:12px 16px;
+                        background:#111827;
+                        border:2px solid #374151;
+                        border-radius:10px;
+                        color:#60a5fa;
+                        cursor:pointer; font-size:13px; font-weight:700;
+                        display:flex; align-items:center; gap:10px;
+                        transition:all 0.2s; direction:rtl; text-align:right;
+                    "
+                    onmouseover="this.style.borderColor='#3b82f6';this.style.background='rgba(59,130,246,0.1)'"
+                    onmouseout="this.style.borderColor='#374151';this.style.background='#111827'"
+                    >
+                        <i class="fas fa-link" style="font-size:16px; flex-shrink:0;"></i>
+                        <div>
+                            <div>סעיף עם קישור</div>
+                            <div style="font-size:10px; color:#6b7280; font-weight:500; margin-top:2px;">
+                                טקסט קישור + URL + תיאור
+                            </div>
+                        </div>
+                    </button>
+
+                    <button id="cdChoiceBold" style="
+                        padding:12px 16px;
+                        background:#111827;
+                        border:2px solid #374151;
+                        border-radius:10px;
+                        color:#fbbf24;
+                        cursor:pointer; font-size:13px; font-weight:700;
+                        display:flex; align-items:center; gap:10px;
+                        transition:all 0.2s; direction:rtl; text-align:right;
+                    "
+                    onmouseover="this.style.borderColor='#f59e0b';this.style.background='rgba(245,158,11,0.1)'"
+                    onmouseout="this.style.borderColor='#374151';this.style.background='#111827'"
+                    >
+                        <i class="fas fa-bold" style="font-size:16px; flex-shrink:0;"></i>
+                        <div>
+                            <div>סעיף עם טקסט מודגש</div>
+                            <div style="font-size:10px; color:#6b7280; font-weight:500; margin-top:2px;">
+                                כותרת מודגשת + תיאור
+                            </div>
+                        </div>
+                    </button>
+
+                    <button id="cdChoiceText" style="
+                        padding:12px 16px;
+                        background:#111827;
+                        border:2px solid #374151;
+                        border-radius:10px;
+                        color:#d1d5db;
+                        cursor:pointer; font-size:13px; font-weight:700;
+                        display:flex; align-items:center; gap:10px;
+                        transition:all 0.2s; direction:rtl; text-align:right;
+                    "
+                    onmouseover="this.style.borderColor='#6b7280';this.style.background='rgba(107,114,128,0.1)'"
+                    onmouseout="this.style.borderColor='#374151';this.style.background='#111827'"
+                    >
+                        <i class="fas fa-align-right" style="font-size:16px; flex-shrink:0;"></i>
+                        <div>
+                            <div>סעיף טקסט פשוט</div>
+                            <div style="font-size:10px; color:#6b7280; font-weight:500; margin-top:2px;">
+                                טקסט רגיל בלבד
+                            </div>
+                        </div>
+                    </button>
+
+                    <button onclick="document.getElementById('cdNoticeTypeChoice').remove()"
+                        style="
+                            padding:8px; background:#374151;
+                            border:1px solid #4b5563; border-radius:8px;
+                            color:#9ca3af; cursor:pointer; font-size:12px;
+                            font-weight:600; margin-top:4px;
+                        ">
+                        ביטול
+                    </button>
+                </div>
+            </div>`;
+
+        document.body.insertAdjacentHTML('beforeend', choiceHtml);
+
+        // ---- בחירת סוג ----
+        const handleChoice = (type) => {
+            document.getElementById('cdNoticeTypeChoice')?.remove();
+            this._insertNoticeItem(list, newId, currentCount, type);
+            this._updateNoticePreview();
+            this._renumberNoticeItems();
+        };
+
+        document.getElementById('cdChoiceLink')
+            ?.addEventListener('click', () => handleChoice('link'));
+        document.getElementById('cdChoiceBold')
+            ?.addEventListener('click', () => handleChoice('bold'));
+        document.getElementById('cdChoiceText')
+            ?.addEventListener('click', () => handleChoice('text'));
+
+        // סגירה ב-Escape
+        const onEsc = (e) => {
+            if (e.key === 'Escape') {
+                document.getElementById('cdNoticeTypeChoice')?.remove();
+                document.removeEventListener('keydown', onEsc);
+            }
+        };
+        document.addEventListener('keydown', onEsc);
+    }
+
+    _insertNoticeItem(container, itemId, number, type) {
+        let fieldsHtml = '';
+
+        if (type === 'link') {
+            fieldsHtml = `
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                    <div>
+                        <label style="font-size:10px; color:#6b7280; font-weight:700;
+                                    display:block; margin-bottom:4px;">
+                            טקסט הקישור:
+                        </label>
+                        <input type="text"
+                            class="cd-notice-link-text"
+                            data-item-id="${itemId}"
+                            placeholder="לדוגמה: לוח שנה"
+                            style="
+                                width:100%; background:#111827;
+                                border:1px solid #374151; border-radius:6px;
+                                color:#e0e0e0; padding:7px 10px;
+                                font-size:12px; direction:rtl;
+                                box-sizing:border-box;
+                            " />
+                    </div>
+                    <div>
+                        <label style="font-size:10px; color:#6b7280; font-weight:700;
+                                    display:block; margin-bottom:4px;">
+                            כתובת URL:
+                        </label>
+                        <input type="text"
+                            class="cd-notice-link-url"
+                            data-item-id="${itemId}"
+                            placeholder="https://..."
+                            style="
+                                width:100%; background:#111827;
+                                border:1px solid #374151; border-radius:6px;
+                                color:#60a5fa; padding:7px 10px;
+                                font-size:11px; direction:ltr;
+                                box-sizing:border-box; font-family:monospace;
+                            " />
+                    </div>
+                </div>
+                <div style="margin-top:8px;">
+                    <label style="font-size:10px; color:#6b7280; font-weight:700;
+                                display:block; margin-bottom:4px;">
+                        טקסט אחרי הקישור:
+                    </label>
+                    <textarea class="cd-notice-after-text"
+                            data-item-id="${itemId}"
+                            placeholder="תיאור הסעיף..."
+                            style="
+                                width:100%; min-height:60px;
+                                background:#111827;
+                                border:1px solid #374151; border-radius:6px;
+                                color:#e0e0e0; padding:7px 10px;
+                                font-size:12px; direction:rtl;
+                                resize:vertical; font-family:inherit;
+                                box-sizing:border-box;
+                            "></textarea>
+                </div>`;
+
+        } else if (type === 'bold') {
+            fieldsHtml = `
+                <div>
+                    <label style="font-size:10px; color:#6b7280; font-weight:700;
+                                display:block; margin-bottom:4px;">
+                        טקסט מודגש:
+                    </label>
+                    <input type="text"
+                        class="cd-notice-bold-text"
+                        data-item-id="${itemId}"
+                        placeholder="כותרת מודגשת..."
+                        style="
+                            width:100%; background:#111827;
+                            border:1px solid #374151; border-radius:6px;
+                            color:#e0e0e0; padding:7px 10px;
+                            font-size:12px; direction:rtl;
+                            box-sizing:border-box; font-weight:700;
+                        " />
+                </div>
+                <div style="margin-top:8px;">
+                    <label style="font-size:10px; color:#6b7280; font-weight:700;
+                                display:block; margin-bottom:4px;">
+                        המשך הטקסט:
+                    </label>
+                    <textarea class="cd-notice-after-text"
+                            data-item-id="${itemId}"
+                            placeholder="תיאור נוסף..."
+                            style="
+                                width:100%; min-height:60px;
+                                background:#111827;
+                                border:1px solid #374151; border-radius:6px;
+                                color:#e0e0e0; padding:7px 10px;
+                                font-size:12px; direction:rtl;
+                                resize:vertical; font-family:inherit;
+                                box-sizing:border-box;
+                            "></textarea>
+                </div>`;
+
+        } else {
+            // type === 'text'
+            fieldsHtml = `
+                <div>
+                    <label style="font-size:10px; color:#6b7280; font-weight:700;
+                                display:block; margin-bottom:4px;">
+                        טקסט:
+                    </label>
+                    <textarea class="cd-notice-after-text"
+                            data-item-id="${itemId}"
+                            placeholder="הזן טקסט..."
+                            style="
+                                width:100%; min-height:70px;
+                                background:#111827;
+                                border:1px solid #374151; border-radius:6px;
+                                color:#e0e0e0; padding:7px 10px;
+                                font-size:12px; direction:rtl;
+                                resize:vertical; font-family:inherit;
+                                box-sizing:border-box;
+                            "></textarea>
+                </div>`;
+        }
+
+        const typeLabel = type === 'link' 
+            ? 'סעיף עם קישור' 
+            : type === 'bold' 
+                ? 'סעיף עם טקסט מודגש' 
+                : 'סעיף טקסט פשוט';
+
+        const newItemHtml = `
+            <div class="cd-notice-item" data-item-id="${itemId}" style="
+                background:#1f2937;
+                border:1px solid #374151;
+                border-radius:8px;
+                padding:12px;
+                animation: cdFadeIn 0.2s ease;
+            ">
+                <div style="
+                    display:flex; align-items:center;
+                    gap:8px; margin-bottom:10px;
+                ">
+                    <div style="
+                        width:22px; height:22px;
+                        background:rgba(251,191,36,0.2);
+                        border:1px solid rgba(251,191,36,0.4);
+                        border-radius:50%;
+                        display:flex; align-items:center; justify-content:center;
+                        font-size:11px; font-weight:800;
+                        color:#fbbf24; flex-shrink:0;
+                    ">${number}</div>
+                    <span style="font-size:12px; font-weight:700; color:#d1d5db;">
+                        ${typeLabel}
+                    </span>
+                    <button class="cd-notice-remove-btn"
+                            data-item-id="${itemId}"
+                            style="
+                                margin-right:auto;
+                                background:rgba(239,68,68,0.1);
+                                border:1px solid rgba(239,68,68,0.25);
+                                border-radius:5px; color:#f87171;
+                                padding:3px 8px; font-size:10px;
+                                cursor:pointer; font-weight:700;
+                            ">
+                        <i class="fas fa-trash-alt"></i> הסר
+                    </button>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                    ${fieldsHtml}
+                </div>
+            </div>`;
+
+        container.insertAdjacentHTML('beforeend', newItemHtml);
+    }
+
+    _renumberNoticeItems() {
+        document.querySelectorAll('#cdNoticeItemsList .cd-notice-item')
+            .forEach((item, index) => {
+                const numEl = item.querySelector('div[style*="border-radius:50%"]');
+                if (numEl) numEl.textContent = index + 1;
+            });
+    }
+
+    _buildAndDownloadCabEml({ toAddresses, ccAddresses, cabDate, meetingLink, presentersList, noticeItems }) {
+
+        // *** בנה גוף HTML של המייל ***
+        const sortedChanges = [...this.cabChanges]
+            .filter(c => {
+                const decision = this.getCabDecision(c.number);
+                return !decision || decision.status !== 'no_cab';
+            })
+            .sort((a, b) => {
+                const da = this.parseDateWithTime(this._getEffectiveStartTime(a));
+                const db = this.parseDateWithTime(this._getEffectiveStartTime(b));
+                if (!da && !db) return 0;
+                if (!da) return 1;
+                if (!db) return -1;
+                return da - db;
+            });
+
+        // *** בנה שורות טבלה ***
+        let tableRows = '';
+        sortedChanges.forEach((c, i) => {
+            const bg = i % 2 === 0 ? '#ffffff' : '#f5f8ff';
+            const startStr = this._getEffectiveStartTime(c);
+            const dateDisplay = this.formatDateDisplay(startStr);
+            const presenter = this.cleanPresenters(c.presenters || '');
+
+            tableRows += `
+    <tr style="background:${bg};">
+        <td style="padding:6px 10px; font-weight:bold; color:#1f3864;
+                border:1px solid #aaa; font-family:Arial,sans-serif;
+                font-size:10pt; text-align:center; vertical-align:middle;">
+            ${this.escHtml(c.number || '')}
+        </td>
+        <td style="padding:6px 10px; border:1px solid #aaa;
+                font-family:Arial,sans-serif; font-size:10pt;
+                vertical-align:middle; word-break:break-word;">
+            ${this.escHtml(c.name || '')}
+        </td>
+        <td style="padding:6px 10px; border:1px solid #aaa;
+                font-family:Arial,sans-serif; font-size:9pt;
+                text-align:center; vertical-align:middle; white-space:nowrap;">
+            ${this.escHtml(dateDisplay)}
+        </td>
+        <td style="padding:6px 10px; border:1px solid #aaa;
+                font-family:Arial,sans-serif; font-size:10pt;
+                text-align:center; vertical-align:middle;">
+            <strong style="color:#4274d6;">
+                ${this.escHtml(presenter)}
+            </strong>
+        </td>
+    </tr>`;
+        });
+
+        // *** קישור Teams ***
+        const teamsLinkHtml = meetingLink
+            ? `<p style="font-family:Arial,sans-serif; font-size:11pt; margin:0 0 16px 0;">
+                <a href="${this.escHtml(meetingLink)}" 
+                    style="color:#0078d4; font-weight:700;">
+                    קישור לפגישה ב-Teams
+                </a>
+            </p>`
+            : '';
+
+        
+    // *** בנה HTML של תיבת ההודעה מהסעיפים ***
+    const noticeHtml = this._buildNoticeHtmlForEmail(
+        noticeItems || this._getDefaultNoticeItemsData()
+    );
+
+    // *** גוף HTML מלא ***
+    const htmlBody = `<!DOCTYPE html>
+    <html dir="rtl" lang="he">
+    <head>
+    <meta charset="UTF-8">
+    </head>
+    <body dir="rtl" style="
+        font-family: Arial, sans-serif;
+        font-size: 11pt;
+        direction: rtl;
+        margin: 20px;
+        padding: 0;
+        color: #000000;
+        background: #ffffff;
+    ">
+
+    <p style="font-family:Arial,sans-serif; font-size:11pt; margin:0 0 16px 0;">
+        בוקר טוב,
+    </p>
+
+    <p style="font-family:Arial,sans-serif; font-size:11pt; margin:0 0 6px 0;">
+    הפגישה תתקיים היום בשעה 10:00
+        ${meetingLink ? `
+                <a href="${this.escHtml(meetingLink)}"
+                style="color:#0078d4; font-weight:bold; font-size:11pt;">
+        (קישור לפגישה ב-Teams)
+                </a>` : ''}
+    </p>
+
+    ${noticeHtml}
+
+    <br>
+    <p style="font-family:Arial,sans-serif; font-size:11pt;
+              font-weight:bold; margin:0 0 10px 0;">
+        נושאים לפגישת CAB:
+    </p>
+
+        <table border="1" cellpadding="0" cellspacing="0"
+            style="border-collapse:collapse; width:100%; max-width:800px;
+                    font-family:Arial,sans-serif; font-size:10pt;
+                    direction:rtl; margin-bottom:28px; table-layout:fixed;">
+            <colgroup>
+                <col style="width:12%;" />
+                <col style="width:40%;" />
+                <col style="width:15%;" />
+                <col style="width:33%;" />
+            </colgroup>
+            <thead>
+                <tr style="background:#dce6f1;">
+                    <th style="padding:7px 10px; font-family:Arial,sans-serif;
+                            font-size:10pt; font-weight:bold; border:1px solid #aaa;
+                            text-align:center; vertical-align:middle;">
+                        מספר שינוי
+                    </th>
+                    <th style="padding:7px 10px; font-family:Arial,sans-serif;
+                            font-size:10pt; font-weight:bold; border:1px solid #aaa;
+                            text-align:center; vertical-align:middle;">
+                        נושא/פעולה לביצוע
+                    </th>
+                    <th style="padding:7px 10px; font-family:Arial,sans-serif;
+                            font-size:10pt; font-weight:bold; border:1px solid #aaa;
+                            text-align:center; vertical-align:middle;">
+                        תאריך לביצוע
+                    </th>
+                    <th style="padding:7px 10px; font-family:Arial,sans-serif;
+                            font-size:10pt; font-weight:bold; border:1px solid #aaa;
+                            text-align:center; vertical-align:middle;">
+                        אחראי
+                    </th>
+                </tr>
+            </thead>
+            <tbody>
+                ${tableRows}
+            </tbody>
+        </table>
+
+    <br>
+    <p style="font-family:Arial,sans-serif; font-size:11pt; margin:0;">
+        שבוע טוב
+    </p>
+
+    </body>
+    </html>`;
+
+        // *** בנה EML ***
+        const subject = `פגישת פורום CAB`;
+
+        const encodeRfc2047 = (str) => {
+            if (!str) return '';
+            const hasNonAscii = /[^\x00-\x7F]/.test(str);
+            if (!hasNonAscii) return str;
+            return `=?UTF-8?B?${btoa(unescape(encodeURIComponent(str)))}?=`;
+        };
+
+        // *** בנה שורות To ***
+        const toLine = toAddresses.length > 0
+            ? toAddresses.map(a => {
+                const encodedName = encodeRfc2047(a.name);
+                return `${encodedName} <${a.email}>`;
+            }).join(';\r\n\t')
+            : 'undisclosed-recipients:;';
+
+        // *** בנה שורות CC ***
+        const ccLine = ccAddresses.length > 0
+            ? ccAddresses.join(';\r\n\t')
+            : '';
+
+        const encodedSubject = encodeRfc2047(subject);
+        const bodyBase64 = btoa(unescape(encodeURIComponent(htmlBody)));
+
+        // *** הרכב EML ***
+        const emlLines = [
+            `To: ${toLine}`,
+            ccLine ? `CC: ${ccLine}` : null,
+            `Subject: ${encodedSubject}`,
+            `MIME-Version: 1.0`,
+            `Content-Type: multipart/alternative; boundary="cab_eml_boundary_001"`,
+            `X-Mailer: NOC Portal CAB Dashboard`,
+            `X-Unsent: 1`,
+            `Importance: Normal`,
+            ``,
+            `--cab_eml_boundary_001`,
+            `Content-Type: text/plain; charset=UTF-8`,
+            `Content-Transfer-Encoding: base64`,
+            ``,
+            btoa(unescape(encodeURIComponent(
+                `שלום,\n\nפגישת CAB ${cabDate}\n\nשבוע טוב`
+            ))),
+            ``,
+            `--cab_eml_boundary_001`,
+            `Content-Type: text/html; charset=UTF-8`,
+            `Content-Transfer-Encoding: base64`,
+            ``,
+            bodyBase64,
+            ``,
+            `--cab_eml_boundary_001--`,
+        ]
+        .filter(line => line !== null)
+        .join('\r\n');
+
+        // *** הורד ***
+        const blob = new Blob([emlLines], { type: 'message/rfc822' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `CAB_PreMeeting_${cabDate.replace(/\//g, '-')}.eml`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+        this._showColOrderSaveIndicator('קובץ מייל הורד - פתח ב-Outlook ושלח ✓');
+    }
+
+    // -------------------------------------------------------
     // הצגת מודל העלאת קובץ נוכחות
     // -------------------------------------------------------
     showAttendanceUploadModal() {
@@ -8322,6 +10567,7 @@ ${hasMultiple
         document.getElementById('cdAttendanceExportEml')
             ?.addEventListener('click', () => {
                 if (this._lastAttendanceData) {
+                    this.sendCabChangesJsonInMail(this._lastAttendanceData)
                     this.exportAttendanceToEml(this._lastAttendanceData);
                 }
             });
@@ -9009,10 +11255,860 @@ ${domainTableHtml}
         this._showColOrderSaveIndicator('קובץ Word הורד בהצלחה ✓');
     }
 
+    sendCabChangesJsonInMail(data) {
+        const { participants, domainResult, fileName } = data;
+        const { ordered, unknown } = domainResult;
+
+        const meetingDate = this._extractDateFromFileName(fileName)
+            || this._formatDateHebrew(new Date());
+
+        // *** סנן שינויים שאינם נדחים/יתואמו מחדש ***
+        const approvedChanges = this.cabChanges.filter(c => {
+            const history = this.getAllCabDecisions(c.number);
+            if (history.length === 0) return true; // לא טופל - כלול
+            const lastDecision = history[0];
+            return lastDecision.status !== 'rejected' && 
+                lastDecision.status !== 'rescheduled';
+        });
+
+        // *** גנרט JSON לפי הפורמט המבוקש ***
+        const cabJson = approvedChanges.map(c => {
+            const history = this.getAllCabDecisions(c.number);
+            const lastDecision = history[0] || null;
+            const startStr = this._getEffectiveStartTime(c);
+            
+            return {
+                date: (() => {
+                    const d = this.parseDateWithTime(startStr) || this.parseDate(startStr);
+                    if (!d) return startStr;
+                    const year = d.getFullYear();
+                    const month = String(d.getMonth() + 1).padStart(2, '0');
+                    const day   = String(d.getDate()).padStart(2, '0');
+                    return `${year}-${month}-${day}`;
+                })(),
+                type: lastDecision?.status === 'approved' ? 'maint-start' : 'inc-start',
+                sys: c.name || this._extractSystemName(c.system || '') || '',
+                owner: this.cleanPresenters(c.presenters || ''),
+                time1: (() => {
+                    const d = this.parseDateWithTime(startStr);
+                    if (!d) return '00:00';
+                    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                })(),
+                time2: (() => {
+                    const endStr = this._getEffectiveEndTime(c);
+                    const d = this.parseDateWithTime(endStr);
+                    if (!d) return '00:00';
+                    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                })()
+            };
+        });
+
+        // *** שלח לשרת ***
+        this._sendCabSummaryEmailWithJson({meetingDate,cabJson});
+    }
+
+    async _sendCabSummaryEmailWithJson({meetingDate, cabJson}) {
+
+        // *** HTML של הגוף ***
+        const bodyHtml = `<!DOCTYPE html>
+            <html dir="rtl" lang="he">
+            <head>
+                <meta charset="UTF-8">
+            </head>
+            <body style="font-family:Arial,sans-serif;font-size:11pt;direction:rtl;">
+
+            <p>שלום,</p>
+
+            <p>
+            מצורף קובץ JSON המכיל את פרטי השינויים שהוצגו בישיבת CAB בתאריך
+            <strong>${this.escHtml(meetingDate)}</strong>.
+            </p>
+
+            <p>
+            לצורך תיעוד ומעקב, כל נתוני הדיון, הסטטוסים וההחלטות מופיעים בקובץ המצורף.
+            </p>
+
+            <br>
+
+            </body>
+            </html>`;
+
+        // *** שלח לשרת ***
+        try {
+            const btn = document.getElementById('cdAttendanceExportEml');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> שולח...';
+            }
+
+
+            const payload = {
+                subject: `סיכום ישיבת CAB לתאריך ${meetingDate}`,
+                bodyHtml: bodyHtml,
+                cabJson: cabJson,
+                meetingDate: meetingDate,
+                toAddresses: ['mafilim88@gmail.com'],
+                ccAddresses: ['lirongo16@gmail.com']
+            };
+
+            const res = await fetch('/Changes/SendCabSummaryEmail', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+
+            if (data.success) {
+                this._showColOrderSaveIndicator('מייל סיכום CAB נשלח בהצלחה ✓');
+            } else {
+                this._showErrorIndicator('שגיאה בשליחת המייל: ' + data.message);
+            }
+
+        } catch (err) {
+            this._showErrorIndicator('שגיאת תקשורת: ' + err.message);
+        } finally {
+            const btn = document.getElementById('cdAttendanceExportEml');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-envelope-open-text"></i> שלח סיכום במייל';
+            }
+        }
+    }
+
     // -------------------------------------------------------
     // ייצוא EML - מייל סיכום CAB
     // -------------------------------------------------------
-    exportAttendanceToEml(data) {
+    async exportAttendanceToEml(data) {
+        // *** פתח מודל עריכה לפני יצוא ה-EML ***
+        const savedTemplate = await this.loadCabNoticeTemplate();
+        this._showAttendanceEmlEditor(data, savedTemplate);
+    }
+
+    _showAttendanceEmlEditor(data, savedTemplate = null) {
+        document.getElementById('cdAttendanceEmlEditorModal')?.remove();
+
+        const { participants, domainResult, fileName } = data;
+        const meetingDate = this._extractDateFromFileName(fileName)
+            || this._formatDateHebrew(new Date());
+
+    // *** ברירת מחדל אם אין שמור ***
+    const defaultItems = savedTemplate || [
+        {
+            type:      'link',
+            linkText:  'לוח שנה',
+            linkUrl:   'https://nocport-p1apw1/dashboards?dashboard=changes',
+            afterText: 'לפני קביעת שינוי, נא לבדוק בלוח השנה שלא קיים שינוי נוסף באותו תאריך שעלול להתנגש או להפריע.'
+        },
+        {
+            type:      'bold',
+            boldText:  'עדכון NOC על התחלה, סיום או שינוי של כל פעילות',
+            afterText: 'נא לעדכן את חדר מחשב לפני ואחרי כל פעילות שמתבצעת.'
+        }
+    ];
+    // *** בנה HTML של הסעיפים דינמית לפי התבנית ***
+    const buildInitialItemsHtml = (items) => {
+        return items.map((item, index) => {
+            const itemId  = `notice_${index + 1}`;
+            const number  = index + 1;
+
+            let fieldsHtml = '';
+            let typeLabel  = '';
+
+            if (item.type === 'link') {
+                typeLabel  = 'סעיף עם קישור';
+                fieldsHtml = `
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                        <div>
+                            <label style="font-size:10px; color:#6b7280;
+                                          font-weight:700; display:block;
+                                          margin-bottom:4px;">
+                                טקסט הקישור:
+                            </label>
+                            <input type="text"
+                                   class="cd-notice-link-text"
+                                   data-item-id="${itemId}"
+                                   value="${this.escHtml(item.linkText || '')}"
+                                   style="width:100%; background:#111827;
+                                          border:1px solid #374151; border-radius:6px;
+                                          color:#e0e0e0; padding:7px 10px;
+                                          font-size:12px; direction:rtl;
+                                          box-sizing:border-box;" />
+                        </div>
+                        <div>
+                            <label style="font-size:10px; color:#6b7280;
+                                          font-weight:700; display:block;
+                                          margin-bottom:4px;">
+                                כתובת URL:
+                            </label>
+                            <input type="text"
+                                   class="cd-notice-link-url"
+                                   data-item-id="${itemId}"
+                                   value="${this.escHtml(item.linkUrl || '')}"
+                                   style="width:100%; background:#111827;
+                                          border:1px solid #374151; border-radius:6px;
+                                          color:#60a5fa; padding:7px 10px;
+                                          font-size:11px; direction:ltr;
+                                          box-sizing:border-box;
+                                          font-family:monospace;" />
+                        </div>
+                    </div>
+                    <div>
+                        <label style="font-size:10px; color:#6b7280;
+                                      font-weight:700; display:block;
+                                      margin-bottom:4px;">
+                            טקסט אחרי הקישור:
+                        </label>
+                        <textarea class="cd-notice-after-text"
+                                  data-item-id="${itemId}"
+                                  style="width:100%; min-height:60px;
+                                         background:#111827;
+                                         border:1px solid #374151; border-radius:6px;
+                                         color:#e0e0e0; padding:7px 10px;
+                                         font-size:12px; direction:rtl;
+                                         resize:vertical; font-family:inherit;
+                                         box-sizing:border-box;"
+                        >${this.escHtml(item.afterText || '')}</textarea>
+                    </div>`;
+
+            } else if (item.type === 'bold') {
+                typeLabel  = 'סעיף עם טקסט מודגש';
+                fieldsHtml = `
+                    <div>
+                        <label style="font-size:10px; color:#6b7280;
+                                      font-weight:700; display:block;
+                                      margin-bottom:4px;">
+                            טקסט מודגש:
+                        </label>
+                        <input type="text"
+                               class="cd-notice-bold-text"
+                               data-item-id="${itemId}"
+                               value="${this.escHtml(item.boldText || '')}"
+                               style="width:100%; background:#111827;
+                                      border:1px solid #374151; border-radius:6px;
+                                      color:#e0e0e0; padding:7px 10px;
+                                      font-size:12px; direction:rtl;
+                                      box-sizing:border-box;
+                                      font-weight:700;" />
+                    </div>
+                    <div style="margin-top:8px;">
+                        <label style="font-size:10px; color:#6b7280;
+                                      font-weight:700; display:block;
+                                      margin-bottom:4px;">
+                            המשך הטקסט:
+                        </label>
+                        <textarea class="cd-notice-after-text"
+                                  data-item-id="${itemId}"
+                                  style="width:100%; min-height:60px;
+                                         background:#111827;
+                                         border:1px solid #374151; border-radius:6px;
+                                         color:#e0e0e0; padding:7px 10px;
+                                         font-size:12px; direction:rtl;
+                                         resize:vertical; font-family:inherit;
+                                         box-sizing:border-box;"
+                        >${this.escHtml(item.afterText || '')}</textarea>
+                    </div>`;
+
+            } else {
+                // type === 'text'
+                typeLabel  = 'סעיף טקסט פשוט';
+                fieldsHtml = `
+                    <div>
+                        <label style="font-size:10px; color:#6b7280;
+                                      font-weight:700; display:block;
+                                      margin-bottom:4px;">
+                            טקסט:
+                        </label>
+                        <textarea class="cd-notice-after-text"
+                                  data-item-id="${itemId}"
+                                  style="width:100%; min-height:70px;
+                                         background:#111827;
+                                         border:1px solid #374151; border-radius:6px;
+                                         color:#e0e0e0; padding:7px 10px;
+                                         font-size:12px; direction:rtl;
+                                         resize:vertical; font-family:inherit;
+                                         box-sizing:border-box;"
+                        >${this.escHtml(item.afterText || '')}</textarea>
+                    </div>`;
+            }
+
+            return `
+            <div class="cd-notice-item" data-item-id="${itemId}" style="
+                background:#1f2937; border:1px solid #374151;
+                border-radius:8px; padding:12px; position:relative;
+            ">
+                <div style="display:flex; align-items:center;
+                             gap:8px; margin-bottom:10px;">
+                    <div style="
+                        width:22px; height:22px;
+                        background:rgba(251,191,36,0.2);
+                        border:1px solid rgba(251,191,36,0.4);
+                        border-radius:50%;
+                        display:flex; align-items:center; justify-content:center;
+                        font-size:11px; font-weight:800;
+                        color:#fbbf24; flex-shrink:0;
+                    ">${number}</div>
+                    <span style="font-size:12px; font-weight:700; color:#d1d5db;">
+                        ${typeLabel}
+                    </span>
+                    <button class="cd-notice-remove-btn"
+                            data-item-id="${itemId}"
+                            style="
+                                margin-right:auto;
+                                background:rgba(239,68,68,0.1);
+                                border:1px solid rgba(239,68,68,0.25);
+                                border-radius:5px; color:#f87171;
+                                padding:3px 8px; font-size:10px;
+                                cursor:pointer; font-weight:700;
+                            ">
+                        <i class="fas fa-trash-alt"></i> הסר
+                    </button>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                    ${fieldsHtml}
+                </div>
+            </div>`;
+        }).join('');
+    };
+
+    const initialItemsHtml = buildInitialItemsHtml(defaultItems);
+        const modalHtml = `
+    <div id="cdAttendanceEmlEditorModal" style="
+        position:fixed; inset:0;
+        background:rgba(0,0,0,0.75);
+        z-index:99999;
+        display:flex; align-items:center; justify-content:center;
+        direction:rtl;
+        backdrop-filter:blur(6px);
+        animation: cdFadeInOverlay 0.2s ease;
+    ">
+        <div style="
+            background:#1f2937;
+            border:1px solid #374151;
+            border-radius:16px;
+            width:92%; max-width:780px;
+            max-height:90vh;
+            overflow:hidden;
+            display:flex; flex-direction:column;
+            box-shadow:0 25px 60px rgba(0,0,0,0.6);
+            animation: cdPopupIn 0.25s cubic-bezier(0.34,1.56,0.64,1);
+            direction:rtl;
+        ">
+            <!-- כותרת -->
+            <div style="
+                background:linear-gradient(135deg,#1a1030,#320F5B,#4c1d95);
+                padding:18px 22px;
+                display:flex; justify-content:space-between; align-items:center;
+                flex-shrink:0;
+            ">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div style="
+                        width:42px; height:42px;
+                        background:rgba(167,139,250,0.18);
+                        border:1px solid rgba(167,139,250,0.35);
+                        border-radius:11px;
+                        display:flex; align-items:center; justify-content:center;
+                        font-size:1.3rem; flex-shrink:0;
+                    ">✏️</div>
+                    <div>
+                        <div style="font-size:1rem; font-weight:800; color:#fff;">
+                            ערוך מייל סיכום CAB לפני שליחה
+                        </div>
+                        <div style="font-size:0.75rem; color:rgba(255,255,255,0.6); margin-top:3px;">
+                            ניתן לערוך את תיבת "לתשומת ליבכם" לפני הורדת הקובץ
+                        </div>
+                    </div>
+                </div>
+                <button onclick="document.getElementById('cdAttendanceEmlEditorModal').remove()"
+                    style="
+                        background:rgba(255,255,255,0.1);
+                        border:1px solid rgba(255,255,255,0.2);
+                        color:rgba(255,255,255,0.8);
+                        width:32px; height:32px;
+                        border-radius:50%; cursor:pointer; font-size:0.9rem;
+                        display:flex; align-items:center; justify-content:center;
+                    ">✕</button>
+            </div>
+
+            <!-- גוף - גלילה -->
+            <div style="padding:22px; overflow-y:auto; display:flex; flex-direction:column; gap:16px; flex:1;">
+
+                <!-- עורך "לתשומת ליבכם" -->
+                <div>
+                    
+                    <!-- תיבת הסעיפים - דינמי לפי תבנית שמורה -->
+                    <div id="cdNoticeItemsList" style="...">
+                        ${initialItemsHtml}
+                    </div>
+
+                    <!-- תיבת הסעיפים -->
+                    <div id="cdAttEmlNoticeItemsList" style="
+                        display:flex; flex-direction:column; gap:8px;
+                        background:#111827; border:1px solid #374151;
+                        border-radius:10px; padding:12px;
+                    ">
+                        <!-- סעיף 1: עם קישור -->
+                        <div class="cd-notice-item" data-item-id="att_notice_1" style="
+                            background:#1f2937; border:1px solid #374151;
+                            border-radius:8px; padding:12px;
+                        ">
+                            <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+                                <div style="
+                                    width:22px; height:22px;
+                                    background:rgba(251,191,36,0.2);
+                                    border:1px solid rgba(251,191,36,0.4);
+                                    border-radius:50%;
+                                    display:flex; align-items:center; justify-content:center;
+                                    font-size:11px; font-weight:800; color:#fbbf24;
+                                ">1</div>
+                                <span style="font-size:12px; font-weight:700; color:#d1d5db;">
+                                    סעיף עם קישור
+                                </span>
+                                <button class="cd-notice-remove-btn"
+                                        data-item-id="att_notice_1"
+                                        style="
+                                            margin-right:auto;
+                                            background:rgba(239,68,68,0.1);
+                                            border:1px solid rgba(239,68,68,0.25);
+                                            border-radius:5px; color:#f87171;
+                                            padding:3px 8px; font-size:10px; cursor:pointer;
+                                        ">
+                                    <i class="fas fa-trash-alt"></i> הסר
+                                </button>
+                            </div>
+                            <div style="display:flex; flex-direction:column; gap:8px;">
+                                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                                    <div>
+                                        <label style="font-size:10px; color:#6b7280; font-weight:700;
+                                                    display:block; margin-bottom:4px;">
+                                            טקסט הקישור:
+                                        </label>
+                                        <input type="text"
+                                            class="cd-notice-link-text"
+                                            data-item-id="att_notice_1"
+                                            value="לוח שנה"
+                                            style="
+                                                width:100%; background:#111827;
+                                                border:1px solid #374151; border-radius:6px;
+                                                color:#e0e0e0; padding:7px 10px;
+                                                font-size:12px; direction:rtl; box-sizing:border-box;
+                                            " />
+                                    </div>
+                                    <div>
+                                        <label style="font-size:10px; color:#6b7280; font-weight:700;
+                                                    display:block; margin-bottom:4px;">
+                                            כתובת URL:
+                                        </label>
+                                        <input type="text"
+                                            class="cd-notice-link-url"
+                                            data-item-id="att_notice_1"
+                                            value="https://nocport-p1apw1/dashboards?dashboard=changes"
+                                            style="
+                                                width:100%; background:#111827;
+                                                border:1px solid #374151; border-radius:6px;
+                                                color:#60a5fa; padding:7px 10px;
+                                                font-size:11px; direction:ltr; box-sizing:border-box;
+                                                font-family:monospace;
+                                            " />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label style="font-size:10px; color:#6b7280; font-weight:700;
+                                                display:block; margin-bottom:4px;">
+                                        טקסט אחרי הקישור:
+                                    </label>
+                                    <textarea class="cd-notice-after-text"
+                                            data-item-id="att_notice_1"
+                                            style="
+                                                width:100%; min-height:60px; background:#111827;
+                                                border:1px solid #374151; border-radius:6px;
+                                                color:#e0e0e0; padding:7px 10px; font-size:12px;
+                                                direction:rtl; resize:vertical; font-family:inherit;
+                                                box-sizing:border-box;
+                                            "
+                                    >לפני קביעת שינוי, נא לבדוק בלוח השנה שלא קיים שינוי נוסף באותו תאריך שעלול להתנגש או להפריע.</textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- סעיף 2: טקסט מודגש -->
+                        <div class="cd-notice-item" data-item-id="att_notice_2" style="
+                            background:#1f2937; border:1px solid #374151;
+                            border-radius:8px; padding:12px;
+                        ">
+                            <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+                                <div style="
+                                    width:22px; height:22px;
+                                    background:rgba(251,191,36,0.2);
+                                    border:1px solid rgba(251,191,36,0.4);
+                                    border-radius:50%;
+                                    display:flex; align-items:center; justify-content:center;
+                                    font-size:11px; font-weight:800; color:#fbbf24;
+                                ">2</div>
+                                <span style="font-size:12px; font-weight:700; color:#d1d5db;">
+                                    סעיף עם טקסט מודגש
+                                </span>
+                                <button class="cd-notice-remove-btn"
+                                        data-item-id="att_notice_2"
+                                        style="
+                                            margin-right:auto;
+                                            background:rgba(239,68,68,0.1);
+                                            border:1px solid rgba(239,68,68,0.25);
+                                            border-radius:5px; color:#f87171;
+                                            padding:3px 8px; font-size:10px; cursor:pointer;
+                                        ">
+                                    <i class="fas fa-trash-alt"></i> הסר
+                                </button>
+                            </div>
+                            <div style="display:flex; flex-direction:column; gap:8px;">
+                                <div>
+                                    <label style="font-size:10px; color:#6b7280; font-weight:700;
+                                                display:block; margin-bottom:4px;">
+                                        טקסט מודגש:
+                                    </label>
+                                    <input type="text"
+                                        class="cd-notice-bold-text"
+                                        data-item-id="att_notice_2"
+                                        value="עדכון NOC על התחלה, סיום או שינוי של כל פעילות"
+                                        style="
+                                            width:100%; background:#111827;
+                                            border:1px solid #374151; border-radius:6px;
+                                            color:#e0e0e0; padding:7px 10px; font-size:12px;
+                                            direction:rtl; box-sizing:border-box; font-weight:700;
+                                        " />
+                                </div>
+                                <div>
+                                    <label style="font-size:10px; color:#6b7280; font-weight:700;
+                                                display:block; margin-bottom:4px;">
+                                        המשך הטקסט:
+                                    </label>
+                                    <textarea class="cd-notice-after-text"
+                                            data-item-id="att_notice_2"
+                                            style="
+                                                width:100%; min-height:60px; background:#111827;
+                                                border:1px solid #374151; border-radius:6px;
+                                                color:#e0e0e0; padding:7px 10px; font-size:12px;
+                                                direction:rtl; resize:vertical; font-family:inherit;
+                                                box-sizing:border-box;
+                                            "
+                                    >נא לעדכן את חדר מחשב לפני ואחרי כל פעילות שמתבצעת.</textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- תצוגה מקדימה -->
+                    <div style="margin-top:10px;">
+                        <div style="
+                            font-size:10px; color:#6b7280; font-weight:700;
+                            text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;
+                        ">
+                            <i class="fas fa-eye" style="margin-left:4px;"></i>
+                            תצוגה מקדימה:
+                        </div>
+                        <div id="cdAttEmlNoticePreview" style="
+                            background:#fff8e1; border:2px solid #f5a623;
+                            border-radius:6px; padding:12px 16px; direction:rtl;
+                            font-family:Arial,sans-serif; font-size:12px;
+                        "></div>
+                    </div>
+                </div>
+
+                <!-- כפתורי פעולה -->
+                <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:4px;">
+                    <button onclick="document.getElementById('cdAttendanceEmlEditorModal').remove()"
+                        style="
+                            padding:9px 18px; background:#374151; border:1px solid #4b5563;
+                            border-radius:8px; color:#9ca3af; cursor:pointer;
+                            font-size:13px; font-weight:600;
+                        ">ביטול</button>
+                    <button id="cdAttEmlDownloadBtn"
+                        style="
+                            padding:9px 22px;
+                            background:linear-gradient(135deg,#320F5B,#7c3aed);
+                            border:1px solid #7c3aed; border-radius:8px; color:#fff;
+                            cursor:pointer; font-size:13px; font-weight:700;
+                            display:flex; align-items:center; gap:7px;
+                            box-shadow:0 2px 10px rgba(124,58,237,0.3);
+                        ">
+                        <i class="fas fa-download"></i>
+                        הורד מייל
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>`;
+
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+        // *** אתחול תצוגה מקדימה ***
+        this._updateAttEmlNoticePreview();
+
+        // *** אירועי עדכון תצוגה מקדימה ***
+        document.getElementById('cdAttEmlNoticeItemsList')
+            ?.addEventListener('input', () => {
+                this._updateAttEmlNoticePreview();
+            });
+
+        // *** כפתור הוספת סעיף ***
+        document.getElementById('cdAttEmlAddNoticeItem')
+            ?.addEventListener('click', () => {
+                this._addAttEmlNoticeItem();
+            });
+
+        // *** כפתורי הסרת סעיף ***
+        document.getElementById('cdAttEmlNoticeItemsList')
+            ?.addEventListener('click', (e) => {
+                const removeBtn = e.target.closest('.cd-notice-remove-btn');
+                if (removeBtn) {
+                    const itemId = removeBtn.getAttribute('data-item-id');
+                    document.querySelector(
+                        `#cdAttEmlNoticeItemsList .cd-notice-item[data-item-id="${itemId}"]`
+                    )?.remove();
+                    this._updateAttEmlNoticePreview();
+                    this._renumberAttEmlNoticeItems();
+                }
+            });
+
+        // *** כפתור הורד ***
+        document.getElementById('cdAttEmlDownloadBtn')
+            ?.addEventListener('click', () => {
+                const noticeItems = this._collectAttEmlNoticeItems();
+                document.getElementById('cdAttendanceEmlEditorModal')?.remove();
+                this._exportAttendanceToEmlWithNotice(data, noticeItems);
+            });
+
+        // סגירה ב-Escape
+        const onEsc = (e) => {
+            if (e.key === 'Escape') {
+                document.getElementById('cdAttendanceEmlEditorModal')?.remove();
+                document.removeEventListener('keydown', onEsc);
+            }
+        };
+        document.addEventListener('keydown', onEsc);
+    }
+
+    // *** עדכון תצוגה מקדימה ב-EML editor ***
+    _updateAttEmlNoticePreview() {
+        const previewEl = document.getElementById('cdAttEmlNoticePreview');
+        if (!previewEl) return;
+
+        const items = this._collectAttEmlNoticeItems();
+
+        if (items.length === 0) {
+            previewEl.innerHTML = `
+                <span style="color:#aaa; font-style:italic; font-size:11px;">
+                    אין סעיפים
+                </span>`;
+            return;
+        }
+
+        const listItems = items.map(item => {
+            if (item.type === 'link') {
+                return `
+                    <li style="margin-bottom:6px;">
+                        <a href="${this.escHtml(item.linkUrl)}"
+                        style="color:#0078d4; font-weight:bold; font-size:11px;">
+                            ${this.escHtml(item.linkText)}
+                        </a>
+                        ${item.afterText
+                            ? `<span style="font-size:11px; color:#333;">
+                                &nbsp;-&nbsp;${this.escHtml(item.afterText)}
+                            </span>`
+                            : ''}
+                    </li>`;
+            }
+            if (item.type === 'bold') {
+                return `
+                    <li style="margin-bottom:6px; font-size:11px; color:#333;">
+                        <strong>${this.escHtml(item.boldText)}</strong>
+                        ${item.afterText
+                            ? `<span> - ${this.escHtml(item.afterText)}</span>`
+                            : ''}
+                    </li>`;
+            }
+            return `<li style="margin-bottom:6px; font-size:11px; color:#333;">
+                ${this.escHtml(item.afterText || '')}
+            </li>`;
+        }).join('');
+
+        previewEl.innerHTML = `
+            <div style="font-family:Arial,sans-serif; font-size:11pt;
+                        font-weight:bold; color:#000; margin-bottom:6px;">
+                לתשומת ליבכם:
+            </div>
+            <ul style="margin:0; padding:0; padding-right:18px;
+                    list-style-type:disc; font-family:Arial,sans-serif;">
+                ${listItems}
+            </ul>`;
+    }
+
+    // *** איסוף סעיפים מה-EML editor ***
+    _collectAttEmlNoticeItems() {
+        const items = [];
+
+        document.querySelectorAll('#cdAttEmlNoticeItemsList .cd-notice-item')
+            .forEach(itemEl => {
+                const itemId = itemEl.getAttribute('data-item-id');
+
+                const linkText = itemEl.querySelector(
+                    `.cd-notice-link-text[data-item-id="${itemId}"]`
+                )?.value?.trim();
+
+                const linkUrl = itemEl.querySelector(
+                    `.cd-notice-link-url[data-item-id="${itemId}"]`
+                )?.value?.trim();
+
+                const boldText = itemEl.querySelector(
+                    `.cd-notice-bold-text[data-item-id="${itemId}"]`
+                )?.value?.trim();
+
+                const afterText = itemEl.querySelector(
+                    `.cd-notice-after-text[data-item-id="${itemId}"]`
+                )?.value?.trim() || '';
+
+                if (linkText || linkUrl) {
+                    items.push({
+                        type: 'link',
+                        linkText: linkText || '',
+                        linkUrl: linkUrl || '#',
+                        afterText
+                    });
+                } else if (boldText) {
+                    items.push({
+                        type: 'bold',
+                        boldText,
+                        afterText
+                    });
+                } else if (afterText) {
+                    items.push({ type: 'text', afterText });
+                }
+            });
+
+        return items;
+    }
+
+    // *** הוספת סעיף ב-EML editor ***
+    _addAttEmlNoticeItem() {
+        const list = document.getElementById('cdAttEmlNoticeItemsList');
+        if (!list) return;
+
+        const newId = 'att_notice_' + Date.now();
+        const currentCount = list.querySelectorAll('.cd-notice-item').length + 1;
+
+        // *** פופאפ בחירת סוג (שימוש בפונקציה הקיימת) ***
+        const choiceHtml = `
+            <div id="cdAttNoticeTypeChoice" style="
+                position:fixed; inset:0;
+                background:rgba(0,0,0,0.6);
+                z-index:999999;
+                display:flex; align-items:center; justify-content:center;
+                direction:rtl;
+            ">
+                <div style="
+                    background:#1f2937; border:1px solid #374151;
+                    border-radius:14px; padding:24px; width:320px;
+                    display:flex; flex-direction:column; gap:12px;
+                    box-shadow:0 20px 50px rgba(0,0,0,0.5); direction:rtl;
+                ">
+                    <div style="font-size:14px; font-weight:800; color:#fff; margin-bottom:4px;">
+                        בחר סוג סעיף:
+                    </div>
+                    <button id="cdAttChoiceLink" style="
+                        padding:12px 16px; background:#111827;
+                        border:2px solid #374151; border-radius:10px;
+                        color:#60a5fa; cursor:pointer; font-size:13px;
+                        font-weight:700; display:flex; align-items:center;
+                        gap:10px; direction:rtl; text-align:right; width:100%;
+                    ">
+                        <i class="fas fa-link" style="font-size:16px; flex-shrink:0;"></i>
+                        <div>
+                            <div>סעיף עם קישור</div>
+                            <div style="font-size:10px; color:#6b7280; font-weight:500; margin-top:2px;">
+                                טקסט קישור + URL + תיאור
+                            </div>
+                        </div>
+                    </button>
+                    <button id="cdAttChoiceBold" style="
+                        padding:12px 16px; background:#111827;
+                        border:2px solid #374151; border-radius:10px;
+                        color:#fbbf24; cursor:pointer; font-size:13px;
+                        font-weight:700; display:flex; align-items:center;
+                        gap:10px; direction:rtl; text-align:right; width:100%;
+                    ">
+                        <i class="fas fa-bold" style="font-size:16px; flex-shrink:0;"></i>
+                        <div>
+                            <div>סעיף עם טקסט מודגש</div>
+                            <div style="font-size:10px; color:#6b7280; font-weight:500; margin-top:2px;">
+                                כותרת מודגשת + תיאור
+                            </div>
+                        </div>
+                    </button>
+                    <button id="cdAttChoiceText" style="
+                        padding:12px 16px; background:#111827;
+                        border:2px solid #374151; border-radius:10px;
+                        color:#d1d5db; cursor:pointer; font-size:13px;
+                        font-weight:700; display:flex; align-items:center;
+                        gap:10px; direction:rtl; text-align:right; width:100%;
+                    ">
+                        <i class="fas fa-align-right" style="font-size:16px; flex-shrink:0;"></i>
+                        <div>
+                            <div>סעיף טקסט פשוט</div>
+                            <div style="font-size:10px; color:#6b7280; font-weight:500; margin-top:2px;">
+                                טקסט רגיל בלבד
+                            </div>
+                        </div>
+                    </button>
+                    <button onclick="document.getElementById('cdAttNoticeTypeChoice').remove()"
+                        style="
+                            padding:8px; background:#374151;
+                            border:1px solid #4b5563; border-radius:8px;
+                            color:#9ca3af; cursor:pointer; font-size:12px;
+                            font-weight:600; margin-top:4px;
+                        ">
+                        ביטול
+                    </button>
+                </div>
+            </div>`;
+
+        document.body.insertAdjacentHTML('beforeend', choiceHtml);
+
+        const handleChoice = (type) => {
+            document.getElementById('cdAttNoticeTypeChoice')?.remove();
+            // *** שימוש בפונקציה הקיימת להוספת סעיף ***
+            this._insertNoticeItem(list, newId, currentCount, type);
+            // *** עדכן data-item-id לפי prefix של att ***
+            this._updateAttEmlNoticePreview();
+            this._renumberAttEmlNoticeItems();
+        };
+
+        document.getElementById('cdAttChoiceLink')
+            ?.addEventListener('click', () => handleChoice('link'));
+        document.getElementById('cdAttChoiceBold')
+            ?.addEventListener('click', () => handleChoice('bold'));
+        document.getElementById('cdAttChoiceText')
+            ?.addEventListener('click', () => handleChoice('text'));
+
+        const onEsc = (e) => {
+            if (e.key === 'Escape') {
+                document.getElementById('cdAttNoticeTypeChoice')?.remove();
+                document.removeEventListener('keydown', onEsc);
+            }
+        };
+        document.addEventListener('keydown', onEsc);
+    }
+
+    // *** מספור מחדש בeml editor ***
+    _renumberAttEmlNoticeItems() {
+        document.querySelectorAll('#cdAttEmlNoticeItemsList .cd-notice-item')
+            .forEach((item, index) => {
+                const numEl = item.querySelector('div[style*="border-radius:50%"]');
+                if (numEl) numEl.textContent = index + 1;
+            });
+    }
+
+    // *** יצוא ה-EML עם הסעיפים שנערכו ***
+    _exportAttendanceToEmlWithNotice(data, noticeItems) {
         const { participants, domainResult, fileName } = data;
         const { ordered, unknown } = domainResult;
 
@@ -9041,8 +12137,10 @@ ${domainTableHtml}
             'noc@menoramivt.co.il'
         ];
 
+        // ---- בנה HTML תיבת הודעה מהסעיפים שנערכו ----
+        const noticeHtml = this._buildNoticeHtmlForEmail(noticeItems);
+
         // ---- טבלת שינויים ----
-        const weekDecisions = this.getCurrentWeekDecisions();
         const sortedChanges = [...this.cabChanges]
             .filter(c => {
                 const decision = this.getCabDecision(c.number);
@@ -9057,249 +12155,222 @@ ${domainTableHtml}
                 return da - db;
             });
 
-        // בניית שורות טבלת שינויים
+        // ---- שורות טבלת שינויים ----
         let changesRowsHtml = '';
         sortedChanges.forEach((c, i) => {
-            const d = this.getCabDecision(c.number);
             const history = this.getAllCabDecisions(c.number);
-
             const lastDecision = history[0];
-
             const statusLabel = lastDecision
                 ? this._getDecisionLabelPlain(lastDecision.status)
                 : 'לא טופל';
-
             const notes = history.length
-                ? history.map(h =>
-                    (h.notes ? `${h.notes}` : '')
-                ).join('\n')
+                ? history.map(h => h.notes ? h.notes : '').join('\n')
                 : '';
             const rowBg = i % 2 === 0 ? '#ffffff' : '#f5f8ff';
 
             let statusColor = '#555555';
             if (lastDecision?.status === 'approved') statusColor = '#23a823';
             else if (lastDecision?.status === 'approved_tentative') statusColor = '#e65100';
-            else if (lastDecision?.status === 'rejected' || lastDecision?.status === 'rescheduled')
-                statusColor = '#ba0606';
+            else if (lastDecision?.status === 'rejected' ||
+                    lastDecision?.status === 'rescheduled') statusColor = '#ba0606';
 
-            // bullet points מהערות
             let notesHtml = '';
             if (notes && notes.trim()) {
-                const bullets = notes
-                    .split(/[\n;]/)
-                    .map(b => b.trim())
-                    .filter(b => b.length > 0);
+                const bullets = notes.split(/[\n;]/).map(b => b.trim()).filter(b => b.length > 0);
                 if (bullets.length > 0) {
-                    notesHtml = '<br>' + bullets
-                        .map(b => `• ${this.escHtml(b)}`)
-                        .join('<br>');
+                    notesHtml = '<br>' + bullets.map(b => `• ${this.escHtml(b)}`).join('<br>');
                 }
             }
 
             changesRowsHtml += `
-        <tr style="background:${rowBg};">
-            <td style="padding:6px 8px; font-family:Arial,sans-serif;
-                       font-size:10pt; border:1px solid #aaa;
-                       font-weight:bold; color:#1f3864;
-                       text-align:center; vertical-align:middle;">
-                ${this.escHtml(c.number || '')}
-            </td>
-            <td style="padding:6px 8px; font-family:Arial,sans-serif;
-                       font-size:10pt; border:1px solid #aaa;
-                       vertical-align:middle; word-break:break-word;">
-                ${this.escHtml(c.name || '')}
-            </td>
-            <td style="padding:6px 8px; font-family:Arial,sans-serif;
-                       font-size:10pt; border:1px solid #aaa;
-                       text-align:center; vertical-align:middle;
-                       white-space:nowrap;">
-                ${this.escHtml(
-                this.formatDateDisplay(this._getEffectiveStartTime(c))
-            )}
-            </td>
-            <td style="padding:6px 8px; font-family:Arial,sans-serif;
-                       font-size:10pt; border:1px solid #aaa;
-                       vertical-align:middle;">
-                <strong style="color:#4274d6;">
-                    ${this.escHtml(
-                c.presenters ? this.cleanPresenters(c.presenters) : ''
-            )}
-                </strong>
-            </td>
-            <td style="padding:6px 8px; font-family:Arial,sans-serif;
-                       font-size:10pt; border:1px solid #aaa;
-                       vertical-align:top;">
-                <strong style="color:${statusColor};">
-                    ${this.escHtml(statusLabel)}
-                </strong>
-                ${notesHtml}
-            </td>
-        </tr>`;
+            <tr style="background:${rowBg};">
+                <td style="padding:6px 8px; font-family:Arial,sans-serif;
+                        font-size:10pt; border:1px solid #aaa;
+                        font-weight:bold; color:#1f3864;
+                        text-align:center; vertical-align:middle;">
+                    ${this.escHtml(c.number || '')}
+                </td>
+                <td style="padding:6px 8px; font-family:Arial,sans-serif;
+                        font-size:10pt; border:1px solid #aaa;
+                        vertical-align:middle; word-break:break-word;">
+                    ${this.escHtml(c.name || '')}
+                </td>
+                <td style="padding:6px 8px; font-family:Arial,sans-serif;
+                        font-size:10pt; border:1px solid #aaa;
+                        text-align:center; vertical-align:middle; white-space:nowrap;">
+                    ${this.escHtml(this.formatDateDisplay(this._getEffectiveStartTime(c)))}
+                </td>
+                <td style="padding:6px 8px; font-family:Arial,sans-serif;
+                        font-size:10pt; border:1px solid #aaa; vertical-align:middle;">
+                    <strong style="color:#4274d6;">
+                        ${this.escHtml(c.presenters ? this.cleanPresenters(c.presenters) : '')}
+                    </strong>
+                </td>
+                <td style="padding:6px 8px; font-family:Arial,sans-serif;
+                        font-size:10pt; border:1px solid #aaa; vertical-align:top;">
+                    <strong style="color:${statusColor};">
+                        ${this.escHtml(statusLabel)}
+                    </strong>
+                    ${notesHtml}
+                </td>
+            </tr>`;
         });
 
-        // ---- טבלת תחומים - תמיד כל התחומים ----
+        // ---- שורות טבלת תחומים ----
         let domainRowsHtml = '';
         ordered.forEach((row, i) => {
             const rowBg = i % 2 === 0 ? '#ffffff' : '#f5f8ff';
-
-            // *** תיקון: הצג "לא נכח נציג" אם אין נציגים ***
-            const membersText = row.hasMembers
-                ? row.members.join(', ')
-                : 'לא נכח נציג';
-
-            const membersStyle = row.hasMembers
-                ? ''
-                : 'font-style:italic; color:#888888;';
+            const membersText = row.hasMembers ? row.members.join(', ') : 'לא נכח נציג';
+            const membersStyle = row.hasMembers ? '' : 'font-style:italic; color:#888888;';
 
             domainRowsHtml += `
-        <tr style="background:${rowBg};">
-            <td style="padding:6px 8px; font-family:Arial,sans-serif;
-                    font-size:10pt; border:1px solid #aaa;
-                    font-weight:bold; vertical-align:top;">
-                ${this.escHtml(row.domain)}
-            </td>
-            <td style="padding:6px 8px; font-family:Arial,sans-serif;
-                    font-size:10pt; border:1px solid #aaa;
-                    vertical-align:top; word-break:break-word; ${membersStyle}">
-                ${this.escHtml(membersText)}
-            </td>
-        </tr>`;
+            <tr style="background:${rowBg};">
+                <td style="padding:6px 8px; font-family:Arial,sans-serif;
+                        font-size:10pt; border:1px solid #aaa;
+                        font-weight:bold; vertical-align:top;">
+                    ${this.escHtml(row.domain)}
+                </td>
+                <td style="padding:6px 8px; font-family:Arial,sans-serif;
+                        font-size:10pt; border:1px solid #aaa;
+                        vertical-align:top; word-break:break-word; ${membersStyle}">
+                    ${this.escHtml(membersText)}
+                </td>
+            </tr>`;
         });
 
         if (unknown.length > 0) {
             domainRowsHtml += `
-        <tr style="background:#fff3e0;">
-            <td style="padding:6px 8px; font-family:Arial,sans-serif;
-                    font-size:10pt; border:1px solid #aaa;
-                    font-weight:bold; color:#c65000; vertical-align:top;">
-                לא זוהה תחום
-            </td>
-            <td style="padding:6px 8px; font-family:Arial,sans-serif;
-                    font-size:10pt; border:1px solid #aaa;
-                    color:#c65000; vertical-align:top;
-                    word-break:break-word;">
-                ${this.escHtml(unknown.join(', '))}
-            </td>
-        </tr>`;
+            <tr style="background:#fff3e0;">
+                <td style="padding:6px 8px; font-family:Arial,sans-serif;
+                        font-size:10pt; border:1px solid #aaa;
+                        font-weight:bold; color:#c65000; vertical-align:top;">
+                    לא זוהה תחום
+                </td>
+                <td style="padding:6px 8px; font-family:Arial,sans-serif;
+                        font-size:10pt; border:1px solid #aaa;
+                        color:#c65000; vertical-align:top; word-break:break-word;">
+                    ${this.escHtml(unknown.join(', '))}
+                </td>
+            </tr>`;
         }
 
         // ---- גוף המייל ----
         const bodyHtml = `<!DOCTYPE html>
-<html dir="rtl" lang="he">
-<head>
-<meta charset="UTF-8">
-</head>
-<body dir="rtl" style="
-    font-family: Arial, sans-serif;
-    font-size: 11pt;
-    direction: rtl;
-    margin: 20px;
-    padding: 0;
-    color: #000000;
-    background: #ffffff;
-">
+    <html dir="rtl" lang="he">
+    <head>
+    <meta charset="UTF-8">
+    </head>
+    <body dir="rtl" style="
+        font-family: Arial, sans-serif;
+        font-size: 11pt;
+        direction: rtl;
+        margin: 20px;
+        padding: 0;
+        color: #000000;
+        background: #ffffff;
+    ">
 
-<p style="font-family:Arial,sans-serif; font-size:11pt; margin:0 0 16px 0;">
-    שלום,
-</p>
+    <p style="font-family:Arial,sans-serif; font-size:11pt; margin:0 0 16px 0;">
+        שלום,
+    </p>
 
-<p style="font-family:Arial,sans-serif;
-          font-size:11pt;
-          font-weight:bold;
-          margin:0 0 12px 0;">
-    סיכום ישיבת <span dir="ltr">CAB</span> ${this.escHtml(meetingDate)}:
-</p>
+    ${noticeHtml}
 
-<!-- טבלת שינויים -->
-<table border="1" cellpadding="0" cellspacing="0"
-       style="border-collapse:collapse; width:100%; max-width:860px;
-              font-family:Arial,sans-serif; font-size:10pt;
-              direction:rtl; margin-bottom:24px; table-layout:fixed;">
-    <colgroup>
-        <col style="width:10%;" />
-        <col style="width:35%;" />
-        <col style="width:12%;" />
-        <col style="width:15%;" />
-        <col style="width:28%;" />
-    </colgroup>
-    <thead>
-        <tr style="background:#dce6f1;">
-            <th style="padding:7px 8px; font-family:Arial,sans-serif;
-                       font-size:10pt; font-weight:bold; border:1px solid #aaa;
-                       text-align:center; vertical-align:middle;">
-                מספר שינוי
-            </th>
-            <th style="padding:7px 8px; font-family:Arial,sans-serif;
-                       font-size:10pt; font-weight:bold; border:1px solid #aaa;
-                       text-align:center; vertical-align:middle;">
-                נושא/פעולה לביצוע
-            </th>
-            <th style="padding:7px 8px; font-family:Arial,sans-serif;
-                       font-size:10pt; font-weight:bold; border:1px solid #aaa;
-                       text-align:center; vertical-align:middle;">
-                תאריך לביצוע
-            </th>
-            <th style="padding:7px 8px; font-family:Arial,sans-serif;
-                       font-size:10pt; font-weight:bold; border:1px solid #aaa;
-                       text-align:center; vertical-align:middle;">
-                אחראי
-            </th>
-            <th style="padding:7px 8px; font-family:Arial,sans-serif;
-                       font-size:10pt; font-weight:bold; border:1px solid #aaa;
-                       text-align:center; vertical-align:middle;">
-                סטטוס CAB
-            </th>
-        </tr>
-    </thead>
-    <tbody>
-        ${changesRowsHtml}
-    </tbody>
-</table>
-<br></br>
-<p style="font-family:Arial,sans-serif; font-size:11pt;
-          font-weight:bold; margin:0 0 10px 0;">
-    נציגות תחומים:
-</p>
+    <br>
+    <p style="font-family:Arial,sans-serif; font-size:11pt;
+            font-weight:bold; margin:0 0 12px 0;">
+        סיכום ישיבת <span dir="ltr">CAB</span> ${this.escHtml(meetingDate)}:
+    </p>
 
-<!-- טבלת תחומים -->
-<table border="1" cellpadding="0" cellspacing="0"
-       style="border-collapse:collapse; width:100%; max-width:860px;
-              font-family:Arial,sans-serif; font-size:10pt;
-              direction:rtl; margin-bottom:28px; table-layout:fixed;">
-    <colgroup>
-        <col style="width:35%;" />
-        <col style="width:65%;" />
-    </colgroup>
-    <thead>
-        <tr style="background:#dce6f1;">
-            <th style="padding:7px 8px; font-family:Arial,sans-serif;
-                       font-size:10pt; font-weight:bold; border:1px solid #aaa;
-                       text-align:center; vertical-align:middle;">
-                שם תחום
-            </th>
-            <th style="padding:7px 8px; font-family:Arial,sans-serif;
-                       font-size:10pt; font-weight:bold; border:1px solid #aaa;
-                       text-align:center; vertical-align:middle;">
-                נציגים
-            </th>
-        </tr>
-    </thead>
-    <tbody>
-        ${domainRowsHtml}
-    </tbody>
-</table>
+    <!-- טבלת שינויים -->
+    <table border="1" cellpadding="0" cellspacing="0"
+        style="border-collapse:collapse; width:100%; max-width:860px;
+                font-family:Arial,sans-serif; font-size:10pt;
+                direction:rtl; margin-bottom:24px; table-layout:fixed;">
+        <colgroup>
+            <col style="width:10%;" />
+            <col style="width:35%;" />
+            <col style="width:12%;" />
+            <col style="width:15%;" />
+            <col style="width:28%;" />
+        </colgroup>
+        <thead>
+            <tr style="background:#dce6f1;">
+                <th style="padding:7px 8px; font-family:Arial,sans-serif;
+                        font-size:10pt; font-weight:bold; border:1px solid #aaa;
+                        text-align:center; vertical-align:middle;">
+                    מספר שינוי
+                </th>
+                <th style="padding:7px 8px; font-family:Arial,sans-serif;
+                        font-size:10pt; font-weight:bold; border:1px solid #aaa;
+                        text-align:center; vertical-align:middle;">
+                    נושא/פעולה לביצוע
+                </th>
+                <th style="padding:7px 8px; font-family:Arial,sans-serif;
+                        font-size:10pt; font-weight:bold; border:1px solid #aaa;
+                        text-align:center; vertical-align:middle;">
+                    תאריך לביצוע
+                </th>
+                <th style="padding:7px 8px; font-family:Arial,sans-serif;
+                        font-size:10pt; font-weight:bold; border:1px solid #aaa;
+                        text-align:center; vertical-align:middle;">
+                    אחראי
+                </th>
+                <th style="padding:7px 8px; font-family:Arial,sans-serif;
+                        font-size:10pt; font-weight:bold; border:1px solid #aaa;
+                        text-align:center; vertical-align:middle;">
+                    סטטוס CAB
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            ${changesRowsHtml}
+        </tbody>
+    </table>
 
-<br></br>
-<br></br>
-<!-- חתימה -->
-<p style="font-family:Arial,sans-serif; font-size:11pt;
-          margin:0 0 4px 0;">
-    שבוע טוב
-</p>
+    <br>
+    <p style="font-family:Arial,sans-serif; font-size:11pt;
+            font-weight:bold; margin:0 0 10px 0;">
+        נציגות תחומים:
+    </p>
 
-</body>
-</html>`;
+    <!-- טבלת תחומים -->
+    <table border="1" cellpadding="0" cellspacing="0"
+        style="border-collapse:collapse; width:100%; max-width:860px;
+                font-family:Arial,sans-serif; font-size:10pt;
+                direction:rtl; margin-bottom:28px; table-layout:fixed;">
+        <colgroup>
+            <col style="width:35%;" />
+            <col style="width:65%;" />
+        </colgroup>
+        <thead>
+            <tr style="background:#dce6f1;">
+                <th style="padding:7px 8px; font-family:Arial,sans-serif;
+                        font-size:10pt; font-weight:bold; border:1px solid #aaa;
+                        text-align:center; vertical-align:middle;">
+                    שם תחום
+                </th>
+                <th style="padding:7px 8px; font-family:Arial,sans-serif;
+                        font-size:10pt; font-weight:bold; border:1px solid #aaa;
+                        text-align:center; vertical-align:middle;">
+                    נציגים
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+            ${domainRowsHtml}
+        </tbody>
+    </table>
 
+    <br>
+    <p style="font-family:Arial,sans-serif; font-size:11pt; margin:0 0 4px 0;">
+        שבוע טוב
+    </p>
+
+    </body>
+    </html>`;
+
+        // ---- בנה EML ----
         const subject = `סיכום ישיבת CAB לתאריך ${meetingDate}`;
 
         const toLine = toAddresses.join(';\r\n\t');
@@ -9322,7 +12393,7 @@ ${domainTableHtml}
             `Content-Transfer-Encoding: base64`,
             ``,
             btoa(unescape(encodeURIComponent(
-                `שלום,\n\nסיכום ישיבת CAB ${meetingDate}\n\nשבוע טוב,\nטל יוחאי`
+                `שלום,\n\nסיכום ישיבת CAB ${meetingDate}\n\nשבוע טוב`
             ))),
             ``,
             `--cab_boundary_001`,
@@ -9334,6 +12405,7 @@ ${domainTableHtml}
             `--cab_boundary_001--`,
         ].join('\r\n');
 
+        // ---- הורד ----
         const blob = new Blob([emlContent], { type: 'message/rfc822' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -10169,6 +13241,574 @@ ${domainTableHtml}
     }
 
     // -------------------------------------------------------
+    // ניהול יום ה-CAB (שמירה ב-localStorage)
+    // -------------------------------------------------------
+    _getCabDayKey() {
+        return 'cab_day_of_week'; // 0=ראשון ... 6=שבת
+    }
+
+    getCabDay() {
+        try {
+            const saved = localStorage.getItem(this._getCabDayKey());
+            if (saved !== null) {
+                const n = parseInt(saved, 10);
+                if (!isNaN(n) && n >= 0 && n <= 6) return n;
+            }
+        } catch { }
+        return 0; // ברירת מחדל: ראשון
+    }
+
+    setCabDay(dayOfWeek) {
+        try {
+            localStorage.setItem(this._getCabDayKey(), String(dayOfWeek));
+        } catch { }
+    }
+
+    // הצגת מודל בחירת יום CAB
+    showCabDayPicker() {
+        document.getElementById('cdCabDayPickerModal')?.remove();
+
+        const currentDay = this.getCabDay();
+        const currentDate = this.getCabDate();
+
+        const today = new Date();
+        let daysUntilCab = (currentDay - today.getDay() + 7) % 7;
+        const defaultDate = new Date(today);
+        defaultDate.setDate(today.getDate() + daysUntilCab);
+
+        const toInputDate = (d) =>
+            `${d.getFullYear()}-` +
+            `${String(d.getMonth() + 1).padStart(2, '0')}-` +
+            `${String(d.getDate()).padStart(2, '0')}`;
+        const savedDateInput = currentDate
+            ? currentDate
+            : toInputDate(defaultDate);
+
+        const formatDateHebrew = (d) =>
+            d.toLocaleDateString('he-IL', {
+                weekday: 'long', day: 'numeric',
+                month: 'long', year: 'numeric'
+            });
+
+        const initialDisplay = savedDateInput
+            ? formatDateHebrew(new Date(savedDateInput + 'T12:00:00'))
+            : formatDateHebrew(defaultDate);
+
+        // *** בנה כפתורי קיצור ***
+        const dayNames = ["א'", "ב'", "ג'", "ד'", "ה'"];
+        const cabDays = [0, 1, 2, 3, 4];
+        const shortcutsHtml = cabDays.map(dayOfWeek => {
+            let daysUntil = (dayOfWeek - today.getDay() + 7) % 7;
+            const d = new Date(today);
+            d.setDate(today.getDate() + daysUntil);
+            const dd = String(d.getDate()).padStart(2, '0');
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            return `
+            <button class="cab2-date-shortcut-btn"
+                data-iso="${toInputDate(d)}"
+                style="
+                    padding:6px 12px;
+                    background:#111827;
+                    border:1px solid #374151;
+                    border-radius:7px;
+                    color:#9ca3af;
+                    font-size:11px;
+                    font-weight:600;
+                    cursor:pointer;
+                    white-space:nowrap;
+                    transition:all 0.2s;
+                ">
+                יום ${dayNames[dayOfWeek]} ${dd}/${mm}
+            </button>`;
+        }).join('');
+
+        const html = `
+<div id="cdCabDayPickerModal" style="
+    position:fixed; inset:0;
+    background:rgba(0,0,0,0.72);
+    z-index:99999;
+    display:flex; align-items:center; justify-content:center;
+    direction:rtl;
+    backdrop-filter:blur(5px);
+    animation: cdFadeIn 0.2s ease;
+">
+    <div style="
+        background:#1f2937;
+        border:1px solid #374151;
+        border-radius:16px;
+        width:92%; max-width:420px;
+        box-shadow:0 25px 60px rgba(0,0,0,0.6);
+        overflow:hidden;
+        animation: cdPopupIn 0.25s cubic-bezier(0.34,1.56,0.64,1);
+    ">
+        <!-- כותרת -->
+        <div style="
+            background:linear-gradient(135deg,#1a1030,#320F5B,#4c1d95);
+            padding:18px 22px;
+            display:flex; justify-content:space-between; align-items:center;
+        ">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div style="
+                    width:38px;height:38px;
+                    background:rgba(167,139,250,0.18);
+                    border:1px solid rgba(167,139,250,0.35);
+                    border-radius:10px;
+                    display:flex;align-items:center;justify-content:center;
+                    font-size:1.2rem;
+                ">📅</div>
+                <div>
+                    <div style="font-size:1rem;font-weight:800;color:#fff;">
+                        קבע תאריך ישיבת CAB
+                    </div>
+                    <div style="
+                        font-size:0.75rem;
+                        color:rgba(255,255,255,0.6);
+                        margin-top:2px;
+                    ">
+                        בחר תאריך ספציפי מלוח השנה
+                    </div>
+                </div>
+            </div>
+            <button id="cdCabDayPickerClose" style="
+                background:rgba(255,255,255,0.1);
+                border:1px solid rgba(255,255,255,0.2);
+                color:rgba(255,255,255,0.8);
+                width:32px;height:32px;border-radius:50%;
+                cursor:pointer;font-size:0.9rem;
+                display:flex;align-items:center;justify-content:center;
+            ">✕</button>
+        </div>
+
+        <!-- גוף -->
+        <div style="padding:22px;display:flex;flex-direction:column;gap:16px;">
+
+            <!-- שדה תאריך - input גלוי ישירות -->
+            <div>
+                <label style="
+                    font-size:12px; color:#9ca3af; font-weight:700;
+                    display:block; margin-bottom:8px;
+                    text-transform:uppercase; letter-spacing:0.5px;
+                ">
+                    תאריך ישיבת CAB:
+                </label>
+
+                <!-- תצוגת תאריך נבחר -->
+                <div id="cdCabSelectedDisplay" style="
+                    background:rgba(124,58,237,0.12);
+                    border:1.5px solid rgba(124,58,237,0.4);
+                    border-radius:8px;
+                    padding:10px 14px;
+                    font-size:14px;
+                    font-weight:700;
+                    color:#c4b5fd;
+                    margin-bottom:10px;
+                    display:flex;
+                    align-items:center;
+                    gap:8px;
+                    min-height:44px;
+                ">
+
+                    <i class="fas fa-calendar-check"
+                    style="color:#a78bfa;font-size:1rem;flex-shrink:0;"></i>
+
+                    <span id="cdCabSelectedText">
+                        ${initialDisplay}
+                    </span>
+
+                    <button type="button"
+                            style="
+                                margin-right:auto;
+                                background:#7c3aed;
+                                color:#fff;
+                                border:none;
+                                border-radius:6px;
+                                padding:7px 12px;
+                                font-size:13px;
+                                font-weight:700;
+                                cursor:pointer;
+                                white-space:nowrap;
+                            ">
+                        <i class="fas fa-calendar-alt"></i>
+                        שנה תאריך
+                    </button>
+
+                </div>
+
+                <input
+                    id="cdCabDateInput"
+                    type="text"
+                    placeholder="dd/mm/yyyy"
+                    style="display:none;"
+                />
+
+                <input
+                    id="cdCabDatePicker"
+                    type="date"
+                    style="position:absolute; opacity:0; pointer-events:none;"
+                    tabindex="-1"
+                />
+            </div>
+
+            <!-- הסבר -->
+            <div style="
+                background:rgba(124,58,237,0.08);
+                border:1px solid rgba(124,58,237,0.2);
+                border-radius:8px;
+                padding:10px 14px;
+                font-size:12px;
+                color:#9ca3af;
+                display:flex;
+                align-items:flex-start;
+                gap:8px;
+            ">
+                <i class="fas fa-info-circle"
+                   style="color:#a78bfa;flex-shrink:0;margin-top:1px;"></i>
+                <span>
+                    יוצגו שינויים מהתאריך הנבחר ועד 7 ימים קדימה.
+                </span>
+            </div>
+
+            <!-- כפתורי קיצור -->
+            <div>
+                <div style="
+                    font-size:11px;color:#6b7280;
+                    margin-bottom:8px;font-weight:600;
+                    text-transform:uppercase;letter-spacing:0.5px;
+                ">
+                    בחירה מהירה — CAB הקרוב:
+                </div>
+                <div id="cdCabShortcuts"
+                     style="display:flex;gap:6px;flex-wrap:wrap;">
+                    ${shortcutsHtml}
+                </div>
+            </div>
+
+            <!-- כפתורי אישור/ביטול -->
+            <div style="
+                display:flex;gap:10px;
+                justify-content:flex-end;
+                margin-top:4px;
+            ">
+                <button id="cdCabDayPickerCancel" style="
+                    padding:9px 18px;
+                    background:#374151;border:1px solid #4b5563;
+                    border-radius:8px;color:#9ca3af;cursor:pointer;
+                    font-size:13px;font-weight:600;
+                    transition:all 0.2s;
+                ">
+                    ביטול
+                </button>
+                <button id="cdCabDayPickerSave" style="
+                    padding:9px 22px;
+                    background:linear-gradient(135deg,#320F5B,#7c3aed);
+                    border:1px solid #7c3aed;
+                    border-radius:8px;color:#fff;cursor:pointer;
+                    font-size:13px;font-weight:700;
+                    display:flex;align-items:center;gap:7px;
+                    box-shadow:0 2px 10px rgba(124,58,237,0.3);
+                    transition:all 0.2s;
+                ">
+                    <i class="fas fa-save"></i>
+                    שמור
+                </button>
+            </div>
+        </div>
+    </div>
+</div>`;
+
+        document.body.insertAdjacentHTML('beforeend', html);
+
+        // ============================================================
+        // *** כל האירועים נרשמים אחרי insertAdjacentHTML ***
+        // ============================================================
+
+        const dateInput = document.getElementById('cdCabDateInput');
+        const datePicker = document.getElementById("cdCabDatePicker");
+        const selectedTxt = document.getElementById('cdCabSelectedText');
+        const display = document.getElementById('cdCabSelectedDisplay');
+
+        // ---- עדכון תצוגה בשינוי תאריך ----
+        const updateDisplay = (isoVal) => {
+            if (!isoVal) return;
+            const d = new Date(isoVal + 'T12:00:00');
+            selectedTxt.textContent = formatDateHebrew(d);
+            display.style.borderColor = '#7c3aed';
+            display.style.background = 'rgba(124,58,237,0.18)';
+        };
+
+        dateInput?.addEventListener('change', () => {
+            updateDisplay(dateInput.value);
+        });
+
+        // ---- focus style ----
+        dateInput?.addEventListener('focus', () => {
+            dateInput.style.borderColor = '#7c3aed';
+            dateInput.style.boxShadow =
+                '0 0 0 3px rgba(124,58,237,0.15)';
+        });
+
+        dateInput?.addEventListener('blur', () => {
+            dateInput.style.borderColor = '#374151';
+            dateInput.style.boxShadow = 'none';
+        });
+
+        // לחיצה על שדה הטקסט פותחת את לוח השנה
+        display.addEventListener("click", () => {
+            if (typeof datePicker.showPicker === "function") {
+                datePicker.showPicker();
+            } else {
+                // fallback לדפדפנים ללא showPicker()
+                datePicker.click();
+            }
+        });
+
+        // בחירת תאריך מלוח השנה
+        datePicker.addEventListener("change", () => {
+            if (!datePicker.value) {
+                dateInput.value = "";
+                return;
+            }
+
+            // מציגים למשתמש dd/mm/yyyy
+            dateInput.value = datePicker.value;
+
+            // אם בקוד הקיים יש listener של change
+            dateInput.dispatchEvent(new Event("change", {
+                bubbles: true
+            }));
+        });
+        dateInput.addEventListener("change", () => {
+            const match = dateInput.value.match(
+                /^(\d{2})\/(\d{2})\/(\d{4})$/
+            );
+
+            if (!match) {
+                return;
+            }
+            const [, day, month, year] = match;
+
+            datePicker.value = `${year}-${month}-${day}`;
+        });
+        // ---- כפתורי קיצור ----
+        // *** נרשמים אחרי insertAdjacentHTML - זה הפתרון לבעיה ***
+        document.querySelectorAll('.cab2-date-shortcut-btn').forEach(btn => {
+
+            // hover
+            btn.addEventListener('mouseenter', () => {
+                btn.style.borderColor = '#7c3aed';
+                btn.style.color = '#c4b5fd';
+                btn.style.background = '#1a1030';
+            });
+            btn.addEventListener('mouseleave', () => {
+                // אם זה הכפתור הנבחר - שמור סגנון נבחר
+                if (btn.classList.contains('selected')) return;
+                btn.style.borderColor = '#374151';
+                btn.style.color = '#9ca3af';
+                btn.style.background = '#111827';
+            });
+
+            // קליק
+            btn.addEventListener('click', () => {
+                const iso = btn.getAttribute('data-iso');
+                if (!iso) return;
+
+                // עדכן input
+                dateInput.value = iso;
+
+                // עדכן תצוגה
+                updateDisplay(iso);
+
+                // סמן כפתור נבחר
+                document.querySelectorAll('.cab2-date-shortcut-btn')
+                    .forEach(b => {
+                        b.classList.remove('selected');
+                        b.style.borderColor = '#374151';
+                        b.style.color = '#9ca3af';
+                        b.style.background = '#111827';
+                    });
+
+                btn.classList.add('selected');
+                btn.style.borderColor = '#7c3aed';
+                btn.style.color = '#c4b5fd';
+                btn.style.background = '#1a1030';
+            });
+        });
+
+        // ---- סמן כפתור קיצור אם תואם לתאריך הנוכחי ----
+        if (savedDateInput) {
+            document.querySelectorAll('.cab2-date-shortcut-btn').forEach(btn => {
+                if (btn.getAttribute('data-iso') === savedDateInput) {
+                    btn.classList.add('selected');
+                    btn.style.borderColor = '#7c3aed';
+                    btn.style.color = '#c4b5fd';
+                    btn.style.background = '#1a1030';
+                }
+            });
+        }
+
+        // ---- סגירה ----
+        const close = () =>
+            document.getElementById('cdCabDayPickerModal')?.remove();
+
+        document.getElementById('cdCabDayPickerClose')
+            ?.addEventListener('click', close);
+        document.getElementById('cdCabDayPickerCancel')
+            ?.addEventListener('click', close);
+        document.getElementById('cdCabDayPickerModal')
+            ?.addEventListener('click', e => {
+                if (e.target.id === 'cdCabDayPickerModal') close();
+            });
+
+        // ---- שמירה ----
+        document.getElementById('cdCabDayPickerSave')
+            ?.addEventListener('click', async () => {
+                const val = dateInput?.value;
+                if (!val) {
+                    this._showErrorIndicator('יש לבחור תאריך');
+                    return;
+                }
+
+                const selectedDate = new Date(val + 'T12:00:00');
+                this.setCabDate(val); // שמור ISO string
+
+                close();
+
+                // עדכן כפתור בכותרת
+                const labelEl = document.querySelector('.cab2-cab-day-label');
+                if (labelEl) labelEl.textContent = this._getCabDayLabel();
+
+                const dateStr = selectedDate.toLocaleDateString('he-IL', {
+                    day: 'numeric', month: 'long', year: 'numeric'
+                });
+                this._showColOrderSaveIndicator(
+                    `תאריך CAB נשמר: ${dateStr} ✓`
+                );
+
+                // רענן טווח CAB
+                await this.loadCabDateRange();
+
+                const cabRangeBtn = document.getElementById('cdCabRangeBtn');
+                if (cabRangeBtn?.classList.contains('active')) {
+                    this.applyCabDateRange();
+                }
+
+                if (this.cabMode) {
+                    await this.enterCabMode();
+                }
+            });
+
+        // ---- ESC ----
+        const onEsc = e => {
+            if (e.key === 'Escape') {
+                close();
+                document.removeEventListener('keydown', onEsc);
+            }
+        };
+        document.addEventListener('keydown', onEsc);
+    }
+
+    // *** בניית כפתורי קיצור דרך ***
+    _buildShortcutButtons() {
+        const today = new Date();
+        const shortcuts = [];
+
+        // מצא את ימי ה-CAB הקרובים (ראשון, שני, שלישי, רביעי, חמישי)
+        const dayNames = ['א\'', 'ב\'', 'ג\'', 'ד\'', 'ה\''];
+        const cabDays = [0, 1, 2, 3, 4]; // ראשון עד חמישי
+
+        cabDays.forEach(dayOfWeek => {
+            let daysUntil = (dayOfWeek - today.getDay() + 7) % 7;
+            const d = new Date(today);
+            d.setDate(today.getDate() + daysUntil);
+
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+
+            shortcuts.push(`
+            <button class="cab2-date-shortcut-btn"
+                data-days="${daysUntil}"
+                style="
+                    padding:6px 12px;
+                    background:#111827;
+                    border:1px solid #374151;
+                    border-radius:7px;
+                    color:#9ca3af;
+                    font-size:11px;
+                    font-weight:600;
+                    cursor:pointer;
+                    transition:all 0.2s;
+                    white-space:nowrap;
+                "
+                onmouseover="
+                    this.style.borderColor='#7c3aed';
+                    this.style.color='#c4b5fd';
+                    this.style.background='#1a1030';
+                "
+                onmouseout="
+                    this.style.borderColor='#374151';
+                    this.style.color='#9ca3af';
+                    this.style.background='#111827';
+                "
+            >
+                יום ${dayNames[dayOfWeek]} ${day}/${month}
+            </button>
+        `);
+        });
+
+        return shortcuts.join('');
+    }
+
+    // *** שמירת תאריך CAB ספציפי (ISO: yyyy-mm-dd) ***
+    setCabDate(isoDate) {
+        try {
+            localStorage.setItem('cab_specific_date', isoDate);
+            // עדכן גם יום בשבוע לתאימות לאחור
+            const d = new Date(isoDate + 'T12:00:00');
+            this.setCabDay(d.getDay());
+        } catch { }
+    }
+
+    // *** קבלת תאריך CAB שמור ***
+    getCabDate() {
+        try {
+            const saved = localStorage.getItem('cab_specific_date');
+            if (!saved) return null;
+            // ולידציה שהתאריך לא עבר יותר מ-30 יום
+            const d = new Date(saved + 'T12:00:00');
+            const diff = (d - new Date()) / (1000 * 60 * 60 * 24);
+            if (diff < -1 || diff > 60) {
+                localStorage.removeItem('cab_specific_date');
+                return null;
+            }
+            return saved;
+        } catch { return null; }
+    }
+
+    // *** עדכון תווית הכפתור ***
+    _getCabDayLabel() {
+        const savedDate = this.getCabDate();
+
+        if (savedDate) {
+            const d = new Date(savedDate + 'T12:00:00');
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            return `CAB: ${day}/${month}`;
+        }
+
+        // fallback - חישוב לפי יום בשבוע
+        const cabDay = this.getCabDay();
+        const today = new Date();
+        let daysUntilCab = (cabDay - today.getDay() + 7) % 7;
+        
+        const cabDate = new Date(today);
+        cabDate.setDate(today.getDate() + daysUntilCab);
+
+        const day = String(cabDate.getDate()).padStart(2, '0');
+        const month = String(cabDate.getMonth() + 1).padStart(2, '0');
+        return `CAB Date: ${day}/${month}`;
+    }
+
+    // -------------------------------------------------------
     // CSS Styles
     // -------------------------------------------------------
     addStyles() {
@@ -10467,7 +14107,7 @@ ${domainTableHtml}
             display: flex;
             align-items: center;
             gap: 12px;
-            margin-bottom: 12px;
+            margin-bottom: 8px;
             direction: ltr;
         }
         .cd-cal-title {
@@ -10519,7 +14159,7 @@ ${domainTableHtml}
             background: #1e1e1e;
             border: 1px solid #2a2a2a;
             border-radius: 6px;
-            height: 130px;
+            height: 135px;
             min-height: unset;
             padding: 4px;
             transition: border-color 0.2s;
@@ -10612,6 +14252,7 @@ ${domainTableHtml}
             -webkit-box-orient: vertical;
             overflow: hidden;
             -webkit-line-clamp: 2;
+            line-height: 1.25;
         }
         .cd-day-more {
             font-size: 10px;
@@ -12813,7 +16454,7 @@ ${domainTableHtml}
         /* ---- BODY ---- */
         .cab2-body {
             display: grid;
-            grid-template-columns: 180px 1fr 190px;
+            grid-template-columns: 200px 1fr 190px;
             gap: 5px;
             padding: 5px 7px;
             flex: 1;
@@ -13138,7 +16779,6 @@ ${domainTableHtml}
             scrollbar-color: var(--cab2-border2) transparent;
             padding-bottom: 2px;
             display: flex;
-            justify-content: center;
         }
 
         .cab2-thumbs-wrap::-webkit-scrollbar {
@@ -16188,8 +19828,6 @@ ${domainTableHtml}
             background: #1f2937;
             border: 1px solid #374151;
             border-radius: 16px;
-            width: 92%;
-            max-width: 520px;
             box-shadow:
                 0 25px 60px rgba(0,0,0,0.6),
                 0 0 0 1px rgba(255,255,255,0.04);
@@ -16911,6 +20549,44 @@ ${domainTableHtml}
             border-color: #4ade80;
             color: #14532d;
         }
+
+        /* ---- כפתור שלח מייל CAB ---- */
+        .cab2-summary-send-email-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 14px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid;
+            white-space: nowrap;
+            background: rgba(59,130,246,0.15);
+            border-color: rgba(59,130,246,0.35);
+            color: #60a5fa;
+        }
+
+        .cab2-summary-send-email-btn:hover {
+            background: rgba(59,130,246,0.28);
+            border-color: rgba(59,130,246,0.6);
+            color: #fff;
+            transform: translateY(-1px);
+        }
+
+        [data-theme="light"] .cab2-summary-send-email-btn {
+            background: #dbeafe;
+            border-color: #93c5fd;
+            color: #1e40af;
+        }
+
+        [data-theme="light"] .cab2-summary-send-email-btn:hover {
+            background: #bfdbfe;
+            border-color: #60a5fa;
+            color: #1e3a8a;
+        }
+
         .cab2-summary-back-btn {
             background: rgba(255,255,255,0.1);
             border-color: rgba(255,255,255,0.2);
@@ -17095,7 +20771,6 @@ ${domainTableHtml}
             background: #1f2937;
             border: 1px solid #374151;
             border-radius: 10px;
-            overflow: hidden;
             transition: box-shadow 0.2s;
         }
 
@@ -18040,7 +21715,7 @@ ${domainTableHtml}
             border: 1px solid #374151;
             border-radius: 16px;
             width: 92%;
-            max-width: 520px;
+            max-width: 1000px;
             box-shadow:
                 0 25px 60px rgba(0,0,0,0.6),
                 0 0 0 1px rgba(255,255,255,0.04);
@@ -19383,11 +23058,10 @@ ${domainTableHtml}
         align-items: center;
         gap: 6px;
         font-size: 15px;
-        font-weight: 800;
+        font-weight: 700;
         white-space: nowrap;
         border-radius: 7px;
         letter-spacing: 0.2px;
-        direction: ltr;
     }
 
     .cab2-time-card-val i {
@@ -19466,13 +23140,11 @@ ${domainTableHtml}
 
     .cab2-decision-history-row {
         display: grid;
-        grid-template-columns: 80px 90px 1fr 400px;
+        grid-template-columns: 80px 90px 1fr 100px;
         gap: 12px;
         align-items: center;
-
         padding: 10px 12px;
         border-top: 1px solid #374151;
-
         font-size: 12px;
     }
 
@@ -19523,501 +23195,847 @@ ${domainTableHtml}
     [data-theme="light"] .cab2-decision-history-row span:nth-child(3) {
         color: #374151;
     }
-    // *** הוסף בתוך addStyles(), בתוך style.textContent ***
 
-/* ===== ATTACHMENTS PANEL ===== */
-.cab2-att-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    height: 100%;
-}
+    /* ===== ATTACHMENTS PANEL ===== */
+    .cab2-att-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        height: 15%;
+    }
 
-/* ---- כותרת ---- */
-.cab2-att-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    background: var(--cab2-hdr-bg, #111827);
-    border-bottom: 1px solid var(--cab2-hdr-bdr, #374151);
-    flex-shrink: 0;
-}
+    /* ---- כותרת ---- */
+    .cab2-att-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 12px;
+        background: var(--cab2-hdr-bg, #111827);
+        border-bottom: 1px solid var(--cab2-hdr-bdr, #374151);
+        flex-shrink: 0;
+    }
 
-.cab2-att-title {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--cab2-accent2, #a78bfa);
-}
+    .cab2-att-title {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--cab2-accent2, #a78bfa);
+    }
 
-.cab2-att-count {
-    background: #7c3aed;
-    color: #fff;
-    border-radius: 10px;
-    padding: 1px 7px;
-    font-size: 10px;
-    font-weight: 800;
-}
+    .cab2-att-count {
+        background: #7c3aed;
+        color: #fff;
+        border-radius: 10px;
+        padding: 1px 7px;
+        font-size: 10px;
+        font-weight: 800;
+    }
 
-/* ---- כפתור העלאה ---- */
-.cab2-att-upload-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 4px 10px;
-    background: rgba(124,58,237,0.15);
-    border: 1px solid rgba(124,58,237,0.35);
-    border-radius: 6px;
-    color: #a78bfa;
-    font-size: 11px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all 0.2s;
-    white-space: nowrap;
-}
+    /* ---- כפתור העלאה ---- */
+    .cab2-att-upload-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 4px 10px;
+        background: rgba(124,58,237,0.15);
+        border: 1px solid rgba(124,58,237,0.35);
+        border-radius: 6px;
+        color: #a78bfa;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+    }
 
-.cab2-att-upload-btn:hover {
-    background: rgba(124,58,237,0.28);
-    border-color: rgba(124,58,237,0.6);
-    color: #fff;
-    transform: translateY(-1px);
-}
+    .cab2-att-upload-btn:hover {
+        background: rgba(124,58,237,0.28);
+        border-color: rgba(124,58,237,0.6);
+        color: #fff;
+        transform: translateY(-1px);
+    }
 
-/* ---- אזור גרירה ---- */
-.cab2-att-dropzone {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 12px 8px;
-    margin: 8px;
-    border: 2px dashed #374151;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s;
-    font-size: 10px;
-    color: #6b7280;
-    text-align: center;
-    flex-shrink: 0;
-    position: relative;
-}
+    /* ---- אזור גרירה ---- */
+    .cab2-att-dropzone {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 12px 8px;
+        margin: 8px;
+        border: 2px dashed #374151;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 10px;
+        color: #6b7280;
+        text-align: center;
+        flex-shrink: 0;
+        position: relative;
+    }
 
-.cab2-att-dropzone i {
-    font-size: 1.1rem;
-    color: #4b5563;
-    transition: color 0.2s;
-}
+    .cab2-att-dropzone i {
+        font-size: 1.1rem;
+        color: #4b5563;
+        transition: color 0.2s;
+    }
 
-.cab2-att-dropzone:hover,
-.cab2-att-dropzone--active {
-    border-color: #7c3aed;
-    background: rgba(124,58,237,0.06);
-    color: #a78bfa;
-}
+    .cab2-att-dropzone:hover,
+    .cab2-att-dropzone--active {
+        border-color: #7c3aed;
+        background: rgba(124,58,237,0.06);
+        color: #a78bfa;
+    }
 
-.cab2-att-dropzone:hover i,
-.cab2-att-dropzone--active i {
-    color: #a78bfa;
-}
+    .cab2-att-dropzone:hover i,
+    .cab2-att-dropzone--active i {
+        color: #a78bfa;
+    }
 
-/* input נסתר בתוך dropzone */
-.cab2-att-file-input {
-    position: absolute;
-    inset: 0;
-    opacity: 0;
-    cursor: pointer;
-    width: 100%;
-    height: 100%;
-}
+    /* input נסתר בתוך dropzone */
+    .cab2-att-file-input {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        cursor: pointer;
+        width: 100%;
+        height: 100%;
+    }
 
-/* ---- פס התקדמות ---- */
-.cab2-att-progress {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    padding: 6px 10px;
-    flex-shrink: 0;
-}
+    /* ---- פס התקדמות ---- */
+    .cab2-att-progress {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        padding: 6px 10px;
+        flex-shrink: 0;
+    }
 
-.cab2-att-progress-bar {
-    height: 4px;
-    background: #7c3aed;
-    border-radius: 2px;
-    width: 0%;
-    transition: width 0.3s ease;
-}
+    .cab2-att-progress-bar {
+        height: 4px;
+        background: #7c3aed;
+        border-radius: 2px;
+        width: 0%;
+        transition: width 0.3s ease;
+    }
 
-.cab2-att-progress-text {
-    font-size: 10px;
-    color: #9ca3af;
-    text-align: center;
-}
+    .cab2-att-progress-text {
+        font-size: 10px;
+        color: #9ca3af;
+        text-align: center;
+    }
 
-/* ---- רשימת קבצים ---- */
-.cab2-att-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 4px 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    scrollbar-width: thin;
-    scrollbar-color: #374151 transparent;
-}
+    /* ---- רשימת קבצים ---- */
+    .cab2-att-list {
+        flex: 1;
+        overflow-y: auto;
+        padding: 4px 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        scrollbar-width: thin;
+        scrollbar-color: #374151 transparent;
+    }
 
-.cab2-att-list::-webkit-scrollbar { width: 3px; }
-.cab2-att-list::-webkit-scrollbar-thumb {
-    background: #374151;
-    border-radius: 2px;
-}
+    .cab2-att-list::-webkit-scrollbar { width: 3px; }
+    .cab2-att-list::-webkit-scrollbar-thumb {
+        background: #374151;
+        border-radius: 2px;
+    }
 
-/* ---- פריט קובץ ---- */
-.cab2-att-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 7px 8px;
-    background: var(--cab2-surface2, #374151);
-    border: 1px solid var(--cab2-border, #374151);
-    border-radius: 7px;
-    transition: all 0.15s;
-}
+    /* ---- פריט קובץ ---- */
+    .cab2-att-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 8px;
+        background: var(--cab2-surface2, #374151);
+        border: 1px solid var(--cab2-border, #374151);
+        border-radius: 7px;
+        transition: all 0.15s;
+    }
 
-.cab2-att-item:hover {
-    background: #2d3748;
-    border-color: #4b5563;
-}
+    .cab2-att-item:hover {
+        background: #2d3748;
+        border-color: #4b5563;
+    }
 
-.cab2-att-icon {
-    font-size: 1.2rem;
-    flex-shrink: 0;
-    line-height: 1;
-}
+    .cab2-att-icon {
+        font-size: 1.2rem;
+        flex-shrink: 0;
+        line-height: 1;
+    }
 
-.cab2-att-info {
-    flex: 1;
-    min-width: 10px;
-}
+    .cab2-att-info {
+        flex: 1;
+        min-width: 10px;
+    }
 
-.cab2-att-name {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--cab2-text, #f9fafb);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
+    .cab2-att-name {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--cab2-text, #f9fafb);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
 
-.cab2-att-meta {
-    display: flex;
-    gap: 5px;
-    font-size: 10px;
-    color: var(--cab2-text3, #9ca3af);
-    margin-top: 2px;
-}
+    .cab2-att-meta {
+        display: flex;
+        gap: 5px;
+        font-size: 10px;
+        color: var(--cab2-text3, #9ca3af);
+        margin-top: 2px;
+    }
 
-/* ---- כפתורי פעולה ---- */
-.cab2-att-actions {
-    display: flex;
-    gap: 4px;
-    flex-shrink: 0;
-}
+    /* ---- כפתורי פעולה ---- */
+    .cab2-att-actions {
+        display: flex;
+        gap: 4px;
+        flex-shrink: 0;
+    }
 
-.cab2-att-btn {
-    width: 26px;
-    height: 26px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 5px;
-    font-size: 11px;
-    cursor: pointer;
-    transition: all 0.15s;
-    border: 1px solid;
-    text-decoration: none;
-}
+    .cab2-att-btn {
+        width: 26px;
+        height: 26px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 5px;
+        font-size: 11px;
+        cursor: pointer;
+        transition: all 0.15s;
+        border: 1px solid;
+        text-decoration: none;
+    }
 
-.cab2-att-btn--preview {
-    background: rgba(59,130,246,0.12);
-    border-color: rgba(59,130,246,0.3);
-    color: #60a5fa;
-}
-.cab2-att-btn--preview:hover {
-    background: rgba(59,130,246,0.25);
-    color: #fff;
-    transform: scale(1.1);
-}
+    .cab2-att-btn--preview {
+        background: rgba(59,130,246,0.12);
+        border-color: rgba(59,130,246,0.3);
+        color: #60a5fa;
+    }
+    .cab2-att-btn--preview:hover {
+        background: rgba(59,130,246,0.25);
+        color: #fff;
+        transform: scale(1.1);
+    }
 
-.cab2-att-btn--download {
-    background: rgba(34,197,94,0.12);
-    border-color: rgba(34,197,94,0.3);
-    color: #4ade80;
-}
-.cab2-att-btn--download:hover {
-    background: rgba(34,197,94,0.25);
-    color: #fff;
-    transform: scale(1.1);
-}
+    .cab2-att-btn--download {
+        background: rgba(34,197,94,0.12);
+        border-color: rgba(34,197,94,0.3);
+        color: #4ade80;
+    }
+    .cab2-att-btn--download:hover {
+        background: rgba(34,197,94,0.25);
+        color: #fff;
+        transform: scale(1.1);
+    }
 
-.cab2-att-btn--delete {
-    background: rgba(239,68,68,0.12);
-    border-color: rgba(239,68,68,0.3);
-    color: #f87171;
-}
-.cab2-att-btn--delete:hover {
-    background: rgba(239,68,68,0.25);
-    color: #fff;
-    transform: scale(1.1);
-}
+    .cab2-att-btn--delete {
+        background: rgba(239,68,68,0.12);
+        border-color: rgba(239,68,68,0.3);
+        color: #f87171;
+    }
+    .cab2-att-btn--delete:hover {
+        background: rgba(239,68,68,0.25);
+        color: #fff;
+        transform: scale(1.1);
+    }
 
-/* ---- תצוגה מקדימה - תמונה ---- */
-.cab2-preview-img-wrap {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 16px;
-    overflow: auto;
-}
+    /* ---- תצוגה מקדימה - תמונה ---- */
+    .cab2-preview-img-wrap {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        overflow: auto;
+    }
 
-.cab2-preview-img {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-    border-radius: 8px;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-}
+    .cab2-preview-img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+        border-radius: 8px;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
 
-.cab2-preview-error {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 10px;
-    color: #f87171;
-    font-size: 14px;
-}
+    .cab2-preview-error {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        color: #f87171;
+        font-size: 14px;
+    }
 
-.cab2-preview-error i { font-size: 2rem; }
+    .cab2-preview-error i { font-size: 2rem; }
 
-/* ---- תצוגה מקדימה - PDF ---- */
-.cab2-preview-pdf-wrap {
-    width: 100%;
-    height: 100%;
-}
+    /* ---- תצוגה מקדימה - PDF ---- */
+    .cab2-preview-pdf-wrap {
+        width: 100%;
+        height: 100%;
+    }
 
-.cab2-preview-pdf {
-    width: 100%;
-    height: 100%;
-    min-height: 500px;
-    border: none;
-}
+    .cab2-preview-pdf {
+        width: 100%;
+        height: 100%;
+        min-height: 500px;
+        border: none;
+    }
 
-/* ---- Light Mode ---- */
-[data-theme="light"] .cab2-att-dropzone {
-    border-color: #e2e8f0;
-    color: #94a3b8;
-}
+    /* ---- Light Mode ---- */
+    [data-theme="light"] .cab2-att-dropzone {
+        border-color: #e2e8f0;
+        color: #94a3b8;
+    }
 
-[data-theme="light"] .cab2-att-dropzone:hover,
-[data-theme="light"] .cab2-att-dropzone--active {
-    border-color: #7c3aed;
-    background: rgba(124,58,237,0.04);
-    color: #7c3aed;
-}
+    [data-theme="light"] .cab2-att-dropzone:hover,
+    [data-theme="light"] .cab2-att-dropzone--active {
+        border-color: #7c3aed;
+        background: rgba(124,58,237,0.04);
+        color: #7c3aed;
+    }
 
-[data-theme="light"] .cab2-att-item {
-    background: #f8fafc;
-    border-color: #e2e8f0;
-}
+    [data-theme="light"] .cab2-att-item {
+        background: #f8fafc;
+        border-color: #e2e8f0;
+    }
 
-[data-theme="light"] .cab2-att-item:hover {
-    background: #f0f4f8;
-    border-color: #cbd5e1;
-}
+    [data-theme="light"] .cab2-att-item:hover {
+        background: #f0f4f8;
+        border-color: #cbd5e1;
+    }
 
-[data-theme="light"] .cab2-att-name { color: #1a2332; }
-[data-theme="light"] .cab2-att-meta { color: #94a3b8; }
+    [data-theme="light"] .cab2-att-name { color: #1a2332; }
+    [data-theme="light"] .cab2-att-meta { color: #94a3b8; }
 
-[data-theme="light"] .cab2-att-upload-btn {
-    background: #f5f3ff;
-    border-color: #c4b5fd;
-    color: #6d28d9;
-}
+    [data-theme="light"] .cab2-att-upload-btn {
+        background: #f5f3ff;
+        border-color: #c4b5fd;
+        color: #6d28d9;
+    }
 
-[data-theme="light"] .cab2-att-upload-btn:hover {
-    background: #ede9fe;
-    border-color: #7c3aed;
-    color: #5b21b6;
-}
-/* ---- כפתור הוספה בכותרת הכרטיס ---- */
-.cab2-card-hdr {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
+    [data-theme="light"] .cab2-att-upload-btn:hover {
+        background: #ede9fe;
+        border-color: #7c3aed;
+        color: #5b21b6;
+    }
+    /* ---- כפתור הוספה בכותרת הכרטיס ---- */
+    .cab2-card-hdr {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
 
-.cab2-att-add-btn {
-    margin-right: auto;  /* דחוף לשמאל */
-    width: 20px;
-    height: 20px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(124,58,237,0.15);
-    border: 1px solid rgba(124,58,237,0.35);
-    border-radius: 4px;
-    color: #a78bfa;
-    font-size: 10px;
-    cursor: pointer;
-    transition: all 0.2s;
-    flex-shrink: 0;
-}
+    .cab2-att-add-btn {
+        margin-right: auto;  /* דחוף לשמאל */
+        width: 20px;
+        height: 20px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(124,58,237,0.15);
+        border: 1px solid rgba(124,58,237,0.35);
+        border-radius: 4px;
+        color: #a78bfa;
+        font-size: 10px;
+        cursor: pointer;
+        transition: all 0.2s;
+        flex-shrink: 0;
+    }
 
-.cab2-att-add-btn:hover {
-    background: rgba(124,58,237,0.3);
-    border-color: rgba(124,58,237,0.6);
-    color: #fff;
-    transform: scale(1.1);
-}
+    .cab2-att-add-btn:hover {
+        background: rgba(124,58,237,0.3);
+        border-color: rgba(124,58,237,0.6);
+        color: #fff;
+        transform: scale(1.1);
+    }
 
-/* ---- הסתרת dropzone ---- */
-.cab2-att-dropzone--hidden {
-    display: none !important;
-}
+    /* ---- הסתרת dropzone ---- */
+    .cab2-att-dropzone--hidden {
+        display: none !important;
+    }
 
-/* Light mode */
-[data-theme="light"] .cab2-att-add-btn {
-    background: #f5f3ff;
-    border-color: #c4b5fd;
-    color: #6d28d9;
-}
+    /* Light mode */
+    [data-theme="light"] .cab2-att-add-btn {
+        background: #f5f3ff;
+        border-color: #c4b5fd;
+        color: #6d28d9;
+    }
 
-[data-theme="light"] .cab2-att-add-btn:hover {
-    background: #ede9fe;
-    border-color: #7c3aed;
-    color: #5b21b6;
-}
-/* ===== NO CAB STATUS ===== */
-.cab2-decision-btn--no_cab {
-    background: rgba(107,114,128,0.15);
-    border-color: rgba(107,114,128,0.45);
-    color: #9ca3af;
-    box-shadow: 0 2px 8px rgba(107,114,128,0.15);
-}
+    [data-theme="light"] .cab2-att-add-btn:hover {
+        background: #ede9fe;
+        border-color: #7c3aed;
+        color: #5b21b6;
+    }
+    /* ===== NO CAB STATUS ===== */
+    .cab2-decision-btn--no_cab {
+        background: rgba(107,114,128,0.15);
+        border-color: rgba(107,114,128,0.45);
+        color: #9ca3af;
+        box-shadow: 0 2px 8px rgba(107,114,128,0.15);
+    }
 
-.cab2-decision-btn--no_cab:hover {
-    background: rgba(107,114,128,0.28);
-    border-color: rgba(107,114,128,0.7);
-    color: #fff;
-    transform: translateY(-1px);
-}
+    .cab2-decision-btn--no_cab:hover {
+        background: rgba(107,114,128,0.28);
+        border-color: rgba(107,114,128,0.7);
+        color: #fff;
+        transform: translateY(-1px);
+    }
 
-.cab2-decided-banner--no_cab {
-    background: rgba(107,114,128,0.1);
-    border-color: rgba(107,114,128,0.25);
-    color: #9ca3af;
-}
+    .cab2-decided-banner--no_cab {
+        background: rgba(107,114,128,0.1);
+        border-color: rgba(107,114,128,0.25);
+        color: #9ca3af;
+    }
 
-.cab2-thumb--decided-no_cab::after {
-    background: #6b7280;
-    box-shadow: 0 0 6px rgba(107,114,128,0.7);
-    border-color: rgba(107,114,128,0.4);
-}
+    .cab2-thumb--decided-no_cab::after {
+        background: #6b7280;
+        box-shadow: 0 0 6px rgba(107,114,128,0.7);
+        border-color: rgba(107,114,128,0.4);
+    }
 
-.cab2-root--decided-no_cab {
-    border-top: 3px solid rgba(107,114,128,0.5);
-}
+    .cab2-root--decided-no_cab {
+        border-top: 3px solid rgba(107,114,128,0.5);
+    }
 
-.cab2-decision-status-btn[data-status="no_cab"].cab2-decision-status-btn--active {
-    background: rgba(107,114,128,0.2);
-    border-color: #6b7280;
-    color: #9ca3af;
-    box-shadow: 0 0 0 3px rgba(107,114,128,0.15),
-                0 4px 14px rgba(107,114,128,0.2);
-    transform: translateY(-1px);
-}
+    .cab2-decision-status-btn[data-status="no_cab"].cab2-decision-status-btn--active {
+        background: rgba(107,114,128,0.2);
+        border-color: #6b7280;
+        color: #9ca3af;
+        box-shadow: 0 0 0 3px rgba(107,114,128,0.15),
+                    0 4px 14px rgba(107,114,128,0.2);
+        transform: translateY(-1px);
+    }
 
-.cab2-decision-status-btn[data-status="no_cab"]:hover {
-    background: rgba(107,114,128,0.15);
-    border-color: rgba(107,114,128,0.5);
-    color: #d1d5db;
-    transform: translateY(-1px);
-}
+    .cab2-decision-status-btn[data-status="no_cab"]:hover {
+        background: rgba(107,114,128,0.15);
+        border-color: rgba(107,114,128,0.5);
+        color: #d1d5db;
+        transform: translateY(-1px);
+    }
 
-/* Light Mode */
-[data-theme="light"] .cab2-decision-btn--no_cab {
-    background: #f1f5f9;
-    border-color: #cbd5e1;
-    color: #64748b;
-}
+    /* Light Mode */
+    [data-theme="light"] .cab2-decision-btn--no_cab {
+        background: #f1f5f9;
+        border-color: #cbd5e1;
+        color: #64748b;
+    }
 
-[data-theme="light"] .cab2-decision-btn--no_cab:hover {
-    background: #e2e8f0;
-    border-color: #94a3b8;
-    color: #1a2332;
-}
+    [data-theme="light"] .cab2-decision-btn--no_cab:hover {
+        background: #e2e8f0;
+        border-color: #94a3b8;
+        color: #1a2332;
+    }
 
-[data-theme="light"] .cab2-decided-banner--no_cab {
-    background: #f8fafc;
-    border-color: #e2e8f0;
-    color: #64748b;
-}
+    [data-theme="light"] .cab2-decided-banner--no_cab {
+        background: #f8fafc;
+        border-color: #e2e8f0;
+        color: #64748b;
+    }
 
-[data-theme="light"] .cab2-decision-status-btn[data-status="no_cab"].cab2-decision-status-btn--active {
-    background: #f1f5f9;
-    border-color: #64748b;
-    color: #374151;
-    box-shadow: 0 0 0 3px rgba(100,116,139,0.12),
-                0 4px 12px rgba(100,116,139,0.15);
-}
+    [data-theme="light"] .cab2-decision-status-btn[data-status="no_cab"].cab2-decision-status-btn--active {
+        background: #f1f5f9;
+        border-color: #64748b;
+        color: #374151;
+        box-shadow: 0 0 0 3px rgba(100,116,139,0.12),
+                    0 4px 12px rgba(100,116,139,0.15);
+    }
 
-[data-theme="light"] .cab2-decision-status-btn[data-status="no_cab"]:hover {
-    background: #e2e8f0;
-    border-color: #94a3b8;
-    color: #1a2332;
-}
-/* ===== SUMMARY RESET BUTTON ===== */
-.cab2-summary-reset-btn {
-    background: rgba(107,114,128,0.12);
-    border: 1px solid rgba(107,114,128,0.3);
-    border-radius: 6px;
-    color: #9ca3af;
-    cursor: pointer;
-    padding: 5px 9px;
-    font-size: 11px;
-    transition: all 0.2s;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    white-space: nowrap;
-}
+    [data-theme="light"] .cab2-decision-status-btn[data-status="no_cab"]:hover {
+        background: #e2e8f0;
+        border-color: #94a3b8;
+        color: #1a2332;
+    }
+    /* ===== SUMMARY RESET BUTTON ===== */
+    .cab2-summary-reset-btn {
+        background: rgba(107,114,128,0.12);
+        border: 1px solid rgba(107,114,128,0.3);
+        border-radius: 6px;
+        color: #9ca3af;
+        cursor: pointer;
+        padding: 5px 9px;
+        font-size: 11px;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        white-space: nowrap;
+    }
 
-.cab2-summary-reset-btn:hover {
-    background: rgba(124,58,237,0.2);
-    border-color: rgba(124,58,237,0.5);
-    color: #a78bfa;
-    transform: translateY(-1px);
-}
+    .cab2-summary-reset-btn:hover {
+        background: rgba(124,58,237,0.2);
+        border-color: rgba(124,58,237,0.5);
+        color: #a78bfa;
+        transform: translateY(-1px);
+    }
 
-/* Light Mode */
-[data-theme="light"] .cab2-summary-reset-btn {
-    background: #f1f5f9;
-    border-color: #e2e8f0;
-    color: #64748b;
-}
+    /* Light Mode */
+    [data-theme="light"] .cab2-summary-reset-btn {
+        background: #f1f5f9;
+        border-color: #e2e8f0;
+        color: #64748b;
+    }
 
-[data-theme="light"] .cab2-summary-reset-btn:hover {
-    background: #f5f3ff;
-    border-color: #c4b5fd;
-    color: #7c3aed;
-}
+    [data-theme="light"] .cab2-summary-reset-btn:hover {
+        background: #f5f3ff;
+        border-color: #c4b5fd;
+        color: #7c3aed;
+    }
+    /* ===== CAB DAY SETTINGS BUTTON ===== */
+    .cab2-cab-day-settings-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+
+        padding: 7px 14px;
+
+        background: #1f2937;
+        border: 1px solid #374151;
+        border-radius: 999px;
+
+        color: #d1d5db;
+        font-size: 12px;
+        font-weight: 700;
+
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .cab2-cab-day-settings-btn:hover {
+        border-color: #7c3aed;
+        color: #fff;
+        box-shadow: 0 0 0 3px rgba(124,58,237,0.12);
+    }
+
+    .cab2-cab-day-settings-btn i {
+        color: #a78bfa;
+        font-size: 12px;
+    }
+
+    .cab2-cab-day-label {
+        color: #e5e7eb;
+    }
+
+    /* ===== CAB DAY PICKER BUTTONS ===== */
+    .cab2-day-pick-btn {
+        padding: 10px 14px;
+        background: #111827;
+        border: 2px solid #374151;
+        border-radius: 10px;
+        color: #9ca3af;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        text-align: center;
+        transition: all 0.2s ease;
+        direction: rtl;
+        width: 100%;
+    }
+
+    .cab2-day-pick-btn:hover {
+        background: rgba(124,58,237,0.12);
+        border-color: rgba(124,58,237,0.4);
+        color: #c4b5fd;
+        transform: translateY(-1px);
+    }
+
+    .cab2-day-pick-btn--active {
+        background: rgba(124,58,237,0.2) !important;
+        border-color: #7c3aed !important;
+        color: #a78bfa !important;
+        box-shadow: 0 0 0 3px rgba(124,58,237,0.15),
+                                    0 4px 14px rgba(124,58,237,0.2);
+        transform: translateY(-1px);
+    }
+
+    /* Light Mode */
+    [data-theme="light"] .cab2-cab-day-label {
+        color: #a78bfa;
+    }
+    [data-theme="light"] .cab2-cab-day-settings-btn {
+        background: rgba(124,58,237,0.08);
+        border-color: rgba(124,58,237,0.2);
+        color: #6d28d9;
+    }
+
+    [data-theme="light"] .cab2-cab-day-settings-btn:hover {
+        background: rgba(124,58,237,0.15);
+        border-color: rgba(124,58,237,0.4);
+        color: #5b21b6;
+    }
+
+    [data-theme="light"] .cab2-day-pick-btn {
+        background: #f8fafc;
+        border-color: #e2e8f0;
+        color: #4a5568;
+    }
+
+    [data-theme="light"] .cab2-day-pick-btn:hover {
+        background: #f5f3ff;
+        border-color: #c4b5fd;
+        color: #6d28d9;
+    }
+
+    [data-theme="light"] .cab2-day-pick-btn--active {
+        background: #ede9fe !important;
+        border-color: #7c3aed !important;
+        color: #6d28d9 !important;
+        box-shadow: 0 0 0 3px rgba(124,58,237,0.1),
+                    0 4px 12px rgba(124,58,237,0.15);
+    }
+
+    /* ===== ADD TO CAB BUTTON ===== */
+    .cab2-add-to-cab-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 14px;
+        background: rgba(34,197,94,0.15);
+        border: 1.5px solid rgba(34,197,94,0.45);
+        border-radius: 8px;
+        color: #4ade80;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        white-space: nowrap;
+        flex-shrink: 0;
+        letter-spacing: 0.2px;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .cab2-add-to-cab-btn::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: rgba(255,255,255,0.08);
+        opacity: 0;
+        transition: opacity 0.2s;
+        border-radius: inherit;
+    }
+
+    .cab2-add-to-cab-btn:hover::after {
+        opacity: 1;
+    }
+
+    .cab2-add-to-cab-btn:hover {
+        background: rgba(34,197,94,0.28);
+        border-color: rgba(34,197,94,0.7);
+        color: #fff;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 14px rgba(34,197,94,0.3);
+    }
+
+    .cab2-add-to-cab-btn:active {
+        transform: translateY(0);
+        box-shadow: none;
+    }
+
+    .cab2-add-to-cab-btn i {
+        font-size: 11px;
+        flex-shrink: 0;
+    }
+
+    /* ---- Light Mode ---- */
+    [data-theme="light"] .cab2-add-to-cab-btn {
+        background: #dcfce7;
+        border-color: #86efac;
+        color: #166534;
+        box-shadow: 0 1px 4px rgba(22,163,74,0.1);
+    }
+
+    [data-theme="light"] .cab2-add-to-cab-btn:hover {
+        background: #bbf7d0;
+        border-color: #4ade80;
+        color: #14532d;
+        box-shadow: 0 4px 12px rgba(22,163,74,0.2);
+    }
+
+    /* ===== ADD TO CAB MODAL ===== */
+    #cdAddToCabModal {
+        animation: cdFadeInOverlay 0.2s ease;
+    }
+
+    #cdAddToCabModal > div {
+        animation: cdPopupIn 0.25s cubic-bezier(0.34,1.56,0.64,1);
+    }
+
+    /* textarea בתוך המודל */
+    #cdAddToCabNote {
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    #cdAddToCabNote:focus {
+        outline: none;
+        border-color: #7c3aed;
+        box-shadow: 0 0 0 3px rgba(124,58,237,0.15);
+        background: #0f172a;
+    }
+
+    #cdAddToCabNote::placeholder {
+        color: #4b5563;
+        font-size: 12px;
+    }
+
+    /* כפתור אישור */
+    #cdAddToCabConfirm {
+        transition: all 0.2s;
+    }
+
+    #cdAddToCabConfirm:hover {
+        background: linear-gradient(135deg, #4a1a8c, #8b5cf6) !important;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 16px rgba(124,58,237,0.45) !important;
+    }
+
+    #cdAddToCabConfirm:active {
+        transform: translateY(0);
+    }
+
+    /* כפתור ביטול */
+    #cdAddToCabModal button[onclick*="remove"] {
+        transition: all 0.2s;
+    }
+
+    #cdAddToCabModal button[onclick*="remove"]:hover {
+        background: #4b5563 !important;
+        color: #fff !important;
+        border-color: #6b7280 !important;
+    }
+
+    /* info box */
+    #cdAddToCabModal [style*="rgba(124,58,237,0.1)"] {
+        transition: background 0.2s;
+    }
+
+    /* ---- Light Mode - Modal ---- */
+    [data-theme="light"] #cdAddToCabNote {
+        background: #f8fafc;
+        border-color: #e2e8f0;
+        color: #1a2332;
+    }
+
+    [data-theme="light"] #cdAddToCabNote:focus {
+        border-color: #7c3aed;
+        background: #faf5ff;
+        box-shadow: 0 0 0 3px rgba(124,58,237,0.1);
+    }
+
+    [data-theme="light"] #cdAddToCabNote::placeholder {
+        color: #94a3b8;
+    }
+    
+    /* ===== FREEZE DAYS ===== */
+    /* לוח חודשי - תא */
+    .cd-freeze-day.cd-cal-day {
+        background: rgba(239,68,68,0.07) !important;
+        border-color: rgba(239,68,68,0.35) !important;
+    }
+
+    .cd-freeze-day.cd-cal-day:hover {
+        background: rgba(239,68,68,0.12) !important;
+    }
+
+    /* תג הקפאה בתוך תא הלוח */
+    .cd-freeze-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        font-size: 9px;
+        font-weight: 700;
+        color: #f87171;
+        background: rgba(239,68,68,0.15);
+        border: 1px solid rgba(239,68,68,0.3);
+        border-radius: 4px;
+        padding: 1px 5px;
+        margin-bottom: 3px;
+        white-space: nowrap;
+        flex-shrink: 0;
+        letter-spacing: 0.2px;
+        width: fit-content;
+    }
+
+    /* תצוגת שבוע - עמודה */
+    .cd-freeze-day.cd-week-col {
+        background: rgba(239,68,68,0.05) !important;
+        border-color: rgba(239,68,68,0.3) !important;
+    }
+
+    /* תג הקפאה בכותרת עמודת שבוע */
+    .cd-freeze-chip {
+        margin-right: 3px;
+        opacity: 0.85;
+        flex-shrink: 0;
+        cursor: default;
+        filter: drop-shadow(0 1px 3px rgba(239,68,68,0.4));
+        font-size: 11px;
+        font-weight: 700;
+        color: #f87171;
+        background: rgba(239,68,68,0.15);
+    }
+
+    /* תצוגת יום - באנר */
+    .cd-freeze-banner {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 16px;
+        background: rgba(239,68,68,0.1);
+        border: 1px solid rgba(239,68,68,0.3);
+        border-radius: 8px;
+        color: #f87171;
+        font-size: 13px;
+        margin-bottom: 10px;
+        flex-shrink: 0;
+        animation: cdFadeIn 0.3s ease;
+    }
+
+    .cd-freeze-banner i {
+        font-size: 16px;
+        flex-shrink: 0;
+    }
+
+    .cd-freeze-banner strong {
+        font-weight: 800;
+        white-space: nowrap;
+    }
+
+    .cd-freeze-banner span {
+        opacity: 0.8;
+        font-size: 12px;
+    }
+
+    /* Light Mode */
+    [data-theme="light"] .cd-freeze-day.cd-cal-day {
+        background: rgba(220,38,38,0.05) !important;
+        border-color: rgba(220,38,38,0.25) !important;
+    }
+
+    [data-theme="light"] .cd-freeze-badge {
+        color: #dc2626;
+        background: rgba(220,38,38,0.1);
+        border-color: rgba(220,38,38,0.25);
+    }
+
+    [data-theme="light"] .cd-freeze-day.cd-week-col {
+        background: rgba(220,38,38,0.04) !important;
+        border-color: rgba(220,38,38,0.22) !important;
+    }
+
+    [data-theme="light"] .cd-freeze-banner {
+        background: #fff5f5;
+        border-color: #fca5a5;
+        color: #dc2626;
+    }
             `;
         document.head.appendChild(style);
     }

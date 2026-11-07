@@ -155,8 +155,25 @@
                 בספר הטלפונים
             </div>
         </a>
+        
+        <!-- כרטיסייה: ניהול שליחת אישורי כניסה אוטומטים - מייל אישור כניסה -->
+        <a asp-action="BlockedDaysManager" asp-controller="Messages"
+        class="admin-nav-card card-blocked-days">
+            <div class="nav-card-icon icon-blocked-days">
+                <i class="fas fa-calendar-times"></i>
+            </div>
+            <div class="nav-card-title">ניהול שליחת אישורי כניסה אוטומטים</div>
+            <div class="nav-card-desc">
+                קביעת תאריכים וחגים שבהם<br>
+                לא ישלח מייל אישור הכניסה
+            </div>
+        </a>
+        
+        @*
+         מוסתר: כפתורי דשבורדים ופורטל ראשי
+        *@
 
-        <!-- כרטיסייה: דשבורדים -->
+        @*
         <a href="/dashboards"
            class="admin-nav-card card-dashboards">
             <div class="nav-card-icon icon-dashboards">
@@ -181,7 +198,7 @@
                 של NOC Portal
             </div>
         </a>
-
+        *@
     </div>
 </div>
 

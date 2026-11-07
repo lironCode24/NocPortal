@@ -480,12 +480,6 @@
             color: rgba(255,255,255,.9);
         }
 
-        .employee-id-cell {
-            font-size: .72rem;
-            color: rgba(255,255,255,.3);
-            margin-top: .15rem;
-        }
-
         /* ══ processed info ═════════════════════════════════════════ */
         .processed-info {
             font-size: .72rem;
@@ -664,8 +658,9 @@ const ChangesManager = {
     activeMainTab: 'changes',
     activeRoleFilter: 'all',
     availableRoles:   [],
-    searchQuery:      '',      // ← חדש
-    _searchTimer:     null,    // ← חדש
+    searchQuery:      '',     
+    _searchTimer:     null,   
+    _colFilterTimer:  null, 
 
     // ─── אתחול ───────────────────────────────────────────────────
     async init() {
@@ -697,7 +692,7 @@ const ChangesManager = {
 
             this.renderSummary(data.summary);
             this.renderFileInfo(data.sourceFile, data.fileDate);
-            this.renderRoleFilter();   // ← חדש
+            this.renderRoleFilter();  
             this.renderChanges();
 
         } catch (err) {
@@ -796,6 +791,12 @@ const ChangesManager = {
         let visibleCount = 0;
 
         rows.forEach(row => {
+            // ─── אם מוסתר בסינון עמודה - דלג ────────────────────
+            if (row.classList.contains('col-filter-hidden')) {
+                this.removeHighlights(row);
+                return;
+            }
+
             if (!query) {
                 row.classList.remove('search-hidden');
                 // ─── הסר הדגשות ──────────────────────────────────
@@ -1015,27 +1016,41 @@ const ChangesManager = {
             el.innerHTML = `
                 <div class="changes-empty">
                     <i class="fas fa-check-circle"
-                       style="color:var(--clr-new)"></i>
+                    style="color:var(--clr-new)"></i>
                     <p>אין שינויים להצגה</p>
                 </div>`;
             return;
         }
 
-        // ─── בנה טבלה ────────────────────────────────────────────
+        // ─── שמור סינוני עמודות קיימים לפני רינדור מחדש ──────────
+        const savedFilters = this.getColumnFilters();
+
         let html = `
+            <!-- ── פס סינון פעיל ── -->
+            <div class="active-filters-bar" id="activeFiltersBar"></div>
+
+            <!-- ── מונה שורות ── -->
+            <div class="filtered-count-bar hidden"
+                id="filteredCountBar">
+                <i class="fas fa-filter"
+                style="color:#6366f1;font-size:.7rem"></i>
+                מוצגות <strong id="filteredCountNum">0</strong>
+                מתוך <strong>${filtered.length}</strong> שורות
+            </div>
+
             <div class="changes-table-wrap">
                 <table class="changes-table" id="changesTable">
                     <thead>
+                        <!-- ── שורת כותרות ── -->
                         <tr>
                             <th style="width:36px">
                                 <input type="checkbox"
-                                       id="selectAllChanges"
-                                       title="בחר הכל"
-                                       onchange="ChangesManager
-                                           .toggleSelectAll(this.checked)">
+                                    id="selectAllChanges"
+                                    title="בחר הכל מהמסך"
+                                    onchange="ChangesManager
+                                        .toggleSelectAll(this.checked)">
                             </th>
                             <th>שם עובד</th>
-                            <th>מזהה עובד</th>
                             <th>סוג שינוי</th>
                             <th>שדה</th>
                             <th>ערך קודם</th>
@@ -1043,17 +1058,79 @@ const ChangesManager = {
                             <th>סטטוס</th>
                             <th>פעולות</th>
                         </tr>
+
+                        <!-- ── שורת סינון ── -->
+                        <tr class="filter-row">
+                            <th></th>
+                            <th>
+                                ${this.buildColFilter('name',
+                                    'חפש שם...', savedFilters)}
+                            </th>
+                            <th>
+                                ${this.buildColFilterSelect('type',
+                                    savedFilters, [
+                                        { val: '', lbl: 'הכל' },
+                                        { val: '0', lbl: 'עובד חדש' },
+                                        { val: '1', lbl: 'עובד שהוסר' },
+                                        { val: '2', lbl: 'שינוי שם' },
+                                        { val: '3', lbl: 'שינוי תפקיד' },
+                                        { val: '4', lbl: 'שינוי טלפון' },
+                                        { val: '5', lbl: 'שינוי שלוחה' },
+                                        { val: '6', lbl: 'שינוי פרטים' }
+                                    ])}
+                            </th>
+                            <th>
+                                ${this.buildColFilter('field',
+                                    'שדה...', savedFilters)}
+                            </th>
+                            <th>
+                                ${this.buildColFilter('oldVal',
+                                    'ערך קודם...', savedFilters)}
+                            </th>
+                            <th>
+                                ${this.buildColFilter('newVal',
+                                    'ערך חדש...', savedFilters)}
+                            </th>
+                            <th>
+                                ${this.buildColFilterSelect('status',
+                                    savedFilters, [
+                                        { val: '',  lbl: 'הכל'                  },
+                                        { val: '0', lbl: 'ממתין'                },
+                                        { val: '1', lbl: 'אושר'                 },
+                                        { val: '2', lbl: 'נדחה'                 },
+                                        { val: '3', lbl: 'נכשל'                 },
+                                        { val: '4', lbl: 'ממתין לאישור מחדש'   }
+                                    ])}
+                            </th>
+                            <th></th>
+                        </tr>
                     </thead>
                     <tbody>
         `;
 
         filtered.forEach(change => {
-            const isPending   = change.status === 0;
-            const isApproved  = change.status === 1;
-            const isRejected  = change.status === 2;
-
-            const typeBadge   = this.getTypeBadge(change.changeType);
+            const typeBadge  = this.getTypeBadge(change.changeType);
             const statusBadge = this.getStatusBadge(change.status);
+            const isPending   = change.status === 0;
+            const isRejected  = change.status === 2;
+            const canReApprove = change.canReApprove === true;
+
+            const staleIndicator = canReApprove ? `
+                <div class="stale-change-indicator">
+                    <i class="fas fa-clock"></i>
+                    עודכן לפני יותר מ-5 דקות
+                </div>` : '';
+
+            const processedInfo = !isPending && change.processedBy
+                ? `<div class="processed-info">
+                    <i class="fas fa-user" style="font-size:.65rem"></i>
+                    ${escHtml(change.processedBy)}
+                    ${change.processedAt
+                        ? ' · ' + formatDate(change.processedAt)
+                        : ''}
+                </div>
+                ${staleIndicator}`
+                : '';
 
             const oldVal = change.oldValue
                 ? `<span class="value-old">
@@ -1067,40 +1144,32 @@ const ChangesManager = {
                    </span>`
                 : `<span class="value-empty">ריק</span>`;
 
-            const processedInfo = !isPending && change.processedBy
-                ? `<div class="processed-info">
-                       <i class="fas fa-user" style="font-size:.65rem"></i>
-                       ${escHtml(change.processedBy)}
-                       ${change.processedAt
-                           ? ' · ' + formatDate(change.processedAt)
-                           : ''}
-                   </div>`
-                : '';
 
+            // ─── data attributes לסינון ───────────────────────────
             html += `
                 <tr data-change-id="${escHtml(change.changeId)}"
-                    data-status="${change.status}">
+                    data-status="${change.status}"
+                    data-name="${escHtml(change.employeeName).toLowerCase()}"
+                    data-type="${change.changeType}"
+                    data-field="${escHtml(change.fieldName || '').toLowerCase()}"
+                    data-oldval="${escHtml(change.oldValue || '').toLowerCase()}"
+                    data-newval="${escHtml(change.newValue || '').toLowerCase()}">
                     <td>
                         <input type="checkbox"
-                               class="change-checkbox"
-                               data-change-id="${escHtml(change.changeId)}"
-                               ${!isPending ? 'disabled' : ''}
-                               ${!isPending ? 'style="opacity:.3"' : ''}>
+                            class="change-checkbox"
+                            data-change-id="${escHtml(change.changeId)}"
+                            ${!isPending && !canReApprove ? 'disabled' : ''}
+                            ${!isPending && !canReApprove
+                                ? 'style="opacity:.3"' : ''}>
                     </td>
                     <td>
                         <div class="employee-name-cell">
                             ${escHtml(change.employeeName)}
                         </div>
                     </td>
-                    <td>
-                        <div class="employee-id-cell">
-                            ${change.employeeId
-                                ? escHtml(change.employeeId)
-                                : '<span style="color:rgba(255,255,255,.2)">—</span>'}
-                        </div>
-                    </td>
                     <td>${typeBadge}</td>
-                    <td style="color:rgba(255,255,255,.6);font-size:.82rem">
+                    <td style="color:rgba(255,255,255,.6);
+                            font-size:.82rem">
                         ${escHtml(change.fieldName)}
                     </td>
                     <td>${oldVal}</td>
@@ -1111,18 +1180,26 @@ const ChangesManager = {
                     </td>
                     <td>
                         <div class="row-actions">
+                            ${canReApprove ? `
+                            <button class="btn-reapprove-row"
+                                    data-id="${escHtml(change.changeId)}"
+                                    onclick="ChangesManager.approveOne(this.dataset.id)"
+                                    title="אשר מחדש - עברו יותר מ-5 דקות">
+                                <i class="fas fa-redo"></i>
+                                אשר מחדש
+                            </button>` : `
                             <button class="btn-approve-row"
-                                    onclick="ChangesManager.approveOne(
-                                        '${escHtml(change.changeId)}')"
-                                    ${!isPending ? 'disabled' : ''}
+                                    data-id="${escHtml(change.changeId)}"
+                                    onclick="ChangesManager.approveOne(this.dataset.id)"
+                                    ${!isPending && !isRejected ? 'disabled' : ''}
                                     title="אשר שינוי">
                                 <i class="fas fa-check"></i>
                                 אשר
-                            </button>
+                            </button>`}
                             <button class="btn-reject-row"
-                                    onclick="ChangesManager.rejectOne(
-                                        '${escHtml(change.changeId)}')"
-                                    ${!isPending ? 'disabled' : ''}
+                                    data-id="${escHtml(change.changeId)}"
+                                    onclick="ChangesManager.rejectOne(this.dataset.id)"
+                                    ${!isPending && !canReApprove ? 'disabled' : ''}
                                     title="דחה שינוי">
                                 <i class="fas fa-times"></i>
                                 דחה
@@ -1133,13 +1210,295 @@ const ChangesManager = {
             `;
         });
 
-        html += `
-                    </tbody>
-                </table>
-            </div>
-        `;
-
+        html += `</tbody></table></div>`;
         el.innerHTML = html;
+
+        // ─── שחזר סינונים ────────────────────────────────────────
+        this.restoreColumnFilters(savedFilters);
+
+        // ─── הפעל סינון אם יש ────────────────────────────────────
+        if (Object.values(savedFilters).some(v => v !== '')) {
+            this.applyColumnFilters();
+        }
+
+        // ─── שמור חיפוש טקסט ─────────────────────────────────────
+        if (this.searchQuery) {
+            this.applySearch();
+        }
+    },
+
+    // ─── בנה input סינון לעמודה ──────────────────────────────────
+    buildColFilter(key, placeholder, savedFilters) {
+        const val    = savedFilters[key] || '';
+        const hasVal = val !== '';
+        return `
+            <div class="col-filter-wrap">
+                <input type="text"
+                    class="col-filter-input ${hasVal ? 'active' : ''}"
+                    data-col="${key}"
+                    placeholder="${placeholder}"
+                    value="${escHtml(val)}"
+                    oninput="ChangesManager.onColFilterInput(
+                        this, '${key}')"
+                    autocomplete="off">
+                <i class="fas fa-filter col-filter-icon"></i>
+                <button class="col-filter-clear ${hasVal ? 'visible' : ''}"
+                        data-col="${key}"
+                        onclick="ChangesManager.clearColFilter('${key}')"
+                        title="נקה סינון">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>`;
+    },
+
+    // ─── בנה select סינון לעמודה ─────────────────────────────────
+    buildColFilterSelect(key, savedFilters, options) {
+        const val    = savedFilters[key] || '';
+        let optHtml  = options.map(o =>
+            `<option value="${escHtml(o.val)}"
+                    ${val === o.val ? 'selected' : ''}>
+                ${escHtml(o.lbl)}
+            </option>`
+        ).join('');
+
+        return `
+            <div class="col-filter-wrap">
+                <select class="col-filter-input ${val ? 'active' : ''}"
+                        data-col="${key}"
+                        onchange="ChangesManager.onColFilterInput(
+                            this, '${key}')">
+                    ${optHtml}
+                </select>
+                <i class="fas fa-filter col-filter-icon"></i>
+            </div>`;
+    },
+
+    // ─── שמור ערכי סינון נוכחיים ─────────────────────────────────
+    getColumnFilters() {
+        const filters = {};
+        document.querySelectorAll('.col-filter-input[data-col]')
+            .forEach(inp => {
+                filters[inp.dataset.col] = inp.value || '';
+            });
+        return filters;
+    },
+
+    // ─── שחזר סינונים אחרי רינדור ────────────────────────────────
+    restoreColumnFilters(savedFilters) {
+        Object.entries(savedFilters).forEach(([key, val]) => {
+            if (!val) return;
+
+            const inp = document.querySelector(
+                `.col-filter-input[data-col="${key}"]`);
+            if (inp) {
+                inp.value = val;
+                inp.classList.toggle('active', val !== '');
+            }
+
+            const clearBtn = document.querySelector(
+                `.col-filter-clear[data-col="${key}"]`);
+            if (clearBtn) {
+                clearBtn.classList.toggle('visible', val !== '');
+            }
+        });
+    },
+
+    // ─── אירוע שינוי סינון עמודה ─────────────────────────────────
+    onColFilterInput(el, key) {
+        const val = el.value;
+
+        el.classList.toggle('active', val !== '');
+
+        const clearBtn = document.querySelector(
+            `.col-filter-clear[data-col="${key}"]`);
+        if (clearBtn) {
+            clearBtn.classList.toggle('visible', val !== '');
+        }
+
+        clearTimeout(this._colFilterTimer);
+        this._colFilterTimer = setTimeout(() => {
+            this.applyColumnFilters();
+        }, 180);
+    },
+
+    // ─── נקה סינון עמודה ─────────────────────────────────────────
+    clearColFilter(key) {
+        const inp = document.querySelector(
+            `.col-filter-input[data-col="${key}"]`);
+        if (inp) {
+            inp.value = '';
+            inp.classList.remove('active');
+        }
+
+        const clearBtn = document.querySelector(
+            `.col-filter-clear[data-col="${key}"]`);
+        if (clearBtn) clearBtn.classList.remove('visible');
+
+        this.applyColumnFilters();
+    },
+
+    // ─── נקה את כל הסינונים ──────────────────────────────────────
+    clearAllColFilters() {
+        document.querySelectorAll('.col-filter-input[data-col]')
+            .forEach(inp => {
+                inp.value = '';
+                inp.classList.remove('active');
+            });
+
+        document.querySelectorAll('.col-filter-clear')
+            .forEach(btn => btn.classList.remove('visible'));
+
+        this.applyColumnFilters();
+    },
+
+    // ─── החל סינוני עמודות ───────────────────────────────────────
+    applyColumnFilters() {
+        const filters = {};
+        document.querySelectorAll('.col-filter-input[data-col]')
+            .forEach(inp => {
+                const v = inp.value.trim().toLowerCase();
+                if (v) filters[inp.dataset.col] = v;
+            });
+
+        const rows = document.querySelectorAll(
+            '#changesTable tbody tr[data-change-id]');
+
+        let visibleCount = 0;
+
+        rows.forEach(row => {
+            let show = true;
+
+            if (filters.name &&
+                !row.dataset.name?.includes(filters.name))
+                show = false;
+
+            if (show && filters.type &&
+                row.dataset.type !== filters.type)
+                show = false;
+
+            if (show && filters.field &&
+                !row.dataset.field?.includes(filters.field))
+                show = false;
+
+            if (show && filters.oldVal &&
+                !row.dataset.oldval?.includes(filters.oldVal))
+                show = false;
+
+            if (show && filters.newVal &&
+                !row.dataset.newval?.includes(filters.newVal))
+                show = false;
+
+            if (show && filters.status &&
+                row.dataset.status !== filters.status)
+                show = false;
+
+            row.classList.toggle('col-filter-hidden', !show);
+            if (show) visibleCount++;
+        });
+
+        this.updateFilteredCount(visibleCount, rows.length, filters);
+        this.updateActiveFiltersBar(filters);
+        this.syncSelectAll();
+    },
+
+    // ─── עדכן מונה שורות מסוננות ─────────────────────────────────
+    updateFilteredCount(visible, total, filters) {
+        const bar   = document.getElementById('filteredCountBar');
+        const numEl = document.getElementById('filteredCountNum');
+        if (!bar) return;
+
+        const hasFilters = Object.keys(filters).length > 0;
+        bar.classList.toggle('hidden', !hasFilters);
+        if (numEl) numEl.textContent = visible;
+    },
+
+    // ─── עדכן פס סינון פעיל ──────────────────────────────────────
+    updateActiveFiltersBar(filters) {
+        const bar = document.getElementById('activeFiltersBar');
+        if (!bar) return;
+
+        const hasFilters = Object.keys(filters).length > 0;
+        bar.classList.toggle('visible', hasFilters);
+
+        if (!hasFilters) {
+            bar.innerHTML = '';
+            return;
+        }
+
+        const colLabels = {
+            name:   'שם עובד',
+            type:   'סוג שינוי',
+            field:  'שדה',
+            oldVal: 'ערך קודם',
+            newVal: 'ערך חדש',
+            status: 'סטטוס'
+        };
+
+        let html = `
+            <span class="active-filters-label">
+                <i class="fas fa-filter"></i>
+                סינון פעיל:
+            </span>`;
+
+        Object.entries(filters).forEach(([key, val]) => {
+            html += `
+                <span class="active-filter-chip">
+                    ${colLabels[key] ?? key}: ${escHtml(val)}
+                    <button onclick="ChangesManager
+                                .clearColFilter('${key}')"
+                            title="הסר סינון">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </span>`;
+        });
+
+        html += `
+            <button class="btn-clear-all-filters"
+                    onclick="ChangesManager.clearAllColFilters()">
+                <i class="fas fa-times"></i>
+                נקה הכל
+            </button>`;
+
+        bar.innerHTML = html;
+    },
+
+    // ─── סנכרן מצב "בחר הכל" לפי מה שגלוי ──────────────────────
+    syncSelectAll() {
+        const selectAll = document.getElementById('selectAllChanges');
+        if (!selectAll) return;
+
+        const visible = this.getVisibleCheckboxes();
+        const checked = visible.filter(cb => cb.checked);
+
+        if (visible.length === 0) {
+            selectAll.checked       = false;
+            selectAll.indeterminate = false;
+            return;
+        }
+
+        if (checked.length === 0) {
+            selectAll.checked       = false;
+            selectAll.indeterminate = false;
+        } else if (checked.length === visible.length) {
+            selectAll.checked       = true;
+            selectAll.indeterminate = false;
+        } else {
+            selectAll.checked       = false;
+            selectAll.indeterminate = true;  /* ← חלקי */
+        }
+    },
+
+    // ─── קבל checkboxes גלויים בלבד ──────────────────────────────
+    getVisibleCheckboxes() {
+        return [...document.querySelectorAll(
+            '#changesTable tbody tr[data-change-id]'
+        )]
+        .filter(row =>
+            !row.classList.contains('col-filter-hidden') &&
+            !row.classList.contains('search-hidden')
+        )
+        .map(row => row.querySelector('.change-checkbox'))
+        .filter(cb => cb && !cb.disabled);
     },
 
     // ─── קבל שינויים מסוננים ─────────────────────────────────────
@@ -1158,6 +1517,8 @@ const ChangesManager = {
                 return this.allChanges.filter(c => c.status === 1);
             case 'rejected':
                 return this.allChanges.filter(c => c.status === 2);
+            case 'reapprove':                                         
+                return this.allChanges.filter(c => c.status === 4);  
             default:
                 return this.allChanges;
         }
@@ -1166,14 +1527,15 @@ const ChangesManager = {
     // ─── עדכן מספרים בטאבים ──────────────────────────────────────
     updateTabCounts() {
         const counts = {
-            all:      this.allChanges.length,
-            new:      this.allChanges.filter(c => c.changeType === 0).length,
-            removed:  this.allChanges.filter(c => c.changeType === 1).length,
-            changed:  this.allChanges.filter(c =>
-                          c.changeType !== 0 && c.changeType !== 1).length,
-            pending:  this.allChanges.filter(c => c.status === 0).length,
-            approved: this.allChanges.filter(c => c.status === 1).length,
-            rejected: this.allChanges.filter(c => c.status === 2).length
+            all:       this.allChanges.length,
+            new:       this.allChanges.filter(c => c.changeType === 0).length,
+            removed:   this.allChanges.filter(c => c.changeType === 1).length,
+            changed:   this.allChanges.filter(c =>
+                        c.changeType !== 0 && c.changeType !== 1).length,
+            pending:   this.allChanges.filter(c => c.status === 0).length,
+            approved:  this.allChanges.filter(c => c.status === 1).length,
+            rejected:  this.allChanges.filter(c => c.status === 2).length,
+            reapprove: this.allChanges.filter(c => c.status === 4).length 
         };
 
         Object.entries(counts).forEach(([key, val]) => {
@@ -1205,10 +1567,11 @@ const ChangesManager = {
     // ─── תגית סטטוס ──────────────────────────────────────────────
     getStatusBadge(status) {
         const statuses = {
-            0: { cls: 'pending',  icon: 'fa-clock',        label: 'ממתין לאישור' },
-            1: { cls: 'approved', icon: 'fa-check-circle', label: 'אושר'         },
-            2: { cls: 'rejected', icon: 'fa-times-circle', label: 'נדחה'         },
-            3: { cls: 'failed',   icon: 'fa-exclamation',  label: 'נכשל'         }
+            0: { cls: 'pending',   icon: 'fa-clock',              label: 'ממתין לאישור'       },
+            1: { cls: 'approved',  icon: 'fa-check-circle',       label: 'אושר'               },
+            2: { cls: 'rejected',  icon: 'fa-times-circle',       label: 'נדחה'               },
+            3: { cls: 'failed',    icon: 'fa-exclamation',        label: 'נכשל'               },
+            4: { cls: 'reapprove', icon: 'fa-redo',               label: 'ממתין לאישור מחדש'  } 
         };
 
         const s = statuses[status] ?? statuses[0];
@@ -1385,19 +1748,29 @@ const ChangesManager = {
 
     // ─── קבל שינויים נבחרים ──────────────────────────────────────
     getSelectedChanges() {
-        const checked = document.querySelectorAll(
-            '.change-checkbox:checked');
-        const ids = [...checked].map(
-            cb => cb.dataset.changeId);
+        const visibleRows = [...document.querySelectorAll(
+            '#changesTable tbody tr[data-change-id]'
+        )].filter(row =>
+            !row.classList.contains('col-filter-hidden') &&
+            !row.classList.contains('search-hidden')
+        );
+
+        const checkedIds = visibleRows
+            .map(row => row.querySelector('.change-checkbox'))
+            .filter(cb => cb && cb.checked && !cb.disabled)
+            .map(cb => cb.dataset.changeId);
+
         return this.allChanges.filter(
-            c => ids.includes(c.changeId) && c.status === 0);
+            c => checkedIds.includes(c.changeId) &&
+                (c.status === 0 || c.status === 4)
+        );
     },
 
     // ─── בחר/בטל הכל ─────────────────────────────────────────────
     toggleSelectAll(checked) {
-        document.querySelectorAll(
-            '.change-checkbox:not(:disabled)'
-        ).forEach(cb => cb.checked = checked);
+        this.getVisibleCheckboxes()
+            .forEach(cb => cb.checked = checked);
+        this.syncSelectAll();
     },
 
     // ─── החלף פילטר ──────────────────────────────────────────────
@@ -1782,6 +2155,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     <i class="fas fa-clock"></i>
                     ממתינים לאישור
                     <span class="tab-count" id="count-pending">0</span>
+                </button>
+
+                <button class="filter-tab"
+                        data-filter="reapprove"
+                        onclick="ChangesManager.setFilter('reapprove')"
+                        style="color:#fbbf24">
+                    <i class="fas fa-redo"></i>
+                    ממתינים לאישור מחדש
+                    <span class="tab-count" id="count-reapprove">0</span>
                 </button>
 
                 <button class="filter-tab"

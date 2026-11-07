@@ -14,21 +14,31 @@ using NocPortal.Services;
 
 public class MessagesController : Controller
 {
-    private readonly string _baseFilesPath;
-    private readonly string _messagesFilePath;
-    private readonly string _uploadsPath;
-    private readonly string _emailCachePath;
-    private readonly string _dailyReportsPath;
-    private readonly string _jobsContactsPath;
-    private readonly string _permanentAccessListPath;
+    private readonly string _messagesFilePath = PortalPaths.UnderFiles(@"messages.txt");
+    private readonly string _uploadsPath = PortalPaths.UnderFiles(@"messagesUploads");
+    private readonly string _emailCachePath = PortalPaths.UnderFiles(@"emailCache"); // הוסף שדה חדש לשמירת נתיב תיקיית המטמון
+    private readonly string _dailyReportsPath = PortalPaths.UnderFiles(@"Control-M Files\DAILY_REPORTS");
+    private readonly string _jobsContactsPath = PortalPaths.UnderFiles(@"Control-M Files\JOBS_CONTACTS");
+    private readonly string _permanentAccessListPath = PortalPaths.UnderFiles(@"permanent_access_list.json");
 
     // הוסף שדה חדש לשמירת נתיב קובץ מיפוי מיילים
-    private readonly string _emailMappingFilePath;
+    private readonly string _emailMappingFilePath = PortalPaths.UnderFiles(@"email_mapping.csv");
     
     private static DateTime _lastCacheCleanupTime = DateTime.MinValue;
     private static DateTime _lastFullCacheCleanupTime = DateTime.MinValue;
     private static readonly TimeSpan _fullCacheCleanupInterval = TimeSpan.FromDays(2); // אחת ליומיים
     private static readonly TimeSpan _cacheFileMaxAge = TimeSpan.FromDays(7); // שמירת קבצים עד 7 ימים
+
+    private readonly string _emailBlockedDaysPath =
+        PortalPaths.UnderFiles(@"email_blocked_days.json");
+
+    private readonly string _uc4EmailRecipientsPath = 
+        PortalPaths.UnderFiles(@"uc4_email_recipients.json");
+
+    private readonly string _entryPermitEmailRecipientsPath =
+        PortalPaths.UnderFiles(@"entry_permit_email_recipients.json");
+
+    private static readonly object _blockedDaysLock = new object();
 
     // ===== שדות לטיימר יומי =====
     private static System.Threading.Timer _dailyPermitEmailTimer = null;
@@ -38,19 +48,28 @@ public class MessagesController : Controller
     private HashSet<int> _dateStyleIndices = null;
     private static AuditLogService _auditLog;
 
-    public MessagesController(AuditLogService auditLog, IWebHostEnvironment env)
+    private readonly string _scheduledEmailsPath = 
+        PortalPaths.UnderFiles(@"scheduled_emails.json");
+
+    private static readonly object _scheduledEmailsLock = new object();
+
+    private static bool _restoreScheduledEmailsDone = false;
+    private static readonly object _restoreLock = new object();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary
+        <string, byte> _executingScheduledIds = new();
+
+    // זיכרון זמני - Timer objects (לא ניתן לשמור לקובץ)
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary
+        <string, System.Threading.Timer> _activeTimers = new();
+
+    public MessagesController(AuditLogService auditLog)
     {
         _auditLog = auditLog;
-        _baseFilesPath = Path.Combine(env.WebRootPath, "assets", "files");
-        _messagesFilePath = Path.Combine(_baseFilesPath, "messages.txt");
-        _uploadsPath = Path.Combine(_baseFilesPath, "messagesUploads");
-        _emailCachePath = Path.Combine(_baseFilesPath, "emailCache");
-        _dailyReportsPath = Path.Combine(_baseFilesPath, "Control-M Files", "DAILY_REPORTS");
-        _jobsContactsPath = Path.Combine(_baseFilesPath, "Control-M Files", "JOBS_CONTACTS");
-        _permanentAccessListPath = Path.Combine(_baseFilesPath, "permanent_access_list.json");
-        _emailMappingFilePath = Path.Combine(_baseFilesPath, "email_mapping.csv");
         // הפעל טיימר יומי בפעם הראשונה שהקונטרולר נוצר
         EnsureDailyPermitEmailTimerStarted();
+        
+        // שחזר תזמונים אחרי ריסטארט
+        Task.Run(() => RestoreScheduledEmailsAfterRestart());
     }
 
     [HttpGet]
@@ -407,7 +426,7 @@ public class MessagesController : Controller
             else
             {
                 // אם זה נתיב יחסי - בנה נתיב מוחלט
-                fullPath = Path.Combine(_baseFilesPath, decodedPath);
+                fullPath = Path.Combine(PortalPaths.FilesRoot, decodedPath);
             }
 
             // נרמל את הנתיב (תקן slashes)
@@ -426,7 +445,7 @@ public class MessagesController : Controller
                     }
                     else
                     {
-                        alternativePath = Path.Combine(_baseFilesPath, filePath);
+                        alternativePath = Path.Combine(PortalPaths.FilesRoot, filePath);
                     }
                     
                     alternativePath = Path.GetFullPath(alternativePath);
@@ -1650,7 +1669,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(_baseFilesPath, filePath);
+                fullPath = Path.Combine(PortalPaths.FilesRoot, filePath);
             }
 
             // נרמל את הנתיב
@@ -1751,7 +1770,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(_baseFilesPath, filePath);
+                fullPath = Path.Combine(PortalPaths.FilesRoot, filePath);
             }
 
             // נרמל את הנתיב
@@ -1785,7 +1804,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(_baseFilesPath, filePath);
+                fullPath = Path.Combine(PortalPaths.FilesRoot, filePath);
             }
 
             // נרמל את הנתיב
@@ -1842,7 +1861,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(_baseFilesPath, filePath);
+                fullPath = Path.Combine(PortalPaths.FilesRoot, filePath);
             }
 
             // נרמל את הנתיב
@@ -1945,7 +1964,7 @@ public class MessagesController : Controller
             return filePath;
             
         // Otherwise, combine with base path
-        return Path.Combine(_baseFilesPath, filePath);
+        return Path.Combine(PortalPaths.FilesRoot, filePath);
     }
 
     private string ConvertWordToPdf(string wordFilePath)
@@ -2100,7 +2119,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(_baseFilesPath, filePath);
+                fullPath = Path.Combine(PortalPaths.FilesRoot, filePath);
             }
 
             // נרמל את הנתיב
@@ -2370,7 +2389,7 @@ public class MessagesController : Controller
                         }
                         else
                         {
-                            fullPath = Path.Combine(_baseFilesPath, emailPath);
+                            fullPath = Path.Combine(PortalPaths.FilesRoot, emailPath);
                         }
                         
                         // נרמל את הנתיב
@@ -2498,7 +2517,7 @@ public class MessagesController : Controller
             else
             {
                 // אם זה נתיב יחסי - בנה נתיב מוחלט
-                fullPath = Path.Combine(_baseFilesPath, decodedPath);
+                fullPath = Path.Combine(PortalPaths.FilesRoot, decodedPath);
             }
 
             // נרמל את הנתיב (תקן slashes)
@@ -2517,7 +2536,7 @@ public class MessagesController : Controller
                     }
                     else
                     {
-                        alternativePath = Path.Combine(_baseFilesPath, filePath);
+                        alternativePath = Path.Combine(PortalPaths.FilesRoot, filePath);
                     }
                     
                     alternativePath = Path.GetFullPath(alternativePath);
@@ -2689,7 +2708,7 @@ public class MessagesController : Controller
             }
             else
             {
-                fullPath = Path.Combine(_baseFilesPath, emailPath);
+                fullPath = Path.Combine(PortalPaths.FilesRoot, emailPath);
             }
 
             // נרמל את הנתיב
@@ -3448,7 +3467,7 @@ public class MessagesController : Controller
                     // אם יש תאריך יעד, בדוק שהוא היום
                     if (!string.IsNullOrEmpty(dueDate))
                     {
-                        DateTime targetDate;
+                        DateTime targetDate = DateTime.MinValue; // ← הוסף אתחול ברירת מחדל
                         
                         // טיפול בפורמטים שונים של תאריך
                         if (dueDate.Contains('/'))
@@ -3458,27 +3477,29 @@ public class MessagesController : Controller
                             if (dateParts.Length == 3)
                             {
                                 targetDate = new DateTime(
-                                    int.Parse(dateParts[2]), 
-                                    int.Parse(dateParts[1]), 
+                                    int.Parse(dateParts[2]),
+                                    int.Parse(dateParts[1]),
                                     int.Parse(dateParts[0])
                                 );
                             }
-                            else
+                            else continue;
+                        }
+                        else if (dueDate.Contains('-'))
+                        {
+                            // YYYY-MM-DD - פרסור ידני למניעת UTC
+                            var parts = dueDate.Split('-');
+                            if (parts.Length == 3 &&
+                                int.TryParse(parts[0], out int y) &&
+                                int.TryParse(parts[1], out int m) &&
+                                int.TryParse(parts[2], out int d))
                             {
-                                continue; // פורמט לא תקין
+                                targetDate = new DateTime(y, m, d);  // ← Local, לא UTC
                             }
+                            else continue;
                         }
-                        else
-                        {
-                            // פורמט YYYY-MM-DD
-                            targetDate = DateTime.Parse(dueDate);
-                        }
-                        
-                        // השווה רק את התאריך (ללא שעה)
-                        if (targetDate.Date != now.Date)
-                        {
-                            continue; // דלג על הודעות שתאריך היעד שלהן אינו היום
-                        }
+
+                        // השוואה בטוחה - ללא צורך ב-Math.Round כי שניהם Local
+                        if (targetDate.Date != now.Date) continue;
                     }
 
                     // בדוק אם יש ג'ובים
@@ -3644,6 +3665,218 @@ public class MessagesController : Controller
     }
 
     [HttpGet]
+    public IActionResult GetUC4EmailRecipients()
+    {
+        try
+        {
+            UC4EmailRecipientsConfig config;
+            
+            if (System.IO.File.Exists(_uc4EmailRecipientsPath))
+            {
+                var json = System.IO.File.ReadAllText(
+                    _uc4EmailRecipientsPath, Encoding.UTF8);
+                config = JsonSerializer.Deserialize<UC4EmailRecipientsConfig>(json)
+                    ?? new UC4EmailRecipientsConfig();
+            }
+            else
+            {
+                // ברירת מחדל - צור קובץ
+                config = new UC4EmailRecipientsConfig();
+                SaveUC4EmailRecipientsToFile(config);
+            }
+            
+            return Json(new { success = true, config = config });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    [HttpGet]
+    public IActionResult GetEntryPermitEmailRecipients()
+    {
+        try
+        {
+            EntryPermitEmailRecipientsConfig config;
+
+            if (System.IO.File.Exists(_entryPermitEmailRecipientsPath))
+            {
+                var json = System.IO.File.ReadAllText(
+                    _entryPermitEmailRecipientsPath,
+                    Encoding.UTF8
+                );
+
+                config = JsonSerializer.Deserialize<EntryPermitEmailRecipientsConfig>(json)
+                    ?? new EntryPermitEmailRecipientsConfig();
+            }
+            else
+            {
+                config = new EntryPermitEmailRecipientsConfig();
+                SaveEntryPermitEmailRecipientsToFile(config);
+            }
+
+            return Json(new
+            {
+                success = true,
+                config
+            });
+        }
+        catch (Exception ex)
+        {
+            return Json(new
+            {
+                success = false,
+                error = ex.Message
+            });
+        }
+    }
+
+    [HttpPost]
+    public IActionResult SaveEntryPermitEmailRecipients(
+        [FromBody] EntryPermitEmailRecipientsConfig config)
+    {
+        try
+        {
+            if (config?.Sites == null || !config.Sites.Any())
+            {
+                return Json(new
+                {
+                    success = false,
+                    error = "לא הוגדרו אתרים"
+                });
+            }
+
+            foreach (var site in config.Sites)
+            {
+                var siteConfig = site.Value;
+
+                if (siteConfig == null)
+                {
+                    return Json(new
+                    {
+                        success = false,
+                        error = $"הגדרות אתר {site.Key} אינן תקינות"
+                    });
+                }
+
+                var toAddresses = SplitEmailAddresses(siteConfig.To);
+                var ccAddresses = SplitEmailAddresses(siteConfig.Cc);
+
+                if (!toAddresses.Any())
+                {
+                    return Json(new
+                    {
+                        success = false,
+                        error = $"חובה להגדיר לפחות נמען TO אחד עבור אתר {site.Key}"
+                    });
+                }
+
+                siteConfig.To = string.Join(";", toAddresses);
+                siteConfig.Cc = string.Join(";", ccAddresses);
+            }
+
+            SaveEntryPermitEmailRecipientsToFile(config);
+
+            return Json(new { success = true });
+        }
+        catch (Exception ex)
+        {
+            return Json(new
+            {
+                success = false,
+                error = ex.Message
+            });
+        }
+    }
+
+    private static List<string> SplitEmailAddresses(string addresses)
+    {
+        if (string.IsNullOrWhiteSpace(addresses))
+            return new List<string>();
+
+        return addresses
+            .Split(';', StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => x.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x) && x.Contains('@'))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private void SaveEntryPermitEmailRecipientsToFile(
+        EntryPermitEmailRecipientsConfig config)
+    {
+        var directory = Path.GetDirectoryName(
+            _entryPermitEmailRecipientsPath
+        );
+
+        if (!Directory.Exists(directory))
+            Directory.CreateDirectory(directory);
+
+        var json = JsonSerializer.Serialize(
+            config,
+            new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+
+        System.IO.File.WriteAllText(
+            _entryPermitEmailRecipientsPath,
+            json,
+            Encoding.UTF8
+        );
+    }
+
+    [HttpPost]
+    public IActionResult SaveUC4EmailRecipients(
+        [FromBody] UC4EmailRecipientsConfig config)
+    {
+        try
+        {
+            if (config == null)
+                return Json(new { success = false, error = "נתונים חסרים" });
+
+            // ולידציה בסיסית
+            config.ToAddresses = (config.ToAddresses ?? new List<string>())
+                .Where(e => !string.IsNullOrWhiteSpace(e) && e.Contains('@'))
+                .Select(e => e.Trim())
+                .Distinct()
+                .ToList();
+                
+            config.CcAddresses = (config.CcAddresses ?? new List<string>())
+                .Where(e => !string.IsNullOrWhiteSpace(e) && e.Contains('@'))
+                .Select(e => e.Trim())
+                .Distinct()
+                .ToList();
+
+            SaveUC4EmailRecipientsToFile(config);
+            
+            Console.WriteLine(
+                $"[UC4Recipients] Saved | " +
+                $"TO: {config.ToAddresses.Count} | " +
+                $"CC: {config.CcAddresses.Count}");
+            
+            return Json(new { success = true });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    private void SaveUC4EmailRecipientsToFile(UC4EmailRecipientsConfig config)
+    {
+        var dir = Path.GetDirectoryName(_uc4EmailRecipientsPath);
+        if (!Directory.Exists(dir))
+            Directory.CreateDirectory(dir);
+            
+        var json = JsonSerializer.Serialize(
+            config, 
+            new JsonSerializerOptions { WriteIndented = true });
+        System.IO.File.WriteAllText(_uc4EmailRecipientsPath, json, Encoding.UTF8);
+    }
+
+    [HttpGet]
     public IActionResult GetPermanentAccessList()
     {
         try
@@ -3791,43 +4024,495 @@ public class MessagesController : Controller
         }
     }
 
-    [HttpPost]
+   [HttpPost]
     public async Task<IActionResult> SendEntryPermitEmail(
         [FromBody] EntryPermitEmailRequest request)
     {
         try
         {
             if (request == null ||
-                string.IsNullOrEmpty(request.Subject) ||
-                request.ToAddresses == null ||
-                !request.ToAddresses.Any())
+                string.IsNullOrWhiteSpace(request.Subject) ||
+                request.SiteKeys == null ||
+                !request.SiteKeys.Any())
             {
-                return Json(new { success = false, error = "נתונים חסרים" });
+                return Json(new
+                {
+                    success = false,
+                    error = "נתונים חסרים"
+                });
             }
 
-            // *** שימוש בפונקציה הסטטית המשותפת ***
+            var config = LoadEntryPermitEmailRecipientsStatic();
+
+            var selectedSites = request.SiteKeys
+                .Where(site => !string.IsNullOrWhiteSpace(site))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var toAddresses = selectedSites
+                .Where(site =>
+                    config.Sites.TryGetValue(site, out var siteConfig) &&
+                    siteConfig != null)
+                .SelectMany(site =>
+                    SplitEmailAddresses(config.Sites[site].To))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var ccAddresses = selectedSites
+                .Where(site =>
+                    config.Sites.TryGetValue(site, out var siteConfig) &&
+                    siteConfig != null)
+                .SelectMany(site =>
+                    SplitEmailAddresses(config.Sites[site].Cc))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (!toAddresses.Any())
+            {
+                return Json(new
+                {
+                    success = false,
+                    error = "לא נמצאו נמענים עבור האתרים שנבחרו"
+                });
+            }
+
             await Task.Run(() => SendPermitEmailSmtp(
-                subject:     request.Subject,
-                body:        request.Body,
-                toAddresses: request.ToAddresses,
-                ccAddresses: request.CcAddresses ?? new List<string>()
+                subject: request.Subject,
+                body: request.Body,
+                toAddresses: toAddresses,
+                ccAddresses: ccAddresses
             ));
 
             Console.WriteLine(
-                $"Entry permit email sent to: " +
-                $"{string.Join(", ", request.ToAddresses)}");
+                $"Entry permit email sent | " +
+                $"Sites: {string.Join(", ", selectedSites)} | " +
+                $"TO: {string.Join(", ", toAddresses)} | " +
+                $"CC: {string.Join(", ", ccAddresses)}"
+            );
 
-            return Json(new { success = true });
+            return Json(new
+            {
+                success = true,
+                toAddresses = toAddresses,
+                ccAddresses = ccAddresses
+            });
         }
         catch (System.Net.Mail.SmtpException ex)
         {
             Console.WriteLine($"SMTP Error: {ex.Message}");
-            return Json(new { success = false, error = $"שגיאת שרת מייל: {ex.Message}" });
+
+            return Json(new
+            {
+                success = false,
+                error = $"שגיאת שרת מייל: {ex.Message}"
+            });
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error sending entry permit email: {ex.Message}");
+            Console.WriteLine(
+                $"Error sending entry permit email: {ex.Message}"
+            );
+
+            return Json(new
+            {
+                success = false,
+                error = ex.Message
+            });
+        }
+    }
+
+    [HttpPost]
+    public IActionResult ScheduleEntryPermitEmail(
+        [FromBody] ScheduledPermitEmailRequest request)
+    {
+        try
+        {
+            if (request == null ||
+                string.IsNullOrEmpty(request.Subject) ||
+                request.SiteKeys == null ||
+                request.ScheduledTime == null)
+            {
+                return Json(new { success = false, error = "נתונים חסרים" });
+            }
+
+            var config = LoadEntryPermitEmailRecipientsStatic();
+            var selectedSites = request.SiteKeys
+                .Where(site => !string.IsNullOrWhiteSpace(site))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var toAddresses = selectedSites
+                .Where(site =>
+                    config.Sites.TryGetValue(site, out var siteConfig) &&
+                    siteConfig != null)
+                .SelectMany(site =>
+                    SplitEmailAddresses(config.Sites[site].To))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var ccAddresses = selectedSites
+                .Where(site =>
+                    config.Sites.TryGetValue(site, out var siteConfig) &&
+                    siteConfig != null)
+                .SelectMany(site =>
+                    SplitEmailAddresses(config.Sites[site].Cc))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var now = DateTime.Now;  // ← Local time
+
+            // ─── תיקון: ודא שה-ScheduledTime הוא Local, לא UTC ──────
+            var scheduledTime = request.ScheduledTime.Value;
+            
+            // אם הגיע כ-UTC (Kind = Utc), המר ל-Local
+            if (scheduledTime.Kind == DateTimeKind.Utc)
+            {
+                scheduledTime = scheduledTime.ToLocalTime();
+                Console.WriteLine(
+                    $"[SchedulePermit] Received UTC time, converted to Local: {scheduledTime}");
+            }
+            // אם Kind = Unspecified (כמו מ-ISO ללא Z), נסה להתייחס כ-Local
+            else if (scheduledTime.Kind == DateTimeKind.Unspecified)
+            {
+                scheduledTime = DateTime.SpecifyKind(scheduledTime, DateTimeKind.Local);
+            }
+
+            Console.WriteLine($"[SchedulePermit] Scheduling for Local time: {scheduledTime} | Now: {now}");
+
+            // אם הזמן כבר עבר - שלח מיידית
+            if (scheduledTime <= now)
+            {
+                try
+                {
+                    SendPermitEmailSmtp(
+                        subject:     request.Subject,
+                        body:        request.Body,
+                        toAddresses: toAddresses,
+                        ccAddresses: ccAddresses ?? new List<string>()
+                    );
+                    return Json(new {
+                        success = true,
+                        sent    = true,
+                        message = "המייל נשלח מיידית (הזמן כבר עבר)"
+                    });
+                }
+                catch (Exception ex)
+                {
+                    return Json(new { success = false, error = ex.Message });
+                }
+            }
+
+            var scheduledId = Guid.NewGuid().ToString();
+            var delay       = scheduledTime - now;
+
+            // ── שמור לקובץ JSON ──────────────────────────────────────
+            var entry = new ScheduledEmailEntry
+            {
+                Id            = scheduledId,
+                ScheduledTime = scheduledTime,  // שמור כ-Local
+                Subject       = request.Subject,
+                Body          = request.Body,
+                ToAddresses   = toAddresses,
+                CcAddresses   = ccAddresses ?? new List<string>()
+            };
+
+            SaveScheduledEmailToFile(entry);
+
+            if (_activeTimers.TryRemove(scheduledId, out var oldTimer))
+            {
+                oldTimer?.Dispose();
+            }
+
+            // ── הפעל Timer בזיכרון ───────────────────────────────────
+            var timer = new System.Threading.Timer(
+                callback: _ => ExecuteScheduledEmail(scheduledId),
+                state:    null,
+                dueTime:  delay,
+                period:   System.Threading.Timeout.InfiniteTimeSpan
+            );
+
+            _activeTimers[scheduledId] = timer;
+
+            Console.WriteLine(
+                $"[ScheduledPermit] Scheduled | ID: {scheduledId} " +
+                $"| Time: {scheduledTime:dd/MM/yyyy HH:mm:ss} " +
+                $"| Delay: {delay.TotalMinutes:F1} min");
+
+            return Json(new {
+                success       = true,
+                sent          = false,
+                scheduledId   = scheduledId,
+                scheduledTime = scheduledTime.ToString("dd/MM/yyyy HH:mm"),
+                delayMinutes  = Math.Round(delay.TotalMinutes, 1),
+                message       = $"המייל מתוזמן לשליחה ב-{scheduledTime:HH:mm}"
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in ScheduleEntryPermitEmail: {ex.Message}");
             return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    [HttpGet]
+    public IActionResult GetScheduledEmails()
+    {
+        try
+        {
+            var entries = LoadScheduledEmailsFromFile();
+            var now     = DateTime.Now;
+
+            // סנן רק עתידיים
+            var future = entries
+                .Where(e => e.ScheduledTime > now)
+                .Select(e => new {
+                    id            = e.Id,
+                    scheduledTime = e.ScheduledTime.ToString("dd/MM/yyyy HH:mm"),
+                    subject       = e.Subject,
+                    toAddresses   = e.ToAddresses
+                })
+                .ToList();
+
+            return Json(new { success = true, scheduled = future });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    // ── שמירת תזמון לקובץ ────────────────────────────────────────────────
+    private void SaveScheduledEmailToFile(ScheduledEmailEntry entry)
+    {
+        lock (_scheduledEmailsLock)
+        {
+            try
+            {
+                var dir = Path.GetDirectoryName(_scheduledEmailsPath);
+                if (!Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+
+                var entries = LoadScheduledEmailsFromFile();
+
+                // הסר ישן אם קיים
+                entries.RemoveAll(e => e.Id == entry.Id);
+                entries.Add(entry);
+
+                var json = JsonSerializer.Serialize(
+                    entries,
+                    new JsonSerializerOptions { WriteIndented = true }
+                );
+                System.IO.File.WriteAllText(_scheduledEmailsPath, json);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"[ScheduledPermit] Error saving to file: {ex.Message}");
+            }
+        }
+    }
+
+    private bool RemoveScheduledEmailFromFile(string scheduledId)
+    {
+        lock (_scheduledEmailsLock)
+        {
+            try
+            {
+                var entries = LoadScheduledEmailsFromFile();
+                var before  = entries.Count;
+                entries.RemoveAll(e => e.Id == scheduledId);
+
+                if (entries.Count < before)
+                {
+                    var json = JsonSerializer.Serialize(
+                        entries,
+                        new JsonSerializerOptions { WriteIndented = true }
+                    );
+                    System.IO.File.WriteAllText(_scheduledEmailsPath, json);
+                    return true;
+                }
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"[ScheduledPermit] Error removing from file: {ex.Message}");
+                return false;
+            }
+        }
+    }
+
+    private List<ScheduledEmailEntry> LoadScheduledEmailsFromFile()
+    {
+        lock (_scheduledEmailsLock)
+        {
+            try
+            {
+                if (!System.IO.File.Exists(_scheduledEmailsPath))
+                    return new List<ScheduledEmailEntry>();
+
+                var json = System.IO.File.ReadAllText(_scheduledEmailsPath);
+                return JsonSerializer.Deserialize<List<ScheduledEmailEntry>>(json)
+                    ?? new List<ScheduledEmailEntry>();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"[ScheduledPermit] Error loading from file: {ex.Message}");
+                return new List<ScheduledEmailEntry>();
+            }
+        }
+    }
+
+    // ── ביצוע שליחה בפועל ────────────────────────────────────────────────
+    private void ExecuteScheduledEmail(string scheduledId)
+    {
+        // מנע ריצה כפולה עם אותו ID
+        if (!_executingScheduledIds.TryAdd(scheduledId, 0))
+        {
+            Console.WriteLine($"[ScheduledPermit] Already executing: {scheduledId}");
+            return;
+        }
+        
+        try
+        {
+            // טען מהקובץ
+            var entries = LoadScheduledEmailsFromFile();
+            var entry = entries.FirstOrDefault(e => e.Id == scheduledId);
+
+            if (entry == null)
+            {
+                Console.WriteLine($"[ScheduledPermit] Entry not found: {scheduledId}");
+                return;
+            }
+
+            // שלח
+            SendPermitEmailSmtp(
+                subject:     entry.Subject,
+                body:        entry.Body,
+                toAddresses: entry.ToAddresses,
+                ccAddresses: entry.CcAddresses ?? new List<string>()
+            );
+
+            Console.WriteLine(
+                $"[ScheduledPermit] Sent | ID: {scheduledId} " +
+                $"| Time: {DateTime.Now:dd/MM/yyyy HH:mm:ss}");
+
+            // נקה
+            _activeTimers.TryRemove(scheduledId, out var t);
+            t?.Dispose();
+            RemoveScheduledEmailFromFile(scheduledId);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ScheduledPermit] Error executing: {ex.Message}");
+            _activeTimers.TryRemove(scheduledId, out var t);
+            t?.Dispose();
+        }
+        finally
+        {
+            _executingScheduledIds.TryRemove(scheduledId, out _); // ← שחרר
+        }
+    }
+
+    // ── שחזור תזמונים אחרי ריסטארט ───────────────────────────────────────
+    private void RestoreScheduledEmailsAfterRestart()
+    {
+        lock (_restoreLock)
+        {
+            if (_restoreScheduledEmailsDone) return; // ← הגנה
+            _restoreScheduledEmailsDone = true;
+        }
+        try
+        {
+            var entries = LoadScheduledEmailsFromFile();
+            var now     = DateTime.Now;
+            var toSend  = new List<ScheduledEmailEntry>();
+            var toKeep  = new List<ScheduledEmailEntry>();
+
+            foreach (var entry in entries)
+            {
+                if (entry.ScheduledTime <= now)
+                {
+                    // פג תוקף - שלח מיידית
+                    toSend.Add(entry);
+                }
+                else
+                {
+                    // עדיין בעתיד - תזמן מחדש
+                    toKeep.Add(entry);
+                }
+            }
+
+            // שלח את שפג תוקפם
+            foreach (var entry in toSend)
+            {
+                Console.WriteLine(
+                    $"[ScheduledPermit] Sending missed email | ID: {entry.Id} " +
+                    $"| Was scheduled: {entry.ScheduledTime:dd/MM/yyyy HH:mm}");
+                try
+                {
+                    SendPermitEmailSmtp(
+                        subject:     entry.Subject,
+                        body:        entry.Body,
+                        toAddresses: entry.ToAddresses,
+                        ccAddresses: entry.CcAddresses ?? new List<string>()
+                    );
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(
+                        $"[ScheduledPermit] Error sending missed: {ex.Message}");
+                }
+            }
+
+            // תזמן מחדש את העתידיים
+            foreach (var entry in toKeep)
+            {
+                var delay = entry.ScheduledTime - now;
+
+                // Dispose Timer ישן אם קיים
+                if (_activeTimers.TryRemove(entry.Id, out var oldTimer))
+                {
+                    oldTimer?.Dispose();
+                }
+
+                var timer = new System.Threading.Timer(
+                    callback: _ => ExecuteScheduledEmail(entry.Id),
+                    state:    null,
+                    dueTime:  delay,
+                    period:   System.Threading.Timeout.InfiniteTimeSpan
+                );
+
+                _activeTimers[entry.Id] = timer;
+
+                Console.WriteLine(
+                    $"[ScheduledPermit] Restored | ID: {entry.Id} " +
+                    $"| Time: {entry.ScheduledTime:dd/MM/yyyy HH:mm:ss} " +
+                    $"| Delay: {delay.TotalMinutes:F1} min");
+            }
+
+            // עדכן קובץ - הסר ששוגרו
+            if (toSend.Count > 0)
+            {
+                lock (_scheduledEmailsLock)
+                {
+                    var json = JsonSerializer.Serialize(
+                        toKeep,
+                        new JsonSerializerOptions { WriteIndented = true }
+                    );
+                    System.IO.File.WriteAllText(_scheduledEmailsPath, json);
+                }
+            }
+
+            Console.WriteLine(
+                $"[ScheduledPermit] Restore complete | " +
+                $"Sent: {toSend.Count} | Rescheduled: {toKeep.Count}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"[ScheduledPermit] Error restoring: {ex.Message}");
         }
     }
 
@@ -4496,7 +5181,8 @@ public class MessagesController : Controller
         }
 
         // ─── שלב 2: חפש בספר הטלפונים ───────────────────────────────
-        var phoneCsvPath = Path.Combine(_baseFilesPath, "phone_directory.csv");
+        var phoneCsvPath = 
+            PortalPaths.UnderFiles(@"phone_directory.csv");
 
         if (System.IO.File.Exists(phoneCsvPath))
         {
@@ -4551,7 +5237,8 @@ public class MessagesController : Controller
         }
 
         // ─── שלב 3: חפש בעץ הארגוני ─────────────────────────────────
-        var treeFolder = Path.Combine(_baseFilesPath, "Helix_Employees_Export", "BuildTree");
+        var treeFolder = 
+            PortalPaths.UnderFiles(@"Helix_Employees_Export\BuildTree");
 
         if (Directory.Exists(treeFolder))
         {
@@ -5147,7 +5834,7 @@ public class MessagesController : Controller
         try
         {
             var mappings = new List<object>();
-            string phoneDirectoryPath = Path.Combine(_baseFilesPath, "phone_directory.csv");
+            string phoneDirectoryPath = PortalPaths.UnderFiles(@"phone_directory.csv");
             bool emailMappingExists = System.IO.File.Exists(_emailMappingFilePath);
             bool phoneDirectoryExists = System.IO.File.Exists(phoneDirectoryPath);
             
@@ -5278,7 +5965,7 @@ public class MessagesController : Controller
             else if (!emailMappingExists)
             {
                 // אם הקובץ לא קיים, נסה להשתמש בקובץ שציינת
-                var alternativePath = Path.Combine(_baseFilesPath, "onit_emails.csv");
+                string alternativePath = PortalPaths.UnderFiles("onit_emails.csv");
                 
                 if (System.IO.File.Exists(alternativePath))
                 {
@@ -5375,96 +6062,628 @@ public class MessagesController : Controller
             if (_dailyEmailTimerInitialized) return;
             _dailyEmailTimerInitialized = true;
 
-           // חשב כמה זמן עד 06:50 הבאה
-            var now = DateTime.Now;
-            var nextRun = new DateTime(now.Year,now.Month,now.Day,
-                6,   // שעה
-                50,  // דקות
-                0    // שניות
+            ScheduleNextDailyRun();
+        }
+    }
+
+    // קבל את הזמן הבא בתור פרמטר אופציונלי
+    private static void ScheduleNextDailyRun()
+    {
+        ScheduleNextDailyRunFrom(DateTime.Now);
+    }
+
+    private static void ScheduleNextDailyRunFrom(DateTime from)
+    {
+        try
+        {
+            var config = LoadBlockedDaysConfigStatic();
+
+            TimeSpan sendTime;
+            if (!TimeSpan.TryParse(config.PermitEmailTime, out sendTime))
+            {
+                sendTime = new TimeSpan(6, 50, 0);
+            }
+
+            // ← בנה את זמן הריצה הבא בצורה מודעת לשעון קיץ/חורף
+            var nextRun = new DateTime(
+                from.Year, from.Month, from.Day,
+                sendTime.Hours, sendTime.Minutes, 0,
+                DateTimeKind.Local
             );
 
-            // אם כבר עברנו 06:50 היום - קבע ליום הבא
-            if (now >= nextRun)
+            // אם כבר עברנו את השעה היום - קבע למחר
+            if (from.AddSeconds(30) >= nextRun)
                 nextRun = nextRun.AddDays(1);
 
-            // דלג על שבת (6) - קבע ליום ראשון
+            // דלג על שבת
             while (nextRun.DayOfWeek == DayOfWeek.Saturday)
                 nextRun = nextRun.AddDays(1);
 
-            var initialDelay = nextRun - now;
-            var period = TimeSpan.FromHours(24);
+            // ← חשב delay מחדש ביחס לשעה הנוכחית
+            var delay = nextRun - DateTime.Now;
+
+            // הגנה: אם delay שלילי מסיבה כלשהי
+            if (delay <= TimeSpan.Zero)
+                delay = TimeSpan.FromMinutes(1);
 
             Console.WriteLine(
-                $"[DailyPermitEmail] Timer set. " +
-                $"First run: {nextRun:dd/MM/yyyy HH:mm:ss} " +
-                $"(in {initialDelay.TotalMinutes:F0} minutes)"
+                $"[DailyPermitEmail] Next run scheduled: " +
+                $"{nextRun:dd/MM/yyyy HH:mm:ss} " +
+                $"(in {delay.TotalHours:F2} hours)"
             );
 
+            // ← Dispose טיימר קיים אם יש
+            _dailyPermitEmailTimer?.Dispose();
+
+            // ← period = InfiniteTimeSpan! לא 24 שעות
+            // הטיימר יקרא לעצמו רק פעם אחת, ואז יתזמן מחדש
             _dailyPermitEmailTimer = new System.Threading.Timer(
-                callback: _ => SendDailyDanBironPermitEmail(),
-                state: null,
-                dueTime: initialDelay,
-                period: period
+                callback: _ => OnDailyTimerFired(),
+                state:    null,
+                dueTime:  delay,
+                period:   System.Threading.Timeout.InfiniteTimeSpan
             );
         }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"[DailyPermitEmail] Error scheduling: {ex.Message}");
+        }
     }
+
+    // ← callback חדש - מבצע ומתזמן מחדש
+    private static void OnDailyTimerFired()
+    {
+        // תיקון: שמור את זמן הירי לפני הביצוע
+        var firedAt = DateTime.Now;
+        
+        Console.WriteLine(
+            $"[DailyPermitEmail] Timer fired at {firedAt:dd/MM/yyyy HH:mm:ss}");
+
+        try
+        {
+            SendDailyDanBironPermitEmail();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DailyPermitEmail] Error: {ex.Message}");
+        }
+        finally
+        {
+            // תיקון: העבר את זמן הירי כ-"from" כדי שהחישוב יהיה נכון
+            // גם אם הביצוע היה מהיר מאוד ו-DateTime.Now עדיין לפני sendTime
+            ScheduleNextDailyRunFrom(firedAt);
+        }
+    }
+
+    private static EmailBlockedDaysConfig LoadBlockedDaysConfigStatic()
+    {
+        string blockedDaysPath =
+            PortalPaths.UnderFiles(@"email_blocked_days.json");
+
+        try
+        {
+            if (System.IO.File.Exists(blockedDaysPath))
+            {
+                var json = System.IO.File.ReadAllText(
+                    blockedDaysPath,
+                    Encoding.UTF8);
+
+                return JsonSerializer.Deserialize<EmailBlockedDaysConfig>(json)
+                    ?? new EmailBlockedDaysConfig();
+            }
+
+            return new EmailBlockedDaysConfig();
+        }
+        catch
+        {
+            return new EmailBlockedDaysConfig();
+        }
+    }
+
 
     private static void SendDailyDanBironPermitEmail()
     {
         try
         {
             var now = DateTime.Now;
+            
+            // קרא קונפיג ישירות מהקובץ - ללא תלות ב-Controller instance
+            EmailBlockedDaysConfig config;
+            try
+            {
+                var blockedDaysPath = 
+                    PortalPaths.UnderFiles(@"email_blocked_days.json");
+                
+                if (System.IO.File.Exists(blockedDaysPath))
+                {
+                    var json = System.IO.File.ReadAllText(
+                        blockedDaysPath, System.Text.Encoding.UTF8);
+                    config = System.Text.Json.JsonSerializer
+                        .Deserialize<EmailBlockedDaysConfig>(json) 
+                        ?? new EmailBlockedDaysConfig();
+                }
+                else
+                {
+                    config = new EmailBlockedDaysConfig();
+                }
+            }
+            catch
+            {
+                config = new EmailBlockedDaysConfig();
+            }
 
+            // בדיקת חסימה
             if (now.DayOfWeek == DayOfWeek.Saturday)
             {
                 Console.WriteLine(
-                    $"[DailyPermitEmail] Skipping Saturday {now:dd/MM/yyyy}");
+                    $"[DailyPermitEmail] Skipping {now:dd/MM/yyyy} - שבת");
+                return;
+            }
+            
+            if (config.BlockedWeekDays.Contains((int)now.DayOfWeek))
+            {
+                Console.WriteLine(
+                    $"[DailyPermitEmail] Skipping - blocked weekday");
+                return;
+            }
+            
+            string dateKey = now.ToString("yyyy-MM-dd");
+            if (config.BlockedDates.Contains(dateKey))
+            {
+                Console.WriteLine(
+                    $"[DailyPermitEmail] Skipping - manually blocked date");
+                return;
+            }
+            
+            if (config.BlockIsraeliHolidays &&
+                IsraeliHolidayService.IsIsraeliHoliday(now, out string holidayName) &&
+                !holidayName.Contains("פורים"))
+            {
+                Console.WriteLine(
+                    $"[DailyPermitEmail] Skipping - holiday: {holidayName}");
                 return;
             }
 
-            var dateDisplay =
-                $"{now.Day:D2}/{now.Month:D2}/{now.Year}";
+            // קרא שם - עם fallback בטוח
+            string personName = !string.IsNullOrWhiteSpace(config.PermitPersonName)
+                ? config.PermitPersonName.Trim()
+                : "דן בירון";
 
-            var body = BuildDanBironPermitBody(dateDisplay);
+            Console.WriteLine(
+                $"[DailyPermitEmail] Using person name: '{personName}'");
 
-            var toAddresses = new List<string>
+            var dateDisplay = $"{now.Day:D2}/{now.Month:D2}/{now.Year}";
+            var body = BuildDanBironPermitBody(dateDisplay, personName);
+
+            var recipientsConfig = LoadEntryPermitEmailRecipientsStatic();
+
+            var sites = new[] { "RG", "DR" };
+
+            var toAddresses = sites
+                .Where(site =>
+                    recipientsConfig.Sites.TryGetValue(site, out var siteConfig) &&
+                    siteConfig != null)
+                .SelectMany(site =>
+                    SplitEmailAddresses(recipientsConfig.Sites[site].To))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var cc = sites
+                .Where(site =>
+                    recipientsConfig.Sites.TryGetValue(site, out var siteConfig) &&
+                    siteConfig != null)
+                .SelectMany(site =>
+                    SplitEmailAddresses(recipientsConfig.Sites[site].Cc))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (!toAddresses.Any())
             {
-                "lobbymenora@menoramivt.co.il",
-                "binyaminra@menoramivt.co.il",
-                "securityroomusr@menoramivt.co.il",
-                "HananBD1@kyndryl.com"
-            };
+                Console.WriteLine(
+                    "[DailyPermitEmail] Email not sent - no TO recipients configured"
+                );
 
-            // CC משותף
-            var cc = new List<string>
-            {
-                "noc@menoramivt.co.il"
-            };
+                return;
+            }
 
             SendPermitEmailSmtp(
-                subject:  $"אישור כניסה להיום ({dateDisplay}) עבור דן בירון- פ\"ת ור\"ג",
-                body: body,
+                subject: $"אישור כניסה להיום ({dateDisplay}) עבור {personName}" +
+                        $" - פ\"ת ור\"ג",
+                body:        body,
                 toAddresses: toAddresses,
                 ccAddresses: cc
             );
+
             Console.WriteLine(
-                $"[DailyPermitEmail] Successfully sent for {dateDisplay}");
+                $"[DailyPermitEmail] Successfully sent for {dateDisplay} " +
+                $"| Person: {personName}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DailyPermitEmail] Error: {ex.Message}");
+            Console.WriteLine($"[DailyPermitEmail] Stack: {ex.StackTrace}");
+        }
+    }
+
+    private static EntryPermitEmailRecipientsConfig
+    LoadEntryPermitEmailRecipientsStatic()
+    {
+        string path =
+            PortalPaths.UnderFiles(@"entry_permit_email_recipients.json");
+
+        try
+        {
+            if (!System.IO.File.Exists(path))
+                return new EntryPermitEmailRecipientsConfig();
+
+            var json = System.IO.File.ReadAllText(
+                path,
+                Encoding.UTF8
+            );
+
+            return JsonSerializer.Deserialize<EntryPermitEmailRecipientsConfig>(json)
+                ?? new EntryPermitEmailRecipientsConfig();
         }
         catch (Exception ex)
         {
             Console.WriteLine(
-                $"[DailyPermitEmail] Error: {ex.Message}");
+                $"[DailyPermitEmail] Error loading recipients: {ex.Message}"
+            );
+
+            return new EntryPermitEmailRecipientsConfig();
         }
     }
 
-    private static string BuildDanBironPermitBody(string dateDisplay)
+    [HttpGet]
+    public IActionResult GetPermitPersonName()
+    {
+        try
+        {
+            var config = LoadBlockedDaysConfig();
+            return Json(new
+            {
+                success = true,
+                personName = config.PermitPersonName ?? "דן בירון"
+            });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    [HttpPost]
+    public IActionResult SavePermitPersonName([FromBody] SavePermitPersonNameRequest request)
+    {
+        try
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.PersonName))
+                return Json(new { success = false, error = "שם לא תקין" });
+
+            var config = LoadBlockedDaysConfig();
+            config.PermitPersonName = request.PersonName.Trim();
+            SaveBlockedDaysConfigPrivate(config);
+
+            Console.WriteLine($"[PermitPerson] Name updated to: {config.PermitPersonName}");
+
+            return Json(new { success = true, personName = config.PermitPersonName });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    private static string BuildDanBironPermitBody(string dateDisplay, string personName = "דן בירון")
     {
         return
             $"שלום רב,\n\n" +
             $"נא לאשר כניסה להיום ({dateDisplay}) לר\"ג ולפ\"ת:\n\n" +
-            $"חברה    : מנורה מבטחים\n\n" +
-            $"שם      : דני בירון\n\n" +
+            $"עבור {personName} (עובד מנורה) " +
+            $"לצורך עבודה בחדרי השרתים\n\n" +
             $"תודה.";
+    }
+
+    [HttpGet]
+    public IActionResult BlockedDaysManager()
+    {
+        return View();
+    }
+
+    /// <summary>קריאת הגדרות ימי חסימה מהקובץ</summary>
+    private EmailBlockedDaysConfig LoadBlockedDaysConfig()
+    {
+        lock (_blockedDaysLock)
+        {
+            try
+            {
+                if (!System.IO.File.Exists(_emailBlockedDaysPath))
+                    return new EmailBlockedDaysConfig();
+
+                var json = System.IO.File.ReadAllText(
+                    _emailBlockedDaysPath, Encoding.UTF8);
+
+                return JsonSerializer.Deserialize<EmailBlockedDaysConfig>(json)
+                    ?? new EmailBlockedDaysConfig();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"[BlockedDays] Error loading config: {ex.Message}");
+                return new EmailBlockedDaysConfig();
+            }
+        }
+    }
+
+    /// <summary>בדיקה אם תאריך נתון חסום לשליחת מייל</summary>
+    private (bool IsBlocked, string Reason) IsDateBlockedForEmail(DateTime date)
+    {
+        var config = LoadBlockedDaysConfig();
+
+        // ── בדיקת יום שבת (תמיד חסום) ──────────────────────────────
+        if (date.DayOfWeek == DayOfWeek.Saturday)
+            return (true, "שבת");
+
+        // ── בדיקת ימי שבוע חסומים ───────────────────────────────────
+        if (config.BlockedWeekDays.Contains((int)date.DayOfWeek))
+            return (true, $"יום שבוע חסום: {date.DayOfWeek}");
+
+        // ── בדיקת תאריכים ספציפיים ──────────────────────────────────
+        string dateKey = date.ToString("yyyy-MM-dd");
+        if (config.BlockedDates.Contains(dateKey))
+        {
+            config.DateNotes.TryGetValue(dateKey, out string note);
+            return (true, note ?? "תאריך חסום ידנית");
+        }
+
+        // ── בדיקת חגי ישראל ─────────────────────────────────────────
+        if (config.BlockIsraeliHolidays &&
+            IsraeliHolidayService.IsIsraeliHoliday(date, out string holidayName) &&
+            !holidayName.Contains("פורים"))
+        {
+            return (true, $"חג: {holidayName}");
+        }
+
+        return (false, "");
+    }
+
+    // ── API Endpoints ────────────────────────────────────────────────────
+
+    [HttpGet]
+    public IActionResult GetBlockedDaysConfig()
+    {
+        try
+        {
+            var config   = LoadBlockedDaysConfig();
+            var now      = DateTime.Now;
+
+            // הוסף מידע על חגים לשנה הנוכחית והבאה
+            var upcomingHolidays = IsraeliHolidayService
+                .GetHolidays(now.Year)
+                .Concat(IsraeliHolidayService.GetHolidays(now.Year + 1))
+                .Where(h => h.Date >= now.Date)
+                .OrderBy(h => h.Date)
+                .Take(20)
+                .Select(h => new
+                {
+                    date = h.Date.ToString("yyyy-MM-dd"),
+                    name = h.Name,
+                    isBlocked = config.BlockIsraeliHolidays &&
+                                !h.Name.Contains("פורים")
+                })
+                .ToList();
+
+            return Json(new
+            {
+                success          = true,
+                config           = config,
+                upcomingHolidays = upcomingHolidays
+            });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    [HttpPost]
+    public IActionResult SaveBlockedDaysConfig(
+        [FromBody] EmailBlockedDaysConfig config)
+    {
+        try
+        {
+            if (config == null)
+                return Json(new { success = false, error = "נתונים חסרים" });
+
+            // וודא שרשימות לא null
+            config.BlockedDates    ??= new List<string>();
+            config.BlockedWeekDays ??= new List<int> { 6 };
+            config.DateNotes       ??= new Dictionary<string, string>();
+
+            // וודא שתאריכים בפורמט תקין
+            config.BlockedDates = config.BlockedDates
+                .Where(d => DateTime.TryParse(d, out _))
+                .Select(d => DateTime.Parse(d).ToString("yyyy-MM-dd"))
+                .Distinct()
+                .OrderBy(d => d)
+                .ToList();
+
+            SaveBlockedDaysConfigPrivate(config);
+
+            Console.WriteLine(
+                $"[BlockedDays] Config saved | " +
+                $"Dates: {config.BlockedDates.Count} | " +
+                $"WeekDays: {string.Join(",", config.BlockedWeekDays)} | " +
+                $"Holidays: {config.BlockIsraeliHolidays}");
+
+            return Json(new { success = true });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    /// <summary>שמירת הגדרות ימי חסימה לקובץ</summary>
+    private void SaveBlockedDaysConfigPrivate(EmailBlockedDaysConfig config)
+    {
+        lock (_blockedDaysLock)
+        {
+            try
+            {
+                var dir = Path.GetDirectoryName(_emailBlockedDaysPath);
+                if (!Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+
+                var json = JsonSerializer.Serialize(
+                    config,
+                    new JsonSerializerOptions { WriteIndented = true });
+
+                System.IO.File.WriteAllText(
+                    _emailBlockedDaysPath, json, Encoding.UTF8);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"[BlockedDays] Error saving config: {ex.Message}");
+                throw;
+            }
+        }
+    }
+
+    [HttpPost]
+    public IActionResult AddBlockedDateRange([FromBody] AddBlockedDateRangeRequest request)
+    {
+        try
+        {
+            if (request == null ||
+                !DateTime.TryParse(request.StartDate, out DateTime startDate) ||
+                !DateTime.TryParse(request.EndDate, out DateTime endDate))
+            {
+                return Json(new { success = false, error = "תאריכים לא תקינים" });
+            }
+
+            if (endDate < startDate)
+                return Json(new { success = false, error = "תאריך סיום חייב להיות אחרי תאריך התחלה" });
+
+            if ((endDate - startDate).TotalDays > 365)
+                return Json(new { success = false, error = "טווח מקסימלי הוא שנה אחת" });
+
+            var config = LoadBlockedDaysConfig();
+            int added = 0;
+
+            for (var d = startDate; d <= endDate; d = d.AddDays(1))
+            {
+                string key = d.ToString("yyyy-MM-dd");
+                if (!config.BlockedDates.Contains(key))
+                {
+                    config.BlockedDates.Add(key);
+                    if (!string.IsNullOrEmpty(request.Note))
+                        config.DateNotes[key] = request.Note;
+                    added++;
+                }
+            }
+
+            config.BlockedDates = config.BlockedDates.OrderBy(d => d).ToList();
+            SaveBlockedDaysConfigPrivate(config);
+
+            return Json(new { success = true, added = added });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    [HttpPost]
+    public IActionResult AddBlockedDate([FromBody] AddBlockedDateRequest request)
+    {
+        try
+        {
+            if (request == null ||
+                !DateTime.TryParse(request.Date, out DateTime parsedDate))
+            {
+                return Json(new
+                {
+                    success = false,
+                    error   = "תאריך לא תקין"
+                });
+            }
+
+            var config  = LoadBlockedDaysConfig();
+            string key  = parsedDate.ToString("yyyy-MM-dd");
+
+            if (!config.BlockedDates.Contains(key))
+            {
+                config.BlockedDates.Add(key);
+                config.BlockedDates = config.BlockedDates
+                    .OrderBy(d => d).ToList();
+            }
+
+            if (!string.IsNullOrEmpty(request.Note))
+                config.DateNotes[key] = request.Note;
+
+            SaveBlockedDaysConfigPrivate(config);
+
+            return Json(new
+            {
+                success = true,
+                date    = key,
+                note    = request.Note
+            });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    [HttpDelete]
+    public IActionResult RemoveBlockedDate(string date)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(date))
+                return Json(new { success = false, error = "תאריך חסר" });
+
+            var config = LoadBlockedDaysConfig();
+
+            config.BlockedDates.Remove(date);
+            config.DateNotes.Remove(date);
+
+            SaveBlockedDaysConfigPrivate(config);
+
+            return Json(new { success = true });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    [HttpGet]
+    public IActionResult CheckDateBlocked(string date)
+    {
+        try
+        {
+            if (!DateTime.TryParse(date, out DateTime parsedDate))
+                return Json(new { success = false, error = "תאריך לא תקין" });
+
+            var (isBlocked, reason) = IsDateBlockedForEmail(parsedDate);
+
+            return Json(new
+            {
+                success   = true,
+                isBlocked = isBlocked,
+                reason    = reason,
+                date      = parsedDate.ToString("dd/MM/yyyy")
+            });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
     }
 
     private static void SendPermitEmailSmtp(
@@ -6027,8 +7246,8 @@ public class EntryPermitEmailRequest
 {
     public string Subject { get; set; }
     public string Body { get; set; }
-    public List<string> ToAddresses { get; set; }
-    public List<string> CcAddresses { get; set; }
+
+    public List<string> SiteKeys { get; set; } = new();
 }
 
 public class ContactResolutionResult
@@ -6051,4 +7270,70 @@ public class ResolvedContactInfo
     public string  Source      { get; set; } = "";
     public string? ManagerName { get; set; }
     public string? Error       { get; set; }
+}
+
+public class ScheduledEmailEntry
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public DateTime ScheduledTime { get; set; }
+    public string Subject { get; set; }
+    public string Body { get; set; }
+    public List<string> ToAddresses { get; set; } = new();
+    public List<string> CcAddresses { get; set; } = new();
+}
+
+public class ScheduledPermitEmailRequest
+{
+    public string Subject { get; set; }
+    public string Body { get; set; }
+    public List<string> SiteKeys { get; set; } = new();
+    public DateTime? ScheduledTime { get; set; }
+    public int MinutesBefore { get; set; } = 0;
+}
+
+public class AddBlockedDateRequest
+{
+    public string Date { get; set; }
+    public string Note { get; set; }
+}
+
+public class AddBlockedDateRangeRequest
+{
+    public string StartDate { get; set; }
+    public string EndDate { get; set; }
+    public string Note { get; set; }
+}
+public class SavePermitPersonNameRequest
+{
+    public string PersonName { get; set; }
+}
+public class UC4EmailRecipientsConfig
+{
+    public List<string> ToAddresses { get; set; } = new List<string> 
+    { 
+        "NOC@MENORAMIVT.CO.IL" 
+    };
+    public List<string> CcAddresses { get; set; } = new List<string>
+    {
+        "yanivkat@menoramivt.co.il",
+        "davidday@menoramivt.co.il",
+        "pdl-automationteam@menoramivt.net",
+        "anata@menora.co.il",
+        "borisk@menora.co.il",
+        "yomtovg@menoramivt.co.il",
+        "zoharlu@menoramivt.co.il",
+        "chenmo@menoramivt.co.il",
+        "monak@menoramivt.co.il"
+    };
+}
+
+public class EntryPermitSiteRecipients
+{
+    public string To { get; set; } = "";
+    public string Cc { get; set; } = "";
+}
+
+public class EntryPermitEmailRecipientsConfig
+{
+    public Dictionary<string, EntryPermitSiteRecipients> Sites { get; set; } = new();
 }

@@ -14,11 +14,12 @@ public class EmployeeTasksController : Controller
     private const int MaxRetries = 3;
     private const int RetryDelayMs = 100;
 
-    public EmployeeTasksController(IWebHostEnvironment env)
+    public EmployeeTasksController()
     {
-        _employeeService = new EmployeeService(env);
-        _userTasksService = new UserTasksService(env);
-        _employeeTasksFilePath = Path.Combine(env.WebRootPath, "assets", "files", "employee_tasks.txt");
+        _employeeService = new EmployeeService();
+        _userTasksService = new UserTasksService();
+        _employeeTasksFilePath = 
+            PortalPaths.UnderFiles(@"employee_tasks.txt");
     }
 
     [HttpGet]

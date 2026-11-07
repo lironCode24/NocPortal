@@ -234,6 +234,27 @@ namespace NocPortal.Controllers
             return View("AdminPanel");
         }
 
+        // ── API: Get All Users (לבחירת הרשאות) ────────────────────────
+        [HttpGet]
+        [Authorize(Roles = "Admin")]
+        public IActionResult GetAllUsersForPermissions()
+        {
+            var users = _userService.GetAllUsers()
+                .Where(u => u.IsApproved && u.Role.ToString() == "Dashboard") 
+                .Select(u => new
+                {
+                    id          = u.Id,
+                    username    = u.Username,
+                    displayName = u.DisplayName,
+                    role        = u.Role.ToString(),
+                    email       = u.Email ?? ""
+                })
+                .OrderBy(u => u.displayName)
+                .ToList();
+
+            return Json(new { success = true, users });
+        }
+
         // ── Approve User ───────────────────────────────────────────────
         [HttpPost]
         [Authorize(Roles = "Admin")]
@@ -380,52 +401,120 @@ namespace NocPortal.Controllers
         public IActionResult AuditLog(
             string? filterType     = null,
             string? filterUsername = null,
+            string? filterDetails  = null,    // ← חדש
+            string? filterDateFrom = null,    // ← חדש
+            string? filterDateTo   = null,    // ← חדש
+            string? filterStatus   = null,    // ← חדש
             int     page           = 1,
             int     pageSize       = 50)
         {
             // ── שליפת כל הלוגים לסטטיסטיקה (ללא פילטרים) ─────────────
-            var allLogs = _auditLog.GetRecent(int.MaxValue); // ← כל הלוגים תמיד
+            var allLogs = _auditLog.GetRecent(int.MaxValue);
 
-            // ── שליפת לוגים מסוננים לטבלה ────────────────────────────
-            var filteredLogs = string.IsNullOrEmpty(filterUsername)
-                ? (string.IsNullOrEmpty(filterType)
-                    ? _auditLog.GetRecent(500)
-                    : _auditLog.GetByEventType(filterType))
-                : _auditLog.GetByUsername(filterUsername);
+            // ── שליפת לוגים לסינון ────────────────────────────────────
+            // שינוי: תמיד מתחילים מכל הלוגים ומסננים בשרשרת
+            var filteredLogs = _auditLog.GetRecent(int.MaxValue).AsEnumerable();
+
+            // ── סינון לפי סוג אירוע ───────────────────────────────────
+            if (!string.IsNullOrWhiteSpace(filterType))
+                filteredLogs = filteredLogs
+                    .Where(l => l.EventType == filterType);
+
+            // ── סינון לפי שם משתמש ────────────────────────────────────
+            if (!string.IsNullOrWhiteSpace(filterUsername))
+                filteredLogs = filteredLogs
+                    .Where(l => l.Username
+                        .Contains(
+                            filterUsername,
+                            StringComparison.OrdinalIgnoreCase));
+
+            // ── סינון לפי תוכן / פרטים ← חדש ─────────────────────────
+            if (!string.IsNullOrWhiteSpace(filterDetails))
+                filteredLogs = filteredLogs
+                    .Where(l => l.Details != null &&
+                                l.Details.Contains(
+                                    filterDetails,
+                                    StringComparison.OrdinalIgnoreCase));
+
+            // ── סינון לפי תאריך התחלה ──────────────────────────────
+            if (!string.IsNullOrWhiteSpace(filterDateFrom) &&
+                TryParseDdMmYyyy(filterDateFrom, out var dateFrom))
+            {
+                filteredLogs = filteredLogs
+                    .Where(l => l.Timestamp.Date >= dateFrom.Date);
+            }
+
+            // ── סינון לפי תאריך סיום ───────────────────────────────
+            if (!string.IsNullOrWhiteSpace(filterDateTo) &&
+                TryParseDdMmYyyy(filterDateTo, out var dateTo))
+            {
+                filteredLogs = filteredLogs
+                    .Where(l => l.Timestamp.Date <= dateTo.Date);
+            }
+
+            // ── סינון לפי סטטוס ← חדש ────────────────────────────────
+            if (!string.IsNullOrWhiteSpace(filterStatus))
+            {
+                filteredLogs = filterStatus switch
+                {
+                    "success" => filteredLogs.Where(l => l.Success),
+                    "fail"    => filteredLogs.Where(l => !l.Success),
+                    _         => filteredLogs
+                };
+            }
+
+            // ── המר לרשימה לאחר כל הסינונים ──────────────────────────
+            var filteredList = filteredLogs.ToList();
 
             // ── Pagination ─────────────────────────────────────────────
-            var totalCount = filteredLogs.Count;
-            var pagedLogs  = filteredLogs
+            var totalCount = filteredList.Count;
+            var pagedLogs  = filteredList
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .ToList();
 
-            // ── סטטיסטיקות תמיד לפי כל הנתונים ──────────────────────
-            ViewBag.Logs          = pagedLogs;
-            ViewBag.TotalCount    = totalCount;
-            ViewBag.Page          = page;
-            ViewBag.PageSize      = pageSize;
-            ViewBag.TotalPages    = (int)Math.Ceiling(
+            // ── ViewBag ────────────────────────────────────────────────
+            ViewBag.Logs       = pagedLogs;
+            ViewBag.TotalCount = totalCount;
+            ViewBag.Page       = page;
+            ViewBag.PageSize   = pageSize;
+            ViewBag.TotalPages = (int)Math.Ceiling(
                 (double)totalCount / pageSize);
-            ViewBag.FilterType    = filterType;
-            ViewBag.FilterUsername = filterUsername;
 
-            // ← נתונים חדשים לסטטיסטיקה - תמיד מכל הלוגים
-            ViewBag.StatsLoginOk      = allLogs.Count(l => l.EventType == AuditEventTypes.Login);
-            ViewBag.StatsLoginFail    = allLogs.Count(l => l.EventType == AuditEventTypes.LoginFailed);
-            ViewBag.StatsRegisters    = allLogs.Count(l => l.EventType == AuditEventTypes.Register);
-            ViewBag.StatsAdminActions = allLogs.Count(l => l.EventType is
-                                            AuditEventTypes.UserApproved or
-                                            AuditEventTypes.UserDeleted  or
-                                            AuditEventTypes.RoleChanged  or
-                                            AuditEventTypes.PermissionsChanged);
+            // ── פרמטרי סינון ← הוסף חדשים ────────────────────────────
+            ViewBag.FilterType     = filterType;
+            ViewBag.FilterUsername = filterUsername;
+            ViewBag.FilterDetails  = filterDetails;    // ← חדש
+            ViewBag.FilterDateFrom = filterDateFrom;   // ← חדש
+            ViewBag.FilterDateTo   = filterDateTo;     // ← חדש
+            ViewBag.FilterStatus   = filterStatus;     // ← חדש
+
+            // ── סטטיסטיקות - תמיד מכל הלוגים ─────────────────────────
+            ViewBag.StatsLoginOk      = allLogs.Count(l =>
+                l.EventType == AuditEventTypes.Login);
+
+            ViewBag.StatsLoginFail    = allLogs.Count(l =>
+                l.EventType == AuditEventTypes.LoginFailed);
+
+            ViewBag.StatsRegisters    = allLogs.Count(l =>
+                l.EventType == AuditEventTypes.Register);
+
+            ViewBag.StatsAdminActions = allLogs.Count(l =>
+                l.EventType is
+                    AuditEventTypes.UserApproved       or
+                    AuditEventTypes.UserDeleted        or
+                    AuditEventTypes.RoleChanged        or
+                    AuditEventTypes.PermissionsChanged);
+
             ViewBag.StatsEmailsSent   = allLogs.Count(l =>
                 l.EventType.StartsWith("EMAIL_") && l.Success);
 
             ViewBag.StatsEmailsFailed = allLogs.Count(l =>
                 l.EventType.StartsWith("EMAIL_") && !l.Success);
-            ViewBag.StatsTotalAll     = allLogs.Count; // ← סה"כ כל הרשומות
 
+            ViewBag.StatsTotalAll     = allLogs.Count;
+
+            // ── EventTypes לסינון מהיר ────────────────────────────────
             ViewBag.EventTypes = new[]
             {
                 AuditEventTypes.Login,
@@ -440,11 +529,9 @@ namespace NocPortal.Controllers
                 AuditEventTypes.MessageEdited,
                 AuditEventTypes.MessageDeactivated,
                 AuditEventTypes.MessageAcknowledged,
-
                 AuditEventTypes.PasswordChanged,
                 AuditEventTypes.PasswordReset,
                 AuditEventTypes.PasswordResetRequested,
-
                 AuditEventTypes.EmailSent,
                 AuditEventTypes.EmailFailed,
                 AuditEventTypes.EmailTempPass,
@@ -535,6 +622,30 @@ namespace NocPortal.Controllers
             });
         }
 
+        // ── עזר: המרת תאריך DD/MM/YYYY ל-DateTime ─────────────────────
+        private bool TryParseDdMmYyyy(string? input, out DateTime result)
+        {
+            result = DateTime.MinValue;
+            if (string.IsNullOrWhiteSpace(input)) return false;
+
+            // תמיכה בשני פורמטים: dd/MM/yyyy וגם yyyy-MM-dd (מ-input type=date)
+            if (DateTime.TryParseExact(
+                    input.Trim(), "dd/MM/yyyy",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None,
+                    out result))
+                return true;
+
+            if (DateTime.TryParseExact(
+                    input.Trim(), "yyyy-MM-dd",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None,
+                    out result))
+                return true;
+
+            return false;
+        }
+
         // ── API: Get Audit Logs (לייצוא Excel) ────────────────────────
         [HttpGet]
         [Authorize(Roles = "Admin")]
@@ -542,24 +653,56 @@ namespace NocPortal.Controllers
             int     page           = 1,
             int     pageSize       = 9999,
             string? filterType     = null,
-            string? filterUsername = null)
+            string? filterUsername = null,
+            string? filterDetails  = null,    // ← חדש
+            string? filterDateFrom = null,    // ← חדש
+            string? filterDateTo   = null,    // ← חדש
+            string? filterStatus   = null)    // ← חדש
         {
             try
             {
-                // ── שליפה לפי פילטרים (שימוש בשירות הקיים) ──────────────
-                List<AuditLogEntry> logs;
+                // ── שליפה ─────────────────────────────────────────────────
+                var logs = _auditLog.GetAll().AsEnumerable();
 
-                if (!string.IsNullOrEmpty(filterUsername))
-                    logs = _auditLog.GetByUsername(filterUsername);
-                else if (!string.IsNullOrEmpty(filterType))
-                    logs = _auditLog.GetByEventType(filterType);
-                else
-                    logs = _auditLog.GetAll(); // כל הלוגים
+                // ── סינונים ───────────────────────────────────────────────
+                if (!string.IsNullOrWhiteSpace(filterType))
+                    logs = logs.Where(l => l.EventType == filterType);
 
-                var totalCount = logs.Count;
+                if (!string.IsNullOrWhiteSpace(filterUsername))
+                    logs = logs.Where(l =>
+                        l.Username.Contains(
+                            filterUsername,
+                            StringComparison.OrdinalIgnoreCase));
 
-                // ── Pagination ────────────────────────────────────────────
-                var pagedLogs = logs
+                // ── חדש ───────────────────────────────────────────────────
+                if (!string.IsNullOrWhiteSpace(filterDetails))
+                    logs = logs.Where(l =>
+                        l.Details != null &&
+                        l.Details.Contains(
+                            filterDetails,
+                            StringComparison.OrdinalIgnoreCase));
+
+                if (!string.IsNullOrWhiteSpace(filterDateFrom) &&
+                    TryParseDdMmYyyy(filterDateFrom, out var dateFrom))
+                    logs = logs.Where(l => l.Timestamp.Date >= dateFrom.Date);
+
+                if (!string.IsNullOrWhiteSpace(filterDateTo) &&
+                    TryParseDdMmYyyy(filterDateTo, out var dateTo))
+                    logs = logs.Where(l => l.Timestamp.Date <= dateTo.Date);
+
+                if (!string.IsNullOrWhiteSpace(filterStatus))
+                    logs = filterStatus switch
+                    {
+                        "success" => logs.Where(l => l.Success),
+                        "fail"    => logs.Where(l => !l.Success),
+                        _         => logs
+                    };
+                // ─────────────────────────────────────────────────────────
+
+                var logsList   = logs.ToList();
+                var totalCount = logsList.Count;
+
+                var pagedLogs = logsList
                     .Skip((page - 1) * pageSize)
                     .Take(pageSize)
                     .Select(l => new
@@ -583,6 +726,7 @@ namespace NocPortal.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "שגיאה בשליפת לוגים לייצוא");
                 return Json(new
                 {
                     success = false,

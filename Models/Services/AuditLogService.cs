@@ -58,11 +58,8 @@ namespace NocPortal.Services
             _logger = logger;
 
             // ── קרא נתיב מ-appsettings ────────────────────────────────
-            var basePath = configuration["AuditLog:Path"];
-            if (string.IsNullOrWhiteSpace(basePath))
-            {
-                basePath = Path.Combine(AppContext.BaseDirectory, "assets", "files");
-            }
+            var basePath = configuration["AuditLog:Path"]
+                ?? PortalPaths.FilesRoot;
 
             // ── וודא שהתיקייה קיימת ───────────────────────────────────
             try
@@ -204,7 +201,7 @@ namespace NocPortal.Services
             .ToList();
 
         // ── מחיקת לוגים ישנים ─────────────────────────────────────────
-        public void CleanOldLogs(int daysToKeep = 90)
+        public void CleanOldLogs(int daysToKeep = 900)
         {
             lock (_lock)
             {

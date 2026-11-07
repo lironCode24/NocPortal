@@ -64,7 +64,7 @@ class DashboardsManager {
             },
             {
                 id: 'achievements',
-                name: 'Achievements & Goals',
+                name: 'Goals & Achievements',
                 component: 'AchievementsDashboard',
                 allowedUsers: []
             },
@@ -89,12 +89,12 @@ class DashboardsManager {
         this.dashboardOrder = [];
 
         // *** ניהול Dark/Light Mode ***
-        this.colorTheme = localStorage.getItem('dashboardColorTheme') || 'dark';
+        this.colorTheme = userSettings.getItem('dashboardColorTheme') || 'dark';
     }
 
     applyColorTheme(theme) {
         this.colorTheme = theme;
-        localStorage.setItem('dashboardColorTheme', theme);
+        userSettings.setItem('dashboardColorTheme', theme);
 
         const root = document.documentElement;
 
@@ -123,18 +123,14 @@ class DashboardsManager {
             await this.fetchCurrentUser();
             this.loadDashboardOrder();
 
-            if (!this.currentUser) {
-                this.showError('לא ניתן לאמת את המשתמש');
-                return;
-            }
-            // *** הוסף: שחזר מצב auto switch אחרי רענון ***
+            // ─── שינוי: אל תחסום אם אין משתמש ───
+            
             const savedAutoSwitch = sessionStorage.getItem('autoSwitch');
-            if (savedAutoSwitch) {
+            if (savedAutoSwitch && this.currentUser && !this.currentUser.isAnonymous) {
+                // ─── שחזר auto switch רק למשתמשים מחוברים ───
                 const state = JSON.parse(savedAutoSwitch);
-
                 const allowedIds = this.getAllowedDashboards().map(d => d.id);
                 state.dashboards = state.dashboards.filter(id => allowedIds.includes(id));
-
                 this.autoSwitchEnabled = state.enabled;
                 this.autoSwitchDashboards = state.dashboards;
                 this.autoSwitchIntervalTime = state.intervalTime;
@@ -179,7 +175,7 @@ class DashboardsManager {
         if (!this.currentUser) return;
 
         const key = `dashboardOrder_${this.currentUser.username}`;
-        const saved = localStorage.getItem(key);
+        const saved = userSettings.getItem(key);
 
         if (saved) {
             try {
@@ -203,7 +199,7 @@ class DashboardsManager {
     saveDashboardOrder() {
         if (!this.currentUser) return;
         const key = `dashboardOrder_${this.currentUser.username}`;
-        localStorage.setItem(key, JSON.stringify(this.dashboardOrder));
+        userSettings.setItem(key, JSON.stringify(this.dashboardOrder));
     }
 
     _applyDashboardOrder() {
@@ -240,8 +236,17 @@ class DashboardsManager {
 
             if (!response.ok) {
                 if (response.status === 401) {
-                    window.location.href = '/login';
-                    return null;
+                    // ─── שינוי: אל תעשה redirect אוטומטי! ───
+                    // המשתמש לא מחובר - הגדר כאנונימי
+                    this.currentUser = {
+                        username: "",
+                        role: "",
+                        displayName: "",
+                        userId: "",
+                        allowedDashboards: [],
+                        isAnonymous: true      // ← סמן כאנונימי
+                    };
+                    return this.currentUser;
                 }
                 throw new Error(`HTTP error: ${response.status}`);
             }
@@ -257,25 +262,36 @@ class DashboardsManager {
             if (cached) {
                 this.currentUser = JSON.parse(cached);
                 return this.currentUser;
-            } else {
-                this.currentUser = {
-                    username: "",
-                    role: "",
-                    displayName: "",
-                    userId: "",
-                    allowedDashboards: []
-                };
-                return this.currentUser;
             }
-            return null;
+            
+            // ─── Fallback: אנונימי ───
+            this.currentUser = {
+                username: "",
+                role: "",
+                displayName: "",
+                userId: "",
+                allowedDashboards: [],
+                isAnonymous: true
+            };
+            return this.currentUser;
         }
     }
 
     isUserAllowedForDashboard(dashboard) {
-        if (dashboard.id == "systems-catalog") {
+        // ─── דשבורדים ציבוריים - תמיד מותרים ───
+        const publicDashboards = [
+            'systems-catalog',
+            'activities',
+            'changes'
+        ];
+        
+        if (publicDashboards.includes(dashboard.id)) {
             return true;
         }
+
+        // ─── שאר הדשבורדים - דורשים משתמש מחובר ───
         if (!this.currentUser) return false;
+        if (!this.currentUser.username) return false;
 
         const { role, allowedDashboards } = this.currentUser;
 
@@ -285,7 +301,7 @@ class DashboardsManager {
         // Dashboard - לפי רשימת הרשאות מהשרת
         if (role === 'Dashboard') {
             if (!allowedDashboards || allowedDashboards.length === 0) {
-                return false; // אין הרשאות - אין גישה
+                return false;
             }
             return allowedDashboards.includes(dashboard.id);
         }
@@ -312,15 +328,19 @@ class DashboardsManager {
                 return;
             }
 
-            // בדוק הרשאה לפני loadDashboard
             if (!this.isUserAllowedForDashboard(dashboard)) {
-                // אם משתמש Dashboard - הפנה לדשבורד הראשון המותר לו
+                // ─── שינוי: אם לא מחובר - הפנה ל-Login ───
+                if (!this.currentUser || this.currentUser.isAnonymous) {
+                    window.location.href = `/login?ReturnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+                    return;
+                }
+                
+                // מחובר אך אין הרשאה - הפנה לדשבורד הראשון המותר
                 const allowedDashboards = this.getAllowedDashboards();
                 if (allowedDashboards.length > 0) {
                     window.location.href = `?dashboard=${allowedDashboards[0].id}`;
                     return;
                 }
-                // אם אין דשבורדים מותרים בכלל - הצג שגיאה
                 this.addFullscreenStyles();
                 this.showAccessDenied(dashboard);
                 return;
@@ -330,8 +350,7 @@ class DashboardsManager {
             this.loadDashboard(dashboard);
 
         } else {
-
-            // Admin/NOC - הצג רשימה רגילה
+            // ─── דף ראשי - הצג רשימה (כולל ציבורי לאנונימי) ───
             this.showDashboardsList();
         }
 
@@ -815,8 +834,8 @@ class DashboardsManager {
             }, 500);
 
             // *** שחזר מיון אחרון מ-localStorage - רק אחרי initialize ***
-            const savedSortColumn = localStorage.getItem('dashboardSortColumn');
-            const savedSortDirection = localStorage.getItem('dashboardSortDirection');
+            const savedSortColumn = userSettings.getItem('dashboardSortColumn');
+            const savedSortDirection = userSettings.getItem('dashboardSortDirection');
             if (savedSortColumn) {
                 window.alertsManager.sortColumn = savedSortColumn;
                 window.alertsManager.sortDirection = savedSortDirection || 'asc';
@@ -832,7 +851,7 @@ class DashboardsManager {
 
             // *** שחזר מצב הסתרת פילטרים - תמיד הצג קודם, אז הסתר אם צריך ***
             setTimeout(() => {
-                const filtersHidden = localStorage.getItem('dashboardFiltersHidden') === 'true';
+                const filtersHidden = userSettings.getItem('dashboardFiltersHidden') === 'true';
                 if (filtersHidden) {
                     const controls = document.querySelector('.alerts-controls');
                     controls.style.display = 'none';
@@ -913,10 +932,15 @@ class DashboardsManager {
         colorModeBtn.id = 'dashboardColorModeBtn';
         colorModeBtn.className = 'toggle-filters-btn';
 
-        const savedDashboardColorMode = localStorage.getItem('dashboardColorMode');
-        const initialDashboardMode = savedDashboardColorMode
-            ? JSON.parse(savedDashboardColorMode)
-            : 'background';
+        const savedDashboardColorMode = userSettings.getItem('dashboardColorMode');
+        let initialDashboardMode = 'background';
+        if (savedDashboardColorMode) {
+            try {
+                initialDashboardMode = JSON.parse(savedDashboardColorMode);
+            } catch {
+                initialDashboardMode = savedDashboardColorMode;
+            }
+        }
 
         colorModeBtn.innerHTML = initialDashboardMode === 'background'
             ? '<i class="fas fa-fill-drip"></i>'
@@ -963,7 +987,7 @@ class DashboardsManager {
                 }
 
                 toggleFiltersBtn.innerHTML = this.toggleButtonLook();
-                localStorage.setItem('dashboardFiltersHidden', isVisible ? 'true' : 'false');
+                userSettings.setItem('dashboardFiltersHidden', isVisible ? 'true' : 'false');
             }
         });
 
@@ -1013,6 +1037,15 @@ class DashboardsManager {
 
     loadSystemsCatalogDashboard() {
         if (typeof SystemsCatalogDashboard === 'undefined') {
+            const scriptAdmin = document.createElement('script');
+            scriptAdmin.src = '/js/SystemsCatalogAdminColumnManager.js';
+
+            scriptAdmin.onload = () => {
+                this._adminColMgr = new SystemsCatalogAdminColumnManager(this);
+                this._adminColMgr.addStyles();
+            };
+
+            document.head.appendChild(scriptAdmin);
             const script = document.createElement('script');
             script.src = '/js/SystemsCatalogDashboard.js';
             script.onload = () => {
@@ -1112,11 +1145,11 @@ class DashboardsManager {
     saveSortState() {
         if (window.alertsManager) {
             if (window.alertsManager.sortColumn) {
-                localStorage.setItem('dashboardSortColumn', window.alertsManager.sortColumn);
-                localStorage.setItem('dashboardSortDirection', window.alertsManager.sortDirection || 'asc');
+                userSettings.setItem('dashboardSortColumn', window.alertsManager.sortColumn);
+                userSettings.setItem('dashboardSortDirection', window.alertsManager.sortDirection || 'asc');
             } else {
-                localStorage.removeItem('dashboardSortColumn');
-                localStorage.removeItem('dashboardSortDirection');
+                userSettings.removeItem('dashboardSortColumn');
+                userSettings.removeItem('dashboardSortDirection');
             }
         }
     }
@@ -2043,7 +2076,7 @@ class DashboardsManager {
         if (!this.currentUser) return false;
 
         const key = `dashboardOrder_${this.currentUser.username}`;
-        const saved = localStorage.getItem(key);
+        const saved = userSettings.getItem(key);
 
         // אם אין שמירה בכלל - הסדר הוא ברירת מחדל
         if (!saved) return false;
@@ -2074,7 +2107,7 @@ class DashboardsManager {
         if (!this.currentUser) return;
 
         const key = `dashboardOrder_${this.currentUser.username}`;
-        localStorage.removeItem(key);
+        userSettings.removeItem(key);
 
         this.dashboardOrder = [
             'alerts', 'rack-metrics', 'suite-results',
@@ -2498,21 +2531,6 @@ class DashboardsManager {
             const rightControls = document.createElement('div');
             rightControls.className = 'dashboard-right-controls';
 
-            // *** כפתור איפוס סידור - מוצג רק בדף הראשי (ללא dashboard בURL) ***
-            // *** ורק אם הסדר שונה מברירת המחדל ***
-            const urlParams = new URLSearchParams(window.location.search);
-            const isMainPage = !urlParams.get('dashboard');
-
-            if (isMainPage && this._isOrderChanged()) {
-                const resetOrderBtn = document.createElement('button');
-                resetOrderBtn.id = 'resetOrderBtn';
-                resetOrderBtn.className = 'reset-order-btn';
-                resetOrderBtn.innerHTML = '<i class="fas fa-undo"></i> אפס סידור דשבורדים';
-                resetOrderBtn.title = 'החזר לסידור ברירת המחדל';
-                resetOrderBtn.addEventListener('click', () => this.resetDashboardOrder());
-                leftControls.appendChild(resetOrderBtn);
-            }
-
             // Show/Hide filters button (only for alerts dashboard)
             if (this.currentDashboard && this.currentDashboard.id === 'alerts') {
                 this._pendingAlertsButtons = true; // *** דגל להכנסה מאוחרת ***
@@ -2591,6 +2609,22 @@ class DashboardsManager {
             rightControls.appendChild(prevDashboardBtn);
 
 
+            // *** כפתור איפוס סידור - מוצג רק בדף הראשי (ללא dashboard בURL) ***
+            // *** ורק אם הסדר שונה מברירת המחדל ***
+            const urlParams = new URLSearchParams(window.location.search);
+            const isMainPage = !urlParams.get('dashboard');
+
+            if (isMainPage) {
+                const resetOrderBtn = document.createElement('button');
+                resetOrderBtn.id = 'resetOrderBtn';
+                resetOrderBtn.className = 'reset-order-btn';
+                resetOrderBtn.innerHTML = '<i class="fas fa-undo"></i>';
+                resetOrderBtn.title = 'החזר לסידור ברירת המחדל';
+                // *** הסתר אם הסדר לא שונה, הצג אם שונה ***
+                resetOrderBtn.style.display = this._isOrderChanged() ? 'flex' : 'none';
+                resetOrderBtn.addEventListener('click', () => this.resetDashboardOrder());
+                rightControls.appendChild(resetOrderBtn);
+            }
             header.appendChild(rightControls);
             header.appendChild(title);
 
@@ -2607,6 +2641,36 @@ class DashboardsManager {
             // Add header to the beginning of body
             document.body.insertBefore(header, document.body.firstChild);
         }
+
+        // ════════════════════════════════════════════════════════
+        // *** הסתרת כפתורים למשתמש לא מחובר ***
+        // ════════════════════════════════════════════════════════
+        const isLoggedIn = this.currentUser &&
+            this.currentUser.displayName &&
+            this.currentUser.displayName.trim() !== '' &&
+            this.currentUser.displayName.trim() !== 'מערכת';
+
+        // ── כפתורי ניווט - מוסתרים כשאין משתמש ──
+        const navElementIds = [
+            'autoSwitchBtn',
+            'nextDashboardBtn',
+            'prevDashboardBtn',
+        ];
+
+        navElementIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = isLoggedIn ? '' : 'none';
+        });
+
+        // ── back-to-main-btn - מוסתר כשאין משתמש ──
+        const backBtn = document.querySelector('.back-to-main-btn');
+        if (backBtn) backBtn.style.display = isLoggedIn ? '' : 'none';
+
+        // ── user-info בתוך user-menu-section ──
+        document.querySelectorAll('.user-menu-section .user-info').forEach(el => {
+            el.style.display = isLoggedIn ? '' : 'none';
+        });
+        // ════════════════════════════════════════════════════════
     }
 
     toggleButtonLook() {

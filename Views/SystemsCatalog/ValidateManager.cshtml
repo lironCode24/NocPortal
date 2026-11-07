@@ -1,0 +1,1622 @@
+@{
+    Layout = null;
+    var managerName = ViewBag.ManagerName as string ?? "";
+    var token       = ViewBag.Token       as string ?? "";
+}
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+    <meta charset="UTF-8"/>
+    <link rel="icon" type="image/x-icon"
+          href="https://www.menoramivt.co.il/customers-homepage/static/img/favicon.ico">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>תיקוף מערכות - @managerName</title>
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: #0f0f1a;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            direction: rtl;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 30px 16px 60px;
+        }
+
+        .vldm-header {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 22px;
+            padding-bottom: 18px;
+            border-bottom: 1px solid #2a2a4e;
+        }
+        .vldm-header-icon {
+            width: 52px;
+            height: 52px;
+            background: linear-gradient(135deg,#4f46e5,#7c3aed);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: white;
+            flex-shrink: 0;
+        }
+        .vldm-header-title  { font-size: 1.3rem; font-weight: 700; color: #e0e0e0; }
+        .vldm-header-sub    { font-size: 0.82rem; color: #666; margin-top: 3px; }
+        .vldm-manager-badge {
+            margin-right: auto;
+            padding: 5px 16px;
+            background: rgba(99,102,241,0.15);
+            border: 1px solid rgba(99,102,241,0.4);
+            border-radius: 20px;
+            font-size: 0.88rem;
+            color: #a5b4fc;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .vldm-info-bar {
+            width: 100%;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 12px 16px;
+            background: rgba(99,102,241,0.08);
+            border: 1px solid rgba(99,102,241,0.2);
+            border-radius: 10px;
+            margin-bottom: 16px;
+            font-size: 0.83rem;
+            color: #888;
+            line-height: 1.6;
+        }
+        .vldm-info-bar i { color: #6366f1; flex-shrink: 0; margin-top: 2px; }
+
+        /* ── Stats ── */
+        .vldm-stats-bar {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 14px;
+            flex-wrap: wrap;
+        }
+        .vldm-stat {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 14px;
+            border-radius: 10px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            border: 1px solid;
+            white-space: nowrap;
+        }
+        .vldm-stat-total   { background: rgba(99,102,241,0.12); border-color: rgba(99,102,241,0.3); color: #a5b4fc; }
+        .vldm-stat-pending { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.3); color: #fcd34d; }
+        .vldm-stat-done    { background: rgba(34,197,94,0.12);  border-color: rgba(34,197,94,0.3);  color: #86efac; }
+
+        /* ── Toolbar ── */
+        .vldm-toolbar {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        .vldm-btn-outline {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 14px;
+            border-radius: 7px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid;
+            transition: all 0.18s;
+            font-family: inherit;
+        }
+        .vldm-btn-select-all {
+            background: rgba(99,102,241,0.12);
+            border-color: rgba(99,102,241,0.35);
+            color: #a5b4fc;
+        }
+        .vldm-btn-select-all:hover { background: rgba(99,102,241,0.22); }
+
+        .vldm-btn-select-pending {
+            background: rgba(245,158,11,0.12);
+            border-color: rgba(245,158,11,0.35);
+            color: #fcd34d;
+        }
+        .vldm-btn-select-pending:hover { background: rgba(245,158,11,0.22); }
+
+        .vldm-btn-deselect {
+            background: rgba(107,114,128,0.1);
+            border-color: rgba(107,114,128,0.25);
+            color: #9ca3af;
+        }
+        .vldm-btn-deselect:hover { background: rgba(107,114,128,0.2); }
+
+        .vldm-selected-count {
+            font-size: 0.8rem;
+            color: #86efac;
+            font-weight: 700;
+            background: rgba(34,197,94,0.12);
+            border: 1px solid rgba(34,197,94,0.25);
+            border-radius: 8px;
+            padding: 4px 12px;
+        }
+
+        .vldm-validate-btn {
+            margin-right: auto;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 24px;
+            background: linear-gradient(135deg,#16a34a,#15803d);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 0.92rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        .vldm-validate-btn:hover:not(:disabled) {
+            background: linear-gradient(135deg,#15803d,#166534);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(22,163,74,0.35);
+        }
+        .vldm-validate-btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* ── Filter Pills ── */
+        .vldm-filter-bar {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        .vldm-filter-pill {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.76rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid;
+            transition: all 0.15s;
+            user-select: none;
+        }
+        .vldm-filter-pill-all {
+            background: rgba(99,102,241,0.1);
+            border-color: rgba(99,102,241,0.3);
+            color: #a5b4fc;
+        }
+        .vldm-filter-pill-pending {
+            background: rgba(245,158,11,0.1);
+            border-color: rgba(245,158,11,0.3);
+            color: #fcd34d;
+        }
+        .vldm-filter-pill-done {
+            background: rgba(34,197,94,0.1);
+            border-color: rgba(34,197,94,0.3);
+            color: #86efac;
+        }
+        .vldm-filter-pill.active {
+            box-shadow: 0 0 0 2px currentColor;
+            font-weight: 800;
+        }
+
+        /* ── Table ── */
+        .vldm-table-wrap {
+            width: 100%;
+            background: #1e1e2e;
+            border: 1px solid #3a3a5a;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+        .vldm-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.84rem;
+            direction: rtl;
+        }
+        .vldm-thead tr { background: #1a1a2e; }
+        .vldm-th {
+            padding: 11px 14px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 0.74rem;
+            color: #888;
+            border-bottom: 2px solid #2a2a4e;
+            white-space: nowrap;
+        }
+        .vldm-th-center { text-align: center !important; }
+        .vldm-tr {
+            border-bottom: 1px solid #1a1a2e;
+            transition: background 0.12s;
+        }
+        .vldm-tr:hover { background: rgba(99,102,241,0.06); }
+        .vldm-tr-selected { background: rgba(34,197,94,0.07) !important; }
+        .vldm-tr-validated {
+            background: rgba(34,197,94,0.04);
+            opacity: 0.65;
+        }
+        .vldm-td {
+            padding: 10px 14px;
+            color: #ccc;
+            vertical-align: middle;
+        }
+        .vldm-td-center  { text-align: center !important; }
+        .vldm-td-num {
+            font-family: monospace;
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #a5b4fc;
+            white-space: nowrap;
+        }
+        .vldm-td-name {
+            font-weight: 600;
+            color: #e0e0e0;
+        }
+        .vldm-td-desc {
+            font-size: 0.76rem;
+            color: #666;
+            max-width: 200px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* ── Badges ── */
+        .vldm-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 9px;
+            border-radius: 10px;
+            font-size: 0.68rem;
+            font-weight: 700;
+            border: 1px solid;
+            white-space: nowrap;
+        }
+        .vldm-badge-pending  { background: rgba(245,158,11,0.15); border-color: rgba(245,158,11,0.4); color: #fcd34d; }
+        .vldm-badge-ok       { background: rgba(34,197,94,0.12);  border-color: rgba(34,197,94,0.35); color: #86efac; }
+        .vldm-badge-neutral  { background: rgba(107,114,128,0.12); border-color: rgba(107,114,128,0.3); color: #9ca3af; }
+        .vldm-badge-active   { background: rgba(34,197,94,0.12);  border-color: rgba(34,197,94,0.3);  color: #86efac; }
+        .vldm-badge-inactive { background: rgba(239,68,68,0.12);  border-color: rgba(239,68,68,0.3);  color: #fca5a5; }
+
+        /* ── Link to single system ── */
+        .vldm-system-link {
+            cursor: pointer;
+            color: #a5b4fc;
+            text-decoration: underline dotted;
+            text-underline-offset: 2px;
+            transition: color 0.15s;
+        }
+        .vldm-system-link:hover { color: #c4b5fd; }
+
+        /* ── Checkbox ── */
+        .vldm-cb {
+            width: 16px;
+            height: 16px;
+            accent-color: #22c55e;
+            cursor: pointer;
+        }
+
+        /* ── States ── */
+        .vldm-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            padding: 60px 20px;
+            color: #666;
+            text-align: center;
+            width: 100%;
+        }
+        .vldm-state i { font-size: 2.5rem; }
+
+                /* ── Success ── */
+        .vldm-success {
+            width: 100%;
+            background: #1e1e2e;
+            border: 1px solid rgba(34,197,94,0.35);
+            border-radius: 12px;
+            padding: 50px 30px;
+            text-align: center;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+        .vldm-success i   { font-size: 3rem; color: #22c55e; }
+        .vldm-success h2  { font-size: 1.3rem; color: #86efac; }
+        .vldm-success p   { font-size: 0.85rem; color: #666; }
+        .vldm-success-list {
+            list-style: none;
+            padding: 0;
+            margin: 8px 0 0;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            max-height: 200px;
+            overflow-y: auto;
+            width: 100%;
+            max-width: 400px;
+        }
+        .vldm-success-list li {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: rgba(34,197,94,0.08);
+            border: 1px solid rgba(34,197,94,0.2);
+            border-radius: 7px;
+            font-size: 0.82rem;
+            color: #86efac;
+            direction: rtl;
+        }
+
+        /* ── Single System Modal ── */
+        .vldm-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.75);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: vldmFadeIn 0.2s ease;
+        }
+        .vldm-modal {
+            background: #1e1e2e;
+            border: 1px solid #3a3a5a;
+            border-radius: 12px;
+            width: 92%;
+            max-width: 680px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+            animation: vldmSlideIn 0.2s ease;
+            direction: rtl;
+        }
+        .vldm-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 18px;
+            border-bottom: 1px solid #2a2a4e;
+            background: rgba(99,102,241,0.06);
+        }
+        .vldm-modal-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #e0e0e0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .vldm-modal-close {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 20px;
+            cursor: pointer;
+        }
+        .vldm-modal-close:hover { color: #ccc; }
+        .vldm-modal-body {
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .vldm-modal-row {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .vldm-modal-field {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            flex: 1;
+            min-width: 140px;
+        }
+        .vldm-modal-label {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: #777;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .vldm-modal-label i { color: #6366f1; font-size: 0.65rem; }
+        .vldm-modal-input {
+            background: #252535;
+            border: 1px solid #3a3a5a;
+            border-radius: 6px;
+            color: #e0e0e0;
+            padding: 7px 10px;
+            font-size: 0.83rem;
+            outline: none;
+            transition: border-color 0.2s;
+            direction: rtl;
+            width: 100%;
+            box-sizing: border-box;
+            font-family: inherit;
+        }
+        .vldm-modal-input:focus {
+            border-color: #6366f1;
+            box-shadow: 0 0 0 2px rgba(99,102,241,0.15);
+        }
+        .vldm-modal-select {
+            background: #252535;
+            border: 1px solid #3a3a5a;
+            border-radius: 6px;
+            color: #e0e0e0;
+            padding: 7px 10px;
+            font-size: 0.83rem;
+            outline: none;
+            cursor: pointer;
+            direction: rtl;
+            width: 100%;
+        }
+        .vldm-modal-select:focus { border-color: #6366f1; }
+        .vldm-modal-textarea {
+            background: #252535;
+            border: 1px solid #3a3a5a;
+            border-radius: 6px;
+            color: #e0e0e0;
+            padding: 8px 10px;
+            font-size: 0.83rem;
+            outline: none;
+            resize: vertical;
+            min-height: 60px;
+            font-family: inherit;
+            direction: rtl;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .vldm-modal-textarea:focus { border-color: #6366f1; }
+        .vldm-modal-footer {
+            display: flex;
+            gap: 8px;
+            padding: 14px 18px;
+            border-top: 1px solid #2a2a4e;
+            justify-content: flex-end;
+        }
+        .vldm-modal-cancel {
+            padding: 7px 16px;
+            background: transparent;
+            border: 1px solid #444;
+            border-radius: 6px;
+            color: #999;
+            font-size: 0.83rem;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .vldm-modal-cancel:hover { background: #2a2a3a; color: #ccc; }
+        .vldm-modal-save {
+            padding: 7px 18px;
+            background: linear-gradient(135deg,#16a34a,#15803d);
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-size: 0.83rem;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+        .vldm-modal-save:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(22,163,74,0.3);
+        }
+        .vldm-modal-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* ── Section title inside modal ── */
+        .vldm-section-title {
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: #6366f1;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #2a2a4e;
+        }
+
+        /* ── Toast ── */
+        .vldm-toast {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            padding: 11px 26px;
+            border-radius: 10px;
+            font-size: 0.88rem;
+            font-weight: 600;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s ease;
+            z-index: 99999;
+            direction: rtl;
+            white-space: nowrap;
+        }
+        .vldm-toast-show   { opacity: 1; transform: translateX(-50%) translateY(0); }
+        .vldm-toast-success { background: #166534; border: 1px solid #22c55e; color: #4ade80; }
+        .vldm-toast-error   { background: #7f1d1d; border: 1px solid #ef4444; color: #fca5a5; }
+        .vldm-toast-info    { background: #1e3a5f; border: 1px solid #3b82f6; color: #93c5fd; }
+
+        @@media (max-width: 600px) {
+            .vldm-toolbar { flex-direction: column; align-items: stretch; }
+            .vldm-validate-btn { margin-right: 0; justify-content: center; }
+            .vldm-modal { width: 98%; }
+        }
+        /* ── גלילה אופקית לטבלה רחבה ── */
+        .vldm-table-wrap {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .vldm-table {
+            min-width: 1400px;  /* ← הוסף שורה זו */
+        }
+
+        /* ── sticky עמודת checkbox + מספר ── */
+        .vldm-thead tr th:nth-child(1),
+        .vldm-thead tr th:nth-child(2),
+        .vldm-tr td:nth-child(1),
+        .vldm-tr td:nth-child(2) {
+            position: sticky;
+            z-index: 2;
+            background: inherit;
+        }
+
+        .vldm-thead tr th:nth-child(1),
+        .vldm-tr td:nth-child(1) { right: 0; }
+
+        .vldm-thead tr th:nth-child(2),
+        .vldm-tr td:nth-child(2) { right: 44px; }
+
+        .vldm-thead tr th:nth-child(1),
+        .vldm-thead tr th:nth-child(2) {
+            background: #1a1a2e;
+            z-index: 3;
+        }
+        .vldm-action-btn{
+            display:inline-flex;
+            align-items:center;
+            gap:6px;
+            background:#4338ca;
+            color:white;
+            border:none;
+            border-radius:6px;
+            padding:6px 10px;
+            cursor:pointer;
+            font-size:.78rem;
+            font-weight:600;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <div class="vldm-header">
+        <div class="vldm-header-icon">
+            <i class="fas fa-clipboard-list"></i>
+        </div>
+        <div>
+            <div class="vldm-header-title">תיקוף מערכות</div>
+            <div class="vldm-header-sub">אשר את נתוני המערכות שבאחריותך</div>
+        </div>
+        <div class="vldm-manager-badge">
+            <i class="fas fa-user-tie"></i>
+            <span id="vldmManagerDisplay">@managerName</span>
+        </div>
+    </div>
+
+    <!-- Info -->
+    <div class="vldm-info-bar">
+        <i class="fas fa-info-circle"></i>
+        <span>
+            סמן את המערכות שנתוניהן <strong>עדכניים ונכונים</strong> ולחץ
+            <strong>"אשר נבחרות"</strong> לאישור בבת אחת.
+            לחץ על שם מערכת למעבר לתיקופה.
+        </span>
+    </div>
+
+    <!-- Filter Pills (hidden until load) -->
+    <div class="vldm-filter-bar" id="vldmFilterBar" style="display:none">
+        <span style="font-size:0.78rem;color:#666;font-weight:600">
+            <i class="fas fa-filter" style="color:#6366f1"></i> הצג:
+        </span>
+        <div class="vldm-filter-pill vldm-filter-pill-all"
+             id="vldmFilterAll"
+             onclick="window._vldm.setFilter('all')">
+            <i class="fas fa-list"></i> הכל
+            <span id="vldmFilterCountAll">0</span>
+        </div>
+        <div class="vldm-filter-pill vldm-filter-pill-pending active"
+             id="vldmFilterPending"
+             onclick="window._vldm.setFilter('pending')">
+            <i class="fas fa-clock"></i> ממתינות לתיקוף
+            <span id="vldmFilterCountPending">0</span>
+        </div>
+        <div class="vldm-filter-pill vldm-filter-pill-done"
+             id="vldmFilterDone"
+             onclick="window._vldm.setFilter('done')">
+            <i class="fas fa-check-circle"></i> מתוקפות
+            <span id="vldmFilterCountDone">0</span>
+        </div>
+    </div>
+
+    <!-- Toolbar (hidden until load) -->
+    <div class="vldm-toolbar" id="vldmToolbar" style="display:none">
+        <button class="vldm-btn-outline vldm-btn-select-pending"
+                onclick="window._vldm.selectPending()">
+            <i class="fas fa-clock"></i> בחר ממתינות
+        </button>
+        <button class="vldm-btn-outline vldm-btn-select-all"
+                onclick="window._vldm.selectAll()">
+            <i class="fas fa-check-double"></i> בחר הכל
+        </button>
+        <button class="vldm-btn-outline vldm-btn-deselect"
+                onclick="window._vldm.deselectAll()">
+            <i class="fas fa-times"></i> בטל בחירה
+        </button>
+        <span class="vldm-selected-count" id="vldmSelectedCount">
+            0 נבחרו
+        </span>
+        <button class="vldm-validate-btn"
+                id="vldmValidateBtn"
+                disabled
+                onclick="window._vldm.validateSelected()">
+            <i class="fas fa-check-circle"></i>
+            אשר נבחרות
+            (<span id="vldmValidateBtnCount">0</span>)
+        </button>
+    </div>
+
+    <!-- Loading state -->
+    <div class="vldm-state" id="vldmLoading">
+        <i class="fas fa-spinner fa-spin" style="color:#6366f1"></i>
+        <span>טוען מערכות...</span>
+    </div>
+
+    <!-- Error state -->
+    <div class="vldm-state" id="vldmError" style="display:none">
+        <i class="fas fa-exclamation-circle" style="color:#ef4444"></i>
+        <div id="vldmErrorMsg" style="color:#f87171">שגיאה בטעינה</div>
+    </div>
+
+    <!-- Table -->
+    <div class="vldm-table-wrap" id="vldmTableWrap" style="display:none">
+        <table class="vldm-table">
+            <thead class="vldm-thead">
+                <tr id="vldmTheadRow">
+                    <th class="vldm-th vldm-th-center" style="width:44px;
+                                                            position:sticky;
+                                                            right:0;z-index:3;
+                                                            background:#1a1a2e">
+                        <input type="checkbox"
+                            class="vldm-cb"
+                            id="vldmCbAll"
+                            title="בחר/בטל הכל"
+                            onchange="window._vldm.toggleAll(this.checked)">
+                    </th>
+                    <th class="vldm-th" style="width:90px;
+                                            position:sticky;
+                                            right:44px;z-index:3;
+                                            background:#1a1a2e">מספר</th>
+                    <th class="vldm-th" style="min-width:140px">שם מערכת</th>
+                    <th class="vldm-th" style="min-width:130px">שם אנגלית</th>
+                    <th class="vldm-th" style="min-width:160px">תיאור</th>
+                    <th class="vldm-th" style="width:90px">סטטוס</th>
+                    <!-- עמודות דינמיות יתווספו כאן ע"י JS -->
+                    <th class="vldm-th" style="width:90px">תיקוף</th>
+                    <th class="vldm-th vldm-th-center" style="width:70px">פעולה</th>
+                </tr>
+            </thead>
+            <tbody id="vldmTbody"></tbody>
+        </table>
+    </div>
+
+    <!-- Success overlay -->
+    <div class="vldm-success" id="vldmSuccess">
+        <i class="fas fa-check-circle"></i>
+        <h2>התיקוף בוצע בהצלחה!</h2>
+        <p id="vldmSuccessMsg"></p>
+        <ul class="vldm-success-list" id="vldmSuccessList"></ul>
+        <button onclick="window._vldm.reloadPage()"
+                style="margin-top:8px;padding:8px 20px;
+                       background:rgba(99,102,241,0.15);
+                       border:1px solid rgba(99,102,241,0.4);
+                       border-radius:7px;color:#a5b4fc;
+                       font-size:0.85rem;font-weight:600;
+                       cursor:pointer;font-family:inherit">
+            <i class="fas fa-sync-alt"></i> רענן רשימה
+        </button>
+    </div>
+
+    <div class="vldm-toast" id="vldmToast"></div>
+
+    <script>
+    (() => {
+        const MANAGER_NAME  = '@Html.Raw(managerName.Replace("'", "\\'"))';
+        const MANAGER_TOKEN = '@token';
+
+        // ─── State ───────────────────────────────────────────
+        let _allSystems   = [];
+        let _filtered     = [];
+        let _selected     = new Set();
+        let _filter       = 'pending';
+        let _dynamicOpts  = {};   // ערכים דינמיים לכל שדה
+        let _dynColDefs = [];   // ← הגדרות עמודות דינמיות
+
+        async function loadColumnDefs() {
+            try {
+                const res  = await fetch(
+                    '/SystemsCatalog/GetColumnDefinitions',
+                    { credentials: 'include' }
+                );
+                const data = await res.json();
+                if (!data.success || !data.definitions?.columns) return;
+
+                // ─── אותם builtIn כמו בדף הבודד ───
+                const builtInKeys = new Set([
+                    'number','name','nameEn','description','status',
+                    'systemManager','departmentManager','environment',
+                    'domain','department','team','businessDivision',
+                    'appClassification','appType','businessCriticality',
+                    'availabilityRequirement','publisher','supportVendor',
+                    'hasAutomation','automationNote','buttons',
+                    'createdAt','lastValidatedAt','requiresValidation',
+                    'lastValidationEmailSentAt'
+                ]);
+
+                // ─── שמור רק עמודות שמוגדרות showInValidation ───
+                _dynColDefs = data.definitions.columns.filter(c =>
+                    c.showInValidation === true && !builtInKeys.has(c.key)
+                );
+
+                // ─── בנה כותרות דינמיות ───
+                _buildDynamicHeaders();
+
+            } catch (err) {
+                console.warn('loadColumnDefs error:', err);
+            }
+        }
+
+        // ── בנה עמודות כותרת דינמיות ──
+        function _buildDynamicHeaders() {
+            const theadRow = document.getElementById('vldmTheadRow');
+            if (!theadRow || _dynColDefs.length === 0) return;
+
+            // ─── מצא את th "תיקוף" (לפני האחרון) ───
+            const allThs      = theadRow.querySelectorAll('th');
+            const validationTh = allThs[allThs.length - 2]; // לפני "פעולה"
+
+            _dynColDefs.forEach(col => {
+                const th = document.createElement('th');
+                th.className = 'vldm-th';
+                th.style.minWidth = '110px';
+                th.dataset.dynKey = col.key;
+
+                // ─── icon לפי סוג שדה ───
+                const icon = _getColIcon(col.fieldType);
+                th.innerHTML = `<i class="fas ${icon}"
+                                style="color:#6366f1;
+                                        font-size:0.65rem;
+                                        margin-left:4px"></i>
+                                ${escHtml(col.label || col.key)}`;
+
+                theadRow.insertBefore(th, validationTh);
+            });
+        }
+
+        // ── icon לפי סוג שדה ──
+        function _getColIcon(fieldType) {
+            const map = {
+                'select':   'fa-list',
+                'boolean':  'fa-toggle-on',
+                'date':     'fa-calendar',
+                'number':   'fa-hashtag',
+                'textarea': 'fa-align-left',
+            };
+            return map[(fieldType || '').toLowerCase()] || 'fa-tag';
+        }
+        let _toastTimer   = null;
+
+        // ─── Toast ────────────────────────────────────────────
+        function showToast(msg, type = 'info') {
+            const t = document.getElementById('vldmToast');
+            if (!t) return;
+            t.textContent = msg;
+            t.className = `vldm-toast vldm-toast-${type} vldm-toast-show`;
+            clearTimeout(_toastTimer);
+            _toastTimer = setTimeout(() =>
+                t.classList.remove('vldm-toast-show'), 3500);
+        }
+
+        // ─── Helpers ──────────────────────────────────────────
+        function escHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        function stripTime(d) {
+            if (!d) return '';
+            return String(d).split(' ')[0];
+        }
+
+        function getStatusClass(status) {
+            if (!status) return 'vldm-badge-neutral';
+            const s = status.toLowerCase();
+            if (s.includes('פעיל') && !s.includes('לא'))
+                return 'vldm-badge-active';
+            if (s.includes('לא פעיל'))
+                return 'vldm-badge-inactive';
+            return 'vldm-badge-neutral';
+        }
+
+        // ─── טען ערכים דינמיים לכל ה-select ─────────────────
+        async function loadDynamicOptions() {
+            try {
+                const res  = await fetch(
+                    '/SystemsCatalog/GetSystemsPublic',
+                    { credentials: 'include' }
+                );
+                const data = await res.json();
+                if (!data.success) return;
+
+                const fields = [
+                    'environment','businessDivision','appClassification','appType',
+                    'businessCriticality','availabilityRequirement'
+                ];
+
+                fields.forEach(f => {
+                    _dynamicOpts[f] = [...new Set(
+                        data.systems
+                            .map(s => s[f])
+                            .filter(v => v && String(v).trim())
+                    )].sort((a, b) =>
+                        String(a).localeCompare(String(b), 'he')
+                    );
+                });
+            } catch (e) {
+                console.warn('loadDynamicOptions error:', e);
+            }
+        }
+
+        // ─── טען מערכות ───────────────────────────────────────
+        async function loadSystems() {
+            try {
+                const res  = await fetch(
+                    `/SystemsCatalog/GetSystemsByManagerToken?token=` +
+                    `${encodeURIComponent(MANAGER_TOKEN)}`,
+                    { credentials: 'include' }
+                );
+                const data = await res.json();
+
+                document.getElementById('vldmLoading').style.display = 'none';
+
+                if (!data.success) {
+                    document.getElementById('vldmError').style.display = 'flex';
+                    document.getElementById('vldmErrorMsg').textContent =
+                        data.error || 'שגיאה בטעינה';
+                    return;
+                }
+
+                _allSystems = data.systems || [];
+
+                if (_allSystems.length === 0) {
+                    document.getElementById('vldmError').style.display = 'flex';
+                    document.getElementById('vldmErrorMsg').innerHTML =
+                        `<i class="fas fa-info-circle" style="color:#6366f1"></i>` +
+                        `<br>לא נמצאו מערכות עבור ${escHtml(MANAGER_NAME)}`;
+                    return;
+                }
+
+                // ─── הצג UI ───
+                document.getElementById('vldmFilterBar').style.display = 'flex';
+                document.getElementById('vldmToolbar').style.display   = 'flex';
+                document.getElementById('vldmTableWrap').style.display = 'block';
+
+                // ─── בחר ממתינות לתיקוף אוטומטית ───
+                _allSystems
+                    .filter(s => s.requiresValidation)
+                    .forEach(s => _selected.add(s.id));
+
+                applyFilter();
+
+            } catch (err) {
+                document.getElementById('vldmLoading').style.display = 'none';
+                document.getElementById('vldmError').style.display   = 'flex';
+                document.getElementById('vldmErrorMsg').textContent  =
+                    'שגיאה: ' + err.message;
+            }
+        }
+
+        // ─── הח פילטר ─────────────────────────────────────────
+        function applyFilter() {
+            switch (_filter) {
+                case 'pending':
+                    _filtered = _allSystems.filter(s => s.requiresValidation);
+                    break;
+                case 'done':
+                    _filtered = _allSystems.filter(s => !s.requiresValidation);
+                    break;
+                default:
+                    _filtered = [..._allSystems];
+            }
+            renderTable();
+            updateStats();
+            updateFilterPills();
+            updateSelectedCount();
+        }
+
+        // ─── רנדר טבלה ────────────────────────────────────────
+        function renderTable() {
+            const tbody = document.getElementById('vldmTbody');
+            if (!tbody) return;
+
+            if (_filtered.length === 0) {
+                tbody.innerHTML = `
+                <tr>
+                    <td colspan="${6 + _dynColDefs.length + 3}"
+                                        style="padding:40px;text-align:center;
+                                        color:#555;font-size:0.88rem">
+                        <i class="fas fa-layer-group"
+                        style="color:#333;font-size:1.5rem;
+                                display:block;margin-bottom:10px"></i>
+                        אין מערכות בקטגוריה זו
+                    </td>
+                </tr>`;
+                return;
+            }
+
+            tbody.innerHTML = _filtered.map(s => {
+                const isSelected  = _selected.has(s.id);
+                const isPending   = s.requiresValidation;
+                const validatedAt = stripTime(s.lastValidatedAt || '');
+
+                const statusClass = getStatusClass(s.status);
+
+                // ─── badge עזר ───
+                const textBadge = (val, color) => val
+                    ? `<span class="vldm-badge"
+                            style="background:rgba(${color},0.12);
+                                    border-color:rgba(${color},0.35);
+                                    color:rgba(${color},1);
+                                    white-space:nowrap">
+                        ${escHtml(val)}
+                    </span>`
+                    : `<span style="color:#444">—</span>`;
+
+                const validationBadge = isPending
+                    ? `<span class="vldm-badge vldm-badge-pending">
+                        <i class="fas fa-clock"></i> נדרש
+                    </span>`
+                    : validatedAt
+                        ? `<span class="vldm-badge vldm-badge-ok">
+                            <i class="fas fa-check"></i>
+                            ${escHtml(validatedAt)}
+                        </span>`
+                        : `<span class="vldm-badge vldm-badge-neutral">לא תוקף</span>`;
+
+                return `
+            <tr class="vldm-tr ${isSelected ? 'vldm-tr-selected' : ''}
+                        ${!isPending && validatedAt ? 'vldm-tr-validated' : ''}"
+                data-id="${escHtml(s.id)}">
+
+                <!-- Checkbox -->
+                <td class="vldm-td vldm-td-center">
+                    <input type="checkbox"
+                        class="vldm-cb vldm-cb-row"
+                        data-id="${escHtml(s.id)}"
+                        ${isSelected ? 'checked' : ''}
+                        onchange="window._vldm.toggleRow(
+                            '${escHtml(s.id)}', this.checked)">
+                </td>
+
+                <!-- מספר קטלוג -->
+                <td class="vldm-td vldm-td-num">
+                    ${escHtml(String(s.number || ''))}
+                </td>
+
+                <!-- שם מערכת -->
+                <td class="vldm-td vldm-td-center" style="min-width:140px">
+                    <span class="vldm-system-link vldm-td-name"
+                        onclick="window._vldm.openEditModal('${escHtml(s.id)}')"
+                        title="לחץ לתיקוף מערכת">
+                        ${escHtml(s.name || '')}
+                    </span>
+                </td>
+
+                <!-- שם אנגלית -->
+                <td class="vldm-td vldm-td-center" style="min-width:130px;direction:ltr;
+                                        color:#888;
+                                        font-size:0.78rem">
+                    ${escHtml(s.nameEn || '') || '<span style="color:#333">—</span>'}
+                </td>
+
+                <!-- תיאור -->
+                <td class="vldm-td" style="min-width:160px">
+                    ${s.description
+                        ? `<span class="vldm-td-desc"
+                                title="${escHtml(s.description)}"
+                                style="max-width:160px;display:block;
+                                        white-space:nowrap;overflow:hidden;
+                                        text-overflow:ellipsis;font-size:0.76rem;
+                                        color:#666">
+                            ${escHtml(s.description)}
+                        </span>`
+                        : '<span style="color:#333">—</span>'}
+                </td>
+
+                <!-- סטטוס -->
+                <td class="vldm-td vldm-td-center">
+                    <span class="vldm-badge ${statusClass}">
+                        ${escHtml(s.status || '—')}
+                    </span>
+                </td>
+
+                <!-- עמודות דינמיות -->
+                ${_dynColDefs.map(col => {
+                    const val = s[col.key]
+                        ?? s.dynamicFields?.[col.key]
+                        ?? null;
+
+                    if (!val) {
+                        return `<td class="vldm-td vldm-td-center"
+                                    data-col="${escHtml(col.key)}">
+                                    <span style="color:#333">—</span>
+                                </td>`;
+                    }
+
+                    const fieldType = (col.fieldType || 'text').toLowerCase();
+
+                    // ─── boolean ───
+                    if (fieldType === 'boolean') {
+                        const isYes = val === 'כן' || val === 'true' || val === true;
+                        return `<td class="vldm-td vldm-td-center"
+                                    data-col="${escHtml(col.key)}">
+                                    <span class="vldm-badge ${isYes
+                                        ? 'vldm-badge-ok'
+                                        : 'vldm-badge-neutral'}">
+                                        ${isYes ? '✓ כן' : '✗ לא'}
+                                    </span>
+                                </td>`;
+                    }
+
+                    // ─── select / enum ───
+                    if (fieldType === 'select' || col.allowedValues?.length > 0) {
+                        return `<td class="vldm-td vldm-td-center"
+                                    data-col="${escHtml(col.key)}">
+                                    ${textBadge(val, '168,85,247')}
+                                </td>`;
+                    }
+
+                    // ─── date ───
+                    if (fieldType === 'date') {
+                        return `<td class="vldm-td"
+                                    data-col="${escHtml(col.key)}">
+                                    <span style="font-size:0.78rem;color:#9ca3af;
+                                                font-family:monospace">
+                                        ${escHtml(stripTime(val))}
+                                    </span>
+                                </td>`;
+                    }
+
+                    // ─── number ───
+                    if (fieldType === 'number') {
+                        return `<td class="vldm-td vldm-td-center"
+                                    data-col="${escHtml(col.key)}">
+                                    <span class="vldm-td-num">
+                                        ${escHtml(String(val))}
+                                    </span>
+                                </td>`;
+                    }
+
+                    // ─── text / textarea (ברירת מחדל) ───
+                    return `<td class="vldm-td vldm-td-center"
+                                data-col="${escHtml(col.key)}"
+                                style="max-width:160px">
+                                <span style="display:block;
+                                            white-space:nowrap;
+                                            overflow:hidden;
+                                            text-overflow:ellipsis;
+                                            font-size:0.78rem;
+                                            color:#aaa"
+                                    title="${escHtml(String(val))}">
+                                    ${escHtml(String(val))}
+                                </span>
+                            </td>`;
+                }).join('')}
+
+                <!-- תיקוף -->
+                <td class="vldm-td vldm-td-center">
+                    ${validationBadge}
+                </td>
+
+                <!-- פעולה -->
+                <td class="vldm-td vldm-td-center">
+                    <button class="vldm-action-btn"
+                            onclick="window._vldm.openEditModal('${escHtml(s.id)}')">
+                        <i class="fas fa-clipboard-check"></i>
+                        תיקוף
+                    </button>
+                </td>
+            </tr>`;
+            }).join('');
+
+            // ─── header checkbox ───
+            const cbAll = document.getElementById('vldmCbAll');
+            if (cbAll) {
+                const visibleIds  = _filtered.map(s => s.id);
+                const allChecked  = visibleIds.length > 0 &&
+                    visibleIds.every(id => _selected.has(id));
+                const someChecked = visibleIds.some(id => _selected.has(id));
+                cbAll.checked       = allChecked;
+                cbAll.indeterminate = !allChecked && someChecked;
+            }
+        }
+
+        function getCriticalityColor(val) {
+            if (!val) return '107,114,128';
+            const v = val.toLowerCase();
+            if (v.includes('קריטי') || v.includes('גבוה'))
+                return '239,68,68';
+            if (v.includes('בינוני') || v.includes('medium'))
+                return '245,158,11';
+            if (v.includes('נמוך') || v.includes('low'))
+                return '34,197,94';
+            return '107,114,128';
+        }
+
+        // ─── עדכן Stats ───────────────────────────────────────
+        function updateStats() {
+            const total   = _allSystems.length;
+            const pending = _allSystems.filter(s => s.requiresValidation).length;
+            const done    = total - pending;
+
+            document.getElementById('vldmFilterCountAll').textContent     = total;
+            document.getElementById('vldmFilterCountPending').textContent = pending;
+            document.getElementById('vldmFilterCountDone').textContent    = done;
+        }
+
+        // ─── עדכן pills ───────────────────────────────────────
+        function updateFilterPills() {
+            ['all','pending','done'].forEach(f => {
+                const el = document.getElementById(
+                    'vldmFilter' + f.charAt(0).toUpperCase() + f.slice(1)
+                );
+                if (el) el.classList.toggle('active', _filter === f);
+            });
+        }
+
+        // ─── עדכן מונה נבחרים ─────────────────────────────────
+        function updateSelectedCount() {
+            const count = _selected.size;
+            document.getElementById('vldmSelectedCount').textContent =
+                `${count} נבחרו`;
+            document.getElementById('vldmValidateBtnCount').textContent =
+                count;
+
+            const btn = document.getElementById('vldmValidateBtn');
+            if (btn) {
+                btn.disabled = count === 0;
+                btn.style.opacity = count === 0 ? '0.35' : '1';
+            }
+        }
+
+               // ─── toggle שורה ──────────────────────────────────────
+        function toggleRow(id, checked) {
+            if (checked) {
+                _selected.add(id);
+            } else {
+                _selected.delete(id);
+            }
+            const row = document.querySelector(`tr[data-id="${id}"]`);
+            if (row) row.classList.toggle('vldm-tr-selected', checked);
+            updateSelectedCount();
+            updateHeaderCheckbox();
+        }
+
+        function toggleAll(checked) {
+            _filtered.forEach(s => {
+                if (checked) {
+                    _selected.add(s.id);
+                } else {
+                    _selected.delete(s.id);
+                }
+            });
+            document.querySelectorAll('.vldm-cb-row').forEach(cb => {
+                cb.checked = checked;
+                const row = cb.closest('tr.vldm-tr');
+                if (row) row.classList.toggle('vldm-tr-selected', checked);
+            });
+            updateSelectedCount();
+        }
+
+        function updateHeaderCheckbox() {
+            const cbAll = document.getElementById('vldmCbAll');
+            if (!cbAll) return;
+            const visibleIds  = _filtered.map(s => s.id);
+            const allChecked  = visibleIds.length > 0 &&
+                visibleIds.every(id => _selected.has(id));
+            const someChecked = visibleIds.some(id => _selected.has(id));
+            cbAll.checked       = allChecked;
+            cbAll.indeterminate = !allChecked && someChecked;
+        }
+
+        // ─── בחר רק ממתינות לתיקוף ──────────────────────────
+        function selectPending() {
+            _allSystems.forEach(s => {
+                if (s.requiresValidation) {
+                    _selected.add(s.id);
+                } else {
+                    _selected.delete(s.id);
+                }
+            });
+            renderTable();
+            updateSelectedCount();
+            showToast(
+                `✓ נבחרו ${_allSystems.filter(s => s.requiresValidation).length} ` +
+                `מערכות הממתינות לתיקוף`,
+                'info'
+            );
+        }
+
+        function selectAll() {
+            _allSystems.forEach(s => _selected.add(s.id));
+            renderTable();
+            updateSelectedCount();
+        }
+
+        function deselectAll() {
+            _selected.clear();
+            renderTable();
+            updateSelectedCount();
+        }
+
+        // ─── שנה פילטר ────────────────────────────────────────
+        function setFilter(f) {
+            _filter = f;
+            applyFilter();
+        }
+
+        // ─── אשר מערכות נבחרות ───────────────────────────────
+        async function validateSelected() {
+            if (_selected.size === 0) return;
+
+            const btn = document.getElementById('vldmValidateBtn');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML =
+                    '<i class="fas fa-spinner fa-spin"></i> מאשר...';
+            }
+
+            try {
+                // ─── חפש מייל המנהל אוטומטית ───
+                let managerEmail = '';
+                try {
+                    const emailRes = await fetch(
+                        `/PhoneDirectory/GetManagerEmail?name=` +
+                        `${encodeURIComponent(MANAGER_NAME)}`,
+                        { credentials: 'include' }
+                    );
+                    const emailData = await emailRes.json();
+                    if (emailData.success && emailData.email) {
+                        managerEmail = emailData.email;
+                    }
+                } catch (e) {
+                    console.warn('GetManagerEmail error:', e);
+                }
+
+                const payload = {
+                    managerToken: MANAGER_TOKEN,
+                    systemIds:    [..._selected],
+                    managerEmail: managerEmail || null
+                };
+
+                const res  = await fetch(
+                    '/SystemsCatalog/BulkValidatePublic',
+                    {
+                        method:  'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body:    JSON.stringify(payload)
+                    }
+                );
+                const data = await res.json();
+
+                if (!data.success)
+                    throw new Error(data.error || 'שגיאה באישור');
+
+                // ─── עדכן allSystems מקומית ───
+                const now = new Date().toLocaleDateString('he-IL', {
+                    day: '2-digit', month: '2-digit', year: 'numeric'
+                });
+                data.validatedNames.forEach(name => {
+                    const sys = _allSystems.find(s => s.name === name);
+                    if (sys) {
+                        sys.requiresValidation = false;
+                        sys.lastValidatedAt    = now;
+                    }
+                });
+
+                // ─── הצג success ───
+                document.getElementById('vldmTableWrap').style.display  = 'none';
+                document.getElementById('vldmToolbar').style.display    = 'none';
+                document.getElementById('vldmFilterBar').style.display  = 'none';
+
+                const successEl = document.getElementById('vldmSuccess');
+                successEl.style.display = 'flex';
+
+                document.getElementById('vldmSuccessMsg').textContent =
+                    `אושרו ${data.validatedCount} מערכות בהצלחה` +
+                    (managerEmail ? ` | מייל אישור נשלח` : '');
+
+                const listEl = document.getElementById('vldmSuccessList');
+                listEl.innerHTML = (data.validatedNames || [])
+                    .map(n => `
+                    <li>
+                        <i class="fas fa-check-circle"
+                           style="color:#22c55e;flex-shrink:0"></i>
+                        ${escHtml(n)}
+                    </li>`)
+                    .join('');
+
+                showToast(
+                    `✅ ${data.validatedCount} מערכות אושרו בהצלחה`,
+                    'success'
+                );
+
+            } catch (err) {
+                console.error('validateSelected error:', err);
+                showToast('שגיאה: ' + err.message, 'error');
+
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML =
+                        '<i class="fas fa-check-circle"></i> אשר נבחרות ' +
+                        `(<span id="vldmValidateBtnCount">${_selected.size}</span>)`;
+                }
+            }
+        }
+
+        // ─── נווט לדף תיקוף של מערכת בודדת ─────────────────────
+        function openEditModal(systemId) {
+            const system = _allSystems.find(s => s.id === systemId);
+            if (!system) return;
+
+            // ─── צור טוקן ניווט לדף הבודד ───
+            // נשתמש ב-API קיים לקבלת URL התיקוף
+            fetch(
+                `/SystemsCatalog/GetValidationUrl?systemId=${encodeURIComponent(systemId)}` +
+                `&managerToken=${encodeURIComponent(MANAGER_TOKEN)}`,
+                { credentials: 'include' }
+            )
+            .then(r => r.json())
+            .then(data => {
+                if (data.success && data.url) {
+                    window.open(data.url, '_blank');
+                } else {
+                    showToast('שגיאה בקבלת קישור תיקוף', 'error');
+                }
+            })
+            .catch(() => showToast('שגיאה בקבלת קישור תיקוף', 'error'));
+        }
+
+        // ─── עדכן נראות שדה הערת אוטומציה ────────────────────
+        window.updateAutomationNote = function(val) {
+            const wrap = document.getElementById('vldmEditAutoNoteWrap');
+            if (!wrap) return;
+            wrap.style.opacity       = val === 'קיימות' ? '1' : '0.4';
+            wrap.style.pointerEvents = val === 'קיימות' ? 'auto' : 'none';
+        };
+
+        // ─── auto-fill ארגוני ─────────────────────────────────
+        async function autoFillOrgInfo(managerName) {
+            try {
+                const res  = await fetch(
+                    `/PhoneDirectory/GetEmployeeOrgInfo?name=` +
+                    `${encodeURIComponent(managerName)}`,
+                    { credentials: 'include' }
+                );
+                const data = await res.json();
+                if (!data.success || !data.employee) return;
+
+                const emp = data.employee;
+
+                const fillSelect = (id, val) => {
+                    const el = document.getElementById(id);
+                    if (!el || !val) return;
+                    const exists = [...el.options].some(o => o.value === val);
+                    if (!exists) {
+                        const opt = document.createElement('option');
+                        opt.value = val; opt.textContent = val;
+                        el.appendChild(opt);
+                    }
+                    el.value = val;
+                };
+
+                fillSelect('vldmEditDomain', emp.domain);
+                fillSelect('vldmEditDept',   emp.department);
+                fillSelect('vldmEditTeam',   emp.team);
+
+                showToast(
+                    `✅ מולאו נתונים ארגוניים (${emp.fullName})`,
+                    'success'
+                );
+            } catch (e) {
+                console.warn('autoFillOrgInfo error:', e);
+            }
+        }
+
+        // ─── שמור מערכת בודדת ואשר ───────────────────────────
+        async function saveAndValidate(systemId) {
+            const saveBtn = document.getElementById('vldmEditSave');
+            if (saveBtn) {
+                saveBtn.disabled = true;
+                saveBtn.innerHTML =
+                    '<i class="fas fa-spinner fa-spin"></i> שומר...';
+            }
+
+            try {
+                const getVal = id => {
+                    const el = document.getElementById(id);
+                    if (!el) return null;
+                    const v = el.value?.trim();
+                    return v || null;
+                };
+
+                // ─── חפש מייל מנהל ───
+                let managerEmail = '';
+                const managerName = getVal('vldmEditManager') || MANAGER_NAME;
+                try {
+                    const emailRes = await fetch(
+                        `/PhoneDirectory/GetManagerEmail?name=` +
+                        `${encodeURIComponent(managerName)}`,
+                        { credentials: 'include' }
+                    );
+                    const emailData = await emailRes.json();
+                    if (emailData.success && emailData.email) {
+                        managerEmail = emailData.email;
+                    }
+                } catch (e) { /* ignore */ }
+
+                const payload = {
+                    systemId:                systemId,
+                    validationToken:         MANAGER_TOKEN,
+                    number:                  getVal('vldmEditNumber'),
+                    name:                    getVal('vldmEditName'),
+                    nameEn:                  getVal('vldmEditNameEn'),
+                    description:             getVal('vldmEditDesc'),
+                    status:                  getVal('vldmEditStatus'),
+                    systemManager:           getVal('vldmEditManager'),
+                    environment:             getVal('vldmEditEnv'),
+                    domain:                  getVal('vldmEditDomain'),
+                    department:              getVal('vldmEditDept'),
+                    team:                    getVal('vldmEditTeam'),
+                    businessDivision:        getVal('vldmEditBizDiv'),
+                    appClassification:       getVal('vldmEditAppClass'),
+                    appType:                 getVal('vldmEditAppType'),
+                    businessCriticality:     getVal('vldmEditCriticality'),
+                    availabilityRequirement: getVal('vldmEditAvailability'),
+                    hasAutomation:           getVal('vldmEditHasAutomation') || 'לא קיימות',
+                    automationNote:          getVal('vldmEditAutomationNote'),
+                    managerEmail:            managerEmail || null
+                };
+
+                const res  = await fetch(
+                    '/SystemsCatalog/UpdateSystemPublic',
+                    {
+                        method:  'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body:    JSON.stringify(payload)
+                    }
+                );
+                const data = await res.json();
+
+                if (!data.success)
+                    throw new Error(data.error || 'שגיאה בשמירה');
+
+                // ─── עדכן מקומית ───
+                const sys = _allSystems.find(s => s.id === systemId);
+                if (sys && data.system) {
+                    Object.assign(sys, data.system);
+                }
+
+                // ─── סמן כנבחר ───
+                _selected.add(systemId);
+
+                // ─── סגור מודל ───
+                document.getElementById('vldmEditModal')?.remove();
+
+                // ─── רנדר מחדש ───
+                applyFilter();
+
+                showToast(
+                    `✅ "${payload.name || ''}" נשמרה ונוספה לרשימת האישור`,
+                    'success'
+                );
+
+            } catch (err) {
+                console.error('saveAndValidate error:', err);
+                showToast('שגיאה: ' + err.message, 'error');
+
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML =
+                        '<i class="fas fa-check-circle"></i> שמור ואשר מערכת';
+                }
+            }
+        }
+
+        // ─── רענן עמוד ────────────────────────────────────────
+        function reloadPage() {
+            window.location.reload();
+        }
+
+        // ─── חשוף API ─────────────────────────────────────────
+        window._vldm = {
+            toggleRow,
+            toggleAll,
+            selectAll,
+            selectPending,
+            deselectAll,
+            setFilter,
+            validateSelected,
+            openEditModal,
+            saveAndValidate,
+            reloadPage
+        };
+
+        // ─── אתחול ────────────────────────────────────────────
+        Promise.all([
+            loadDynamicOptions(),
+            loadColumnDefs()
+        ])
+        .then(() => loadSystems())  // ← לאחר שהעמודות נבנו
+        .catch(err => console.error('Init error:', err));
+
+    })();
+    </script>
+
+</body>
+</html>

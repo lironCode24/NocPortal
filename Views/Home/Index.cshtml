@@ -1,4 +1,4 @@
-﻿@{
+@{
     ViewData["Title"] = "NOC Portal";
     Layout = null;
 }
@@ -50,7 +50,6 @@
                         <button class="reset-layout-btn"
                                 title="אפס סידור סקשנים">
                             <i class="fas fa-undo"></i>
-                            <span>אפס סידור</span>
                         </button>
                     </div>
                 </div>
@@ -70,7 +69,6 @@
                         </span>
                     </div>
 
-
                     <!-- ══ הודעות ממתינות ══════════════════════════════════════ -->
                     <div class="user-messages-row" id="userMessagesRow" 
                         style="display:none">
@@ -88,7 +86,7 @@
                             <i class="fas fa-chevron-left messages-arrow"></i>
                         </button>
                     </div>
-                    
+
                     @if (User.IsInRole("Admin"))
                     {
                         <a href="/Auth/AdminPanel"
@@ -103,21 +101,38 @@
                                 </span>
                             }
                         </a>
+                    }
+                    @if (User.IsInRole("Admin"))
+                    {
+                        <!-- *** הוסף wrapper חדש *** -->
+                        <div class="admin-alerts-stack">
+                            
+                            <a href="/PhoneDirectoryChanges/Index"
+                            class="phone-changes-alert-btn btn-header-admin admin-panel-link"
+                            id="phoneChangesAlertBtn"
+                            title="יש שינויים ממתינים בספר הטלפונים">
+                                <i class="fas fa-address-book"></i>
+                                <span>שינויים בספר טלפונים</span>
+                                <span class="alert-count" id="phoneChangesCount">0</span>
+                            </a>
 
-                        @if (ViewBag.UnapprovedCount != null &&
-                            ViewBag.UnapprovedCount > 0)
-                        {
-                            <div class="pending-users-alert">
-                                <i class="fas fa-user-clock"></i>
-                                <span>
-                                    ממתינים:
-                                    <strong>@ViewBag.UnapprovedCount</strong>
-                                    משתמשים
-                                </span>
-                                <a href="/Auth/Users"
-                                class="pending-approve-link">מעבר לאישור</a>
-                            </div>
-                        }
+                            @if (ViewBag.UnapprovedCount != null &&
+                                ViewBag.UnapprovedCount > 0)
+                            {
+                                <div class="pending-users-alert">
+                                    <i class="fas fa-user-clock"></i>
+                                    <span>
+                                        ממתינים:
+                                        <strong>@ViewBag.UnapprovedCount</strong>
+                                        משתמשים
+                                    </span>
+                                    <a href="/Auth/Users"
+                                    class="pending-approve-link">מעבר לאישור</a>
+                                </div>
+                            }
+                            
+                        </div>
+                        <!-- *** סוף wrapper *** -->
                     }
                 </div>
 
@@ -472,6 +487,10 @@
                                     <div class="column-checkbox-item">
                                         <input type="checkbox" id="col-role" checked>
                                         <label for="col-role">תפקיד</label>
+                                    </div>
+                                    <div class="column-checkbox-item">
+                                        <input type="checkbox" id="col-division" checked>
+                                        <label for="col-division">אגף</label>
                                     </div>
                                     <div class="column-checkbox-item">
                                         <input type="checkbox" id="col-domain" checked>
@@ -945,6 +964,12 @@
                             <i class="fas fa-plus"></i>
                             הוסף הודעה
                         </button>
+                        <button id="emailRecipientsAdminBtn"
+                                class="btn-send-email-recipients add-message-btn"
+                                onclick="messagesManager.openEmailRecipientsAdminModal()"
+                                title="ניהול מיילים קבועים - Admin בלבד">
+                            <i class="fas fa-cog"></i> ניהול מיילים
+                        </button>
                     </div>
 
                     <div class="filter-tabs">
@@ -1284,7 +1309,9 @@
                             הוסף משימה לפעילות
                         </button>
                     </div>
-                    
+                    <div class="task-filters-bar" id="taskFiltersBar" style="display:none;">
+                        <!-- ימולא דינמית -->
+                    </div>
                     <div class="task-controls-row" style="display:none;">
                         <div class="task-search-container">
                             <div class="search-box task-search">
@@ -1294,13 +1321,6 @@
                                 <button id="taskSearchClear" class="clear-search-btn task" onclick="document.getElementById('taskSearchInput').value=''; activityManager.searchTasks('')" style="display:none;">
                                     <i class="fas fa-times"></i>
                                 </button>
-                            </div>
-                            <div class="task-sort-container">
-                                <label for="activityTasksSort">סידור משימות:</label>
-                                <select id="activityTasksSort" onchange="activityManager.changeSortMode(this.value)">
-                                    <option value="time">לפי שעה</option>
-                                    <option value="selfOrder">סידור חופשי</option>
-                                </select>
                             </div>
                         </div>
                         
@@ -1976,19 +1996,21 @@
             </div>
         </div>
     </div>
-
+    
     <!-- Add Activity Modal -->
     <div id="addActivityModal" class="add-task-modal">
         <div class="task-modal-content">
             <div class="modal-header">
                 <h3 class="modal-title" id="activityModalTitle">צור פעילות חדשה</h3>
-                <button class="close-btn" onclick="activityManager.closeAddActivityModal()">&times;</button>
+                <button class="close-btn" 
+                        onclick="activityManager.closeAddActivityModal()">&times;</button>
             </div>
             <form id="activityForm" onsubmit="event.preventDefault(); 
                 const formData = {
                     id: document.getElementById('activityId').value,
                     name: document.getElementById('activityName').value,
-                    description: document.getElementById('activityDescription').value
+                    description: document.getElementById('activityDescription').value,
+                    activityManager: document.getElementById('activityManagerInput').value
                 };
                 activityManager.saveActivity(formData, !!formData.id);">
                 
@@ -2001,34 +2023,64 @@
 
                 <div class="form-group">
                     <label class="form-label" for="activityDescription">תיאור</label>
-                    <textarea id="activityDescription" class="form-textarea" rows="3"></textarea>
+                    <textarea id="activityDescription" 
+                            class="form-textarea" rows="3"></textarea>
                 </div>
 
                 <div class="form-group">
-                <label class="form-label" for="activityDateInput">תאריך הפעילות *</label>
-                <div class="date-input-wrapper">
-                    <input type="date" id="activityDateInputHidden" class="hidden-date-input"
-                        onchange="activityManager.handleActivityDateChange(this.value)">
-                    <input type="text" id="activityDateInput" placeholder="DD/MM/YYYY" readonly
-                        onclick="activityManager.openActivityDatePicker()" class="formatted-date-input">
-                    <i class="fas fa-calendar-alt date-icon" onclick="activityManager.openActivityDatePicker()"></i>
+                    <label class="form-label" for="activityDateInput">
+                        תאריך הפעילות *
+                    </label>
+                    <div class="date-input-wrapper">
+                        <input type="date" 
+                            id="activityDateInputHidden" 
+                            class="hidden-date-input"
+                            onchange="activityManager.handleActivityDateChange(this.value)">
+                        <input type="text" 
+                            id="activityDateInput" 
+                            placeholder="DD/MM/YYYY" 
+                            readonly
+                            onclick="activityManager.openActivityDatePicker()" 
+                            class="formatted-date-input">
+                        <i class="fas fa-calendar-alt date-icon" 
+                        onclick="activityManager.openActivityDatePicker()"></i>
+                    </div>
                 </div>
-            </div>
+
+                <!-- *** שדה חדש: מנהל פעילות *** -->
+                <div class="form-group">
+                    <label class="form-label" for="activityManagerInput">
+                        <i class="fas fa-user-tie"></i>
+                        מנהל פעילות
+                    </label>
+                    <input type="text" 
+                        id="activityManagerInput" 
+                        class="form-input"
+                        placeholder="שם מנהל הפעילות">
+                </div>
 
                 <div class="form-actions">
-                    <button type="button" class="btn-secondary" onclick="activityManager.closeAddActivityModal()">ביטול</button>
-                    <button type="submit" class="btn-primary" id="activitySubmitBtn">צור פעילות</button>
+                    <button type="button" 
+                            class="btn-secondary" 
+                            onclick="activityManager.closeAddActivityModal()">
+                        ביטול
+                    </button>
+                    <button type="submit" 
+                            class="btn-primary" 
+                            id="activitySubmitBtn">
+                        צור פעילות
+                    </button>
                 </div>
             </form>
         </div>
     </div>
-
     <!-- Add Activity Task Modal -->
     <div id="addActivityTaskModal" class="add-task-modal">
         <div class="task-modal-content">
             <div class="modal-header">
                 <h3 class="modal-title" id="activityTaskModalTitle">הוסף משימה לפעילות</h3>
-                <button class="close-btn" onclick="activityManager.closeAddTaskModal()">&times;</button>
+                <button class="close-btn" 
+                        onclick="activityManager.closeAddTaskModal()">&times;</button>
             </div>
 
             <!-- Scrollable Body -->
@@ -2045,22 +2097,39 @@
                         responsiblePerson: document.getElementById('activityTaskResponsible').value || null,
                         secondaryResponsible: document.getElementById('activityTaskSecondary').value || null,
                         status: document.getElementById('activityTaskStatus').value || 'חדש',
-                        notes: document.getElementById('activityTaskNotes').value || null
+                        notes: document.getElementById('activityTaskNotes').value || null,
+                        systemName: document.getElementById('activityTaskSystemName').value || null,
+                        environment: document.getElementById('activityTaskEnvironment').value || null,
+                        dependency: document.getElementById('activityTaskDependency').value || null,
+                        disruptionDuration: document.getElementById('activityTaskDisruptionDuration').value || null,
+                        impact: document.getElementById('activityTaskImpact').value || null
                     };
                     activityManager.saveTask(formData, !!formData.id);">
                     
                     <input type="hidden" id="activityTaskId">
                     
+                    <!-- ── כותרת ── -->
                     <div class="form-group">
-                        <label class="form-label" for="activityTaskTitle">כותרת המשימה *</label>
-                        <input type="text" id="activityTaskTitle" class="form-input" required>
+                        <label class="form-label" for="activityTaskTitle">
+                            כותרת המשימה *
+                        </label>
+                        <input type="text" 
+                            id="activityTaskTitle" 
+                            class="form-input" 
+                            required>
                     </div>
 
+                    <!-- ── תיאור ── -->
                     <div class="form-group">
-                        <label class="form-label" for="activityTaskDescription">תיאור</label>
-                        <textarea id="activityTaskDescription" class="form-textarea" rows="3"></textarea>
+                        <label class="form-label" for="activityTaskDescription">
+                            תיאור
+                        </label>
+                        <textarea id="activityTaskDescription" 
+                                class="form-textarea" 
+                                rows="3"></textarea>
                     </div>
 
+                    <!-- ── עדיפות ── -->
                     <div class="form-group">
                         <label class="form-label" for="activityTaskPriority">עדיפות</label>
                         <select id="activityTaskPriority" class="form-select">
@@ -2070,22 +2139,30 @@
                         </select>
                     </div>
 
-                   <div class="form-group">
+                    <!-- ── תאריך ── -->
+                    <div class="form-group">
                         <label class="form-label">תאריך ביצוע</label>
                         <div class="date-input-wrapper">
-                            <input type="date" id="activityTaskDateHidden" class="hidden-date-input" 
+                            <input type="date" 
+                                id="activityTaskDateHidden" 
+                                class="hidden-date-input" 
                                 onchange="activityManager.handleTaskDateChange(this.value)">
-                            <input type="text" id="activityTaskDate" class="formatted-date-input" 
-                                placeholder="בחר תאריך" readonly 
+                            <input type="text" 
+                                id="activityTaskDate" 
+                                class="formatted-date-input" 
+                                placeholder="בחר תאריך" 
+                                readonly 
                                 onclick="activityManager.taskDatePicker.open()">
                             <i class="fas fa-calendar-alt date-icon" 
                             onclick="activityManager.taskDatePicker.open()"></i>
                         </div>
                     </div>
 
-                    
+                    <!-- ── שעה ── -->
                     <div class="form-group">
-                        <label class="form-label">שעת ביצוע משוערת (אופציונלי)</label>
+                        <label class="form-label">
+                            שעת ביצוע משוערת (אופציונלי)
+                        </label>
                         <div class="time-picker">
                             <select id="activityTaskMinute" class="time-select">
                                 <option value="">דקה</option>
@@ -2130,25 +2207,35 @@
                                 <option value="22">22</option>
                                 <option value="23">23</option>
                             </select>
-                            <button type="button" class="time-clear-btn" onclick="activityManager.clearTaskTimeSelection()" title="נקה בחירת זמן">
+                            <button type="button" 
+                                    class="time-clear-btn" 
+                                    onclick="activityManager.clearTaskTimeSelection()" 
+                                    title="נקה בחירת זמן">
                                 <i class="fas fa-times"></i>
                             </button>
                         </div>
                         <small class="form-help">בחר שעה ודקות</small>
                     </div>
 
+                    <!-- ── אחראי ── -->
                     <div class="form-group">
                         <label class="form-label">גורם אחראי</label>
-                        <input type="text" id="activityTaskResponsible" class="form-input" 
+                        <input type="text" 
+                            id="activityTaskResponsible" 
+                            class="form-input" 
                             placeholder="שם האחראי">
                     </div>
 
+                    <!-- ── אחראי משנה ── -->
                     <div class="form-group">
                         <label class="form-label">אחראי משנה</label>
-                        <input type="text" id="activityTaskSecondary" class="form-input" 
+                        <input type="text" 
+                            id="activityTaskSecondary" 
+                            class="form-input" 
                             placeholder="שם האחראי המשני">
                     </div>
 
+                    <!-- ── סטטוס ── -->
                     <div class="form-group">
                         <label class="form-label">סטטוס</label>
                         <select id="activityTaskStatus" class="form-select">
@@ -2160,19 +2247,257 @@
                         </select>
                     </div>
 
+                    <!-- ── הערות ── -->
                     <div class="form-group">
                         <label class="form-label">הערות</label>
-                        <textarea id="activityTaskNotes" class="form-textarea" 
+                        <textarea id="activityTaskNotes" 
+                                class="form-textarea" 
                                 placeholder="הערות נוספות..."></textarea>
                     </div>
+
+                    <!-- ════════════════════════════════════════════
+                        שדות חדשים: מערכת, סביבה, תלות, שיבוש, השפעה
+                    ════════════════════════════════════════════ -->
+                    <div class="form-group-section">
+                        <div class="section-divider">
+                            <div class="section-divider-line"></div>
+                            <span class="section-divider-label">
+                                <i class="fas fa-server"></i>
+                                פרטי מערכת ותשתית
+                            </span>
+                            <div class="section-divider-line"></div>
+                        </div>
+
+                        <!-- מערכת -->
+                        <div class="form-group">
+                            <label class="form-label" for="activityTaskSystemName">
+                                <i class="fas fa-server" style="color:#667eea; margin-left:4px;"></i>
+                                מערכת
+                            </label>
+                            <input type="text" 
+                                id="activityTaskSystemName" 
+                                class="form-input"
+                                placeholder="לדוגמה: Datastage, SAP, Oracle...">
+                        </div>
+
+                        <!-- סביבה -->
+                        <div class="form-group">
+                            <label class="form-label" for="activityTaskEnvironment">
+                                <i class="fas fa-layer-group" style="color:#667eea; margin-left:4px;"></i>
+                                סביבה
+                            </label>
+                            <input type="text" 
+                                id="activityTaskEnvironment" 
+                                class="form-input"
+                                placeholder="לדוגמה: ALL, Virtual Machine, Kubernetes...">
+                        </div>
+
+                        <!-- תלות -->
+                        <div class="form-group">
+                            <label class="form-label" for="activityTaskDependency">
+                                <i class="fas fa-project-diagram" style="color:#667eea; margin-left:4px;"></i>
+                                תלות
+                            </label>
+                            <input type="text" 
+                                id="activityTaskDependency" 
+                                class="form-input"
+                                placeholder="לדוגמה: תלוי בסגירת טיקט 1234...">
+                        </div>
+
+                        <!-- משך זמן שיבוש -->
+                        <div class="form-group">
+                            <label class="form-label" for="activityTaskDisruptionDuration">
+                                <i class="fas fa-hourglass-half" style="color:#f59e0b; margin-left:4px;"></i>
+                                משך זמן שיבוש משוער
+                            </label>
+                            <input type="text" 
+                                id="activityTaskDisruptionDuration" 
+                                class="form-input"
+                                placeholder="לדוגמה: 30 דקות, 2 שעות, ללא שיבוע...">
+                        </div>
+
+                        <!-- השפעה -->
+                        <div class="form-group">
+                            <label class="form-label" for="activityTaskImpact">
+                                <i class="fas fa-bolt" style="color:#dc3545; margin-left:4px;"></i>
+                                השפעה
+                            </label>
+                            <input type="text" 
+                                id="activityTaskImpact" 
+                                class="form-input"
+                                placeholder="לדוגמה: השבתת שירות X, השפעה על לקוחות Y...">
+                        </div>
+
+                    </div>
+                    <!-- /שדות מערכת ותשתית -->
+
+                    <!-- ── התראות לבדיקה ── -->
+                    <div class="form-group">
+                        <label class="form-label">
+                            <i class="fas fa-satellite-dish" 
+                            style="color:#f59e0b; margin-left:4px;"></i>
+                            התראות לבדיקה
+                        </label>
+                        <textarea id="activityTaskAlertsToCheck" 
+                                class="form-textarea" 
+                                rows="3"
+                                placeholder="הזן תיאור התראות שיש לבדוק במשימה זו...
+    דוגמה: ping lost / CPU high / interface down"></textarea>
+                        <small class="form-help">
+                            <i class="fas fa-info-circle"></i>
+                            תיאור ההתראות שיש לבדוק בעת ביצוע משימה זו
+                        </small>
+                    </div>
+                            
+                    <!-- ═══════════════════════════════════════════
+                        הגדרות מייל לביצוע משימה
+                    ═══════════════════════════════════════════ -->
+                    <div class="form-group email-config-section">
+                        <label class="form-label email-section-header">
+                            <i class="fas fa-envelope" 
+                            style="color:#667eea; margin-left:6px;"></i>
+                            הגדרות מייל אוטומטי עם ביצוע המשימה
+                            <button type="button"
+                                    class="email-toggle-btn"
+                                    id="emailSectionToggle"
+                                    onclick="
+                                        const body = 
+                                            document.getElementById('emailConfigBody');
+                                        const icon = 
+                                            document.getElementById('emailToggleIcon');
+                                        const isOpen = body.style.display !== 'none';
+                                        body.style.display = isOpen ? 'none' : 'block';
+                                        icon.className = isOpen 
+                                            ? 'fas fa-chevron-down' 
+                                            : 'fas fa-chevron-up';
+                                    "
+                                    style="
+                                        background: none; border: none;
+                                        cursor: pointer; margin-right: auto;
+                                        color: #667eea; font-size: 0.8rem;
+                                        padding: 2px 6px;
+                                    ">
+                                <i class="fas fa-chevron-down" 
+                                id="emailToggleIcon"></i>
+                            </button>
+                        </label>
+
+                        <!-- גוף מתקפל -->
+                        <div id="emailConfigBody" style="display:none;">
+
+                            <div style="
+                                background: rgba(102,126,234,0.06);
+                                border: 1px solid rgba(102,126,234,0.2);
+                                border-radius: 8px; padding: 12px 14px;
+                                margin-bottom: 10px; font-size: 0.8rem;
+                                color: #667eea; direction: rtl;
+                            ">
+                                <i class="fas fa-info-circle"></i>
+                                כאשר המשימה תסומן כבוצעה, יישלח מייל אוטומטי.
+                                <br>ניתן להשתמש בתגיות:
+                                <code style="background:rgba(102,126,234,0.12);
+                                            padding:1px 5px;border-radius:3px;">
+                                    {task}
+                                </code>
+                                <code style="background:rgba(102,126,234,0.12);
+                                            padding:1px 5px;border-radius:3px;">
+                                    {completedBy}
+                                </code>
+                                <code style="background:rgba(102,126,234,0.12);
+                                            padding:1px 5px;border-radius:3px;">
+                                    {time}
+                                </code>
+                                <code style="background:rgba(102,126,234,0.12);
+                                            padding:1px 5px;border-radius:3px;">
+                                    {date}
+                                </code>
+                            </div>
+
+                            <!-- TO -->
+                            <div class="form-group" style="margin-bottom:10px;">
+                                <label class="form-label" style="font-size:0.82rem;">
+                                    <i class="fas fa-at" 
+                                    style="color:#667eea; margin-left:4px;"></i>
+                                    נמען (TO) *
+                                </label>
+                                <input type="email"
+                                    id="activityTaskEmailTo"
+                                    class="form-input"
+                                    placeholder="example@company.co.il"
+                                    style="direction:ltr; text-align:left;">
+                                <small class="form-help">כתובת מייל אחת בלבד</small>
+                            </div>
+
+                            <!-- CC -->
+                            <div class="form-group" style="margin-bottom:10px;">
+                                <label class="form-label" style="font-size:0.82rem;">
+                                    <i class="fas fa-copy" 
+                                    style="color:#667eea; margin-left:4px;"></i>
+                                    עותק (CC)
+                                </label>
+                                <input type="text"
+                                    id="activityTaskEmailCc"
+                                    class="form-input"
+                                    placeholder="cc1@company.co.il, cc2@company.co.il"
+                                    style="direction:ltr; text-align:left;">
+                                <small class="form-help">
+                                    ניתן להזין מספר כתובות מופרדות בפסיק
+                                </small>
+                            </div>
+
+                            <!-- נושא -->
+                            <div class="form-group" style="margin-bottom:10px;">
+                                <label class="form-label" style="font-size:0.82rem;">
+                                    <i class="fas fa-heading" 
+                                    style="color:#667eea; margin-left:4px;"></i>
+                                    נושא המייל
+                                </label>
+                                <input type="text"
+                                    id="activityTaskEmailSubject"
+                                    class="form-input"
+                                    placeholder="משימה הושלמה: {task}">
+                                <small class="form-help">
+                                    ברירת מחדל: "משימה הושלמה: {task}"
+                                </small>
+                            </div>
+
+                            <!-- גוף מייל -->
+                            <div class="form-group" style="margin-bottom:0;">
+                                <label class="form-label" style="font-size:0.82rem;">
+                                    <i class="fas fa-align-left" 
+                                    style="color:#667eea; margin-left:4px;"></i>
+                                    גוף המייל
+                                </label>
+                                <textarea id="activityTaskEmailBodyText"
+                                        class="form-textarea"
+                                        rows="3"
+                                        placeholder="המשימה {task} בוצעה על ידי {completedBy} בשעה {time} בתאריך {date}.">
+                                </textarea>
+                                <small class="form-help">
+                                    ניתן להשתמש ב-HTML בסיסי. ריק = תבנית ברירת מחדל
+                                </small>
+                            </div>
+
+                        </div><!-- /emailConfigBody -->
+                    </div><!-- /email-config-section -->
+
                 </form>
-            </div>
+            </div><!-- /modal-body -->
 
             <div class="modal-footer">
                 <div class="form-actions">
-                    <button type="button" class="btn-secondary" onclick="activityManager.closeAddTaskModal()">ביטול</button>
-                    <button type="submit" class="btn-primary" id="activityTaskSubmitBtn" 
-                            onclick="document.getElementById('activityTaskForm').requestSubmit()">הוסף משימה</button>
+                    <button type="button" 
+                            class="btn-secondary" 
+                            onclick="activityManager.closeAddTaskModal()">
+                        ביטול
+                    </button>
+                    <button type="submit" 
+                            class="btn-primary" 
+                            id="activityTaskSubmitBtn" 
+                            onclick="document.getElementById(
+                                        'activityTaskForm').requestSubmit()">
+                        הוסף משימה
+                    </button>
                 </div>
             </div>
         </div>
@@ -2256,10 +2581,11 @@
                         background: rgba(102,126,234,0.05);
                         border-radius: 0 0 8px 8px;
                     ">
-                        <ul style="margin:0; padding-right:20px; color:#555;">
+                        <ul style="margin:0; padding-right:20px; color:#555; line-height:1.8;">
                             <li>בחר קובץ אקסל עם רשימת משימות לפעילות</li>
                             <li>שורה 1: שם הפעילות (תא D1)</li>
-                            <li>שורה 3-4: כותרות טבלה</li>
+                            <li>שורה 1: ניתן לציין מנהל פעילות בפורמט <code style="background:#e8eaf6;padding:1px 5px;border-radius:3px;">מנהל: שם</code> (תאים I1+J1)</li>
+                            <li>שורה 3-4: כותרות טבלה (מזוהות אוטומטית)</li>
                             <li>שורה 5 ואילך: משימות לפי המבנה הבא:
                                 <ul style="margin-top:6px;">
                                     <li>עמודה A: יום</li>
@@ -2270,6 +2596,20 @@
                                     <li>עמודה F: אחראי משנה</li>
                                     <li>עמודה G: סטטוס</li>
                                     <li>עמודה H: הערות</li>
+                                    <li>תיאור - תיאור מורחב</li>
+                                    <li>עדיפות - גבוה / בינוני / נמוך</li>
+                                    <li>אחראי משנה - שם האחראי המשני</li>
+                                    <li>מערכת - שם המערכת / הרכיב</li>
+                                    <li>סביבה - סביבת הריצה</li>
+                                    <li>תלות - תלויות המשימה</li>
+                                    <li>משך שיבוש - זמן שיבוש משוער</li>
+                                    <li>השפעה - תיאור ההשפעה</li>
+                                    <li>התראות / התראה - התראות לבדיקה</li>
+                                    <li>מייל נמען - כתובת TO למייל אוטומטי</li>
+                                    <li>CC - כתובת CC</li>
+                                    <li>נושא מייל - נושא המייל</li>
+                                    <li>גוף מייל - תוכן המייל</li>
+
                                 </ul>
                             </li>
                         </ul>
@@ -2513,6 +2853,15 @@
                     <div class="form-group">
                         <label class="form-label">תפקיד *</label>
                         <input type="text" id="contactRole" class="form-input" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="contactDivision">אגף</label>
+                        <input type="text" 
+                            id="contactDivision" 
+                            name="division" 
+                            class="form-input"
+                            placeholder="שם האגף">
                     </div>
 
                     <div class="form-group">
@@ -3323,42 +3672,106 @@
                     <i class="fas fa-user-check"></i>
                     סימון משימה כהושלמה
                 </h3>
-                <button class="close-btn" onclick="dailyTasksManager.closeEmployeeCompletionModal()">
+                <button class="close-btn"
+                        onclick="dailyTasksManager.closeEmployeeCompletionModal()">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-            <form id="employeeCompletionForm" onsubmit="event.preventDefault(); 
-                const taskId = document.getElementById('completionTaskId').value;
-                const employeeName = document.getElementById('completionEmployeeName').value.trim();
-                if (employeeName) {
-                    dailyTasksManager.markTaskAsCompleted(taskId, employeeName);
-                    dailyTasksManager.closeEmployeeCompletionModal();
-                } else {
-                    NotificationManager.show('נא להזין שם עובד', 'warning');
-                }">
+
+            <form id="employeeCompletionForm" onsubmit="
+                event.preventDefault();
+                const taskId      = document.getElementById('completionTaskId').value;
+                const performedBy = document.getElementById('completionEmployeeName').value.trim();
+                const onBehalfOf  = document.getElementById('completionOnBehalfOf').value.trim();
+
+                if (!performedBy) {
+                    NotificationManager.show('לא זוהה משתמש מחובר', 'warning');
+                    return;
+                }
+
+                const finalName = (onBehalfOf && onBehalfOf !== performedBy)
+                    ? performedBy + ' עבור ' + onBehalfOf
+                    : performedBy;
+
+                dailyTasksManager.markTaskAsCompleted(taskId, finalName);
+                dailyTasksManager.closeEmployeeCompletionModal();
+            ">
                 <div class="modal-body">
                     <input type="hidden" id="completionTaskId">
-                    
+
+                    <!-- כותרת המשימה -->
                     <div class="task-title-display">
                         <i class="fas fa-tasks"></i>
                         <span id="completionTaskTitle"></span>
                     </div>
 
+                    <!-- עובד מבצע - קבוע, לא ניתן לשינוי -->
                     <div class="form-group">
-                        <label class="form-label" for="completionEmployeeName">
+                        <label class="form-label">
                             <i class="fas fa-user"></i>
-                            שם העובד שביצע את המשימה:
+                            בוצע על ידי:
                         </label>
-                        <select id="completionEmployeeName" 
-                                class="form-select" 
-                                required>
-                            <option value="">בחר עובד...</option>
+
+                        <!-- שדה נסתר שמחזיק את הערך האמיתי -->
+                        <input type="hidden"
+                            id="completionEmployeeName">
+
+                        <!-- תצוגה קבועה של היוזר המחובר -->
+                        <div id="completionPerformedByDisplay"
+                            style="
+                                padding: 9px 14px;
+                                background: #f1f5f9;
+                                border: 1px solid #cbd5e1;
+                                border-radius: 8px;
+                                font-weight: 600;
+                                color: #334155;
+                                font-size: 0.95rem;
+                                display: flex;
+                                align-items: center;
+                                gap: 8px;
+                            ">
+                        </div>
+
+                        <small class="form-help">
+                            <i class="fas fa-lock"></i>
+                            המשתמש המחובר כרגע
+                        </small>
+                    </div>
+
+                    <!-- בוצע עבור (אופציונלי) -->
+                    <div class="form-group">
+                        <label class="form-label" for="completionOnBehalfOf">
+                            <i class="fas fa-user-friends"></i>
+                            בוצע עבור (אופציונלי):
+                        </label>
+                        <select id="completionOnBehalfOf"
+                                class="form-select"
+                                onchange="dailyTasksManager.onBehalfOfChange()">
+                            <option value="">-- ביצע עבור עצמו --</option>
                         </select>
                         <small class="form-help">
                             <i class="fas fa-info-circle"></i>
-                            נא לבחור את העובד שביצע את המשימה
+                            אם ביצעת את המשימה עבור עובד אחר, בחר כאן
                         </small>
                     </div>
+
+                    <!-- תצוגה מקדימה של השם הסופי -->
+                    <div id="completionPreview"
+                        style="
+                            display: none;
+                            background: #f0fff4;
+                            border: 1px solid #28a745;
+                            border-radius: 8px;
+                            padding: 10px 14px;
+                            margin-top: 8px;
+                            font-size: 0.9rem;
+                            color: #1b5e20;
+                        ">
+                        <i class="fas fa-eye"></i>
+                        יירשם כ: <strong id="completionPreviewText"></strong>
+                    </div>
+
+                </div><!-- end modal-body -->
 
                 <div class="modal-footer">
                     <div class="form-actions">
@@ -3366,7 +3779,8 @@
                             <i class="fas fa-check"></i>
                             אשר ביצוע
                         </button>
-                        <button type="button" class="btn-secondary" onclick="dailyTasksManager.closeEmployeeCompletionModal()">
+                        <button type="button" class="btn-secondary"
+                                onclick="dailyTasksManager.closeEmployeeCompletionModal()">
                             <i class="fas fa-times"></i>
                             ביטול
                         </button>
@@ -3376,36 +3790,135 @@
         </div>
     </div>
 
+    <div class="phone-changes-popup-overlay"
+        id="phoneChangesPopupOverlay"
+        onclick="PhoneChangesAlert.closeOnOverlay(event)">
+
+        <div class="phone-changes-popup">
+
+            @* ── כותרת ── *@
+            <div class="popup-header">
+                <div class="popup-header-icon">
+                    <i class="fas fa-address-book"></i>
+                </div>
+                <div class="popup-header-text">
+                    <div class="popup-header-title">
+                        שים לב - יש שינויים בספר הטלפונים
+                    </div>
+                    <div class="popup-header-subtitle"
+                        id="popupSubtitle">
+                        נמצאו שינויים הממתינים לאישור
+                    </div>
+                </div>
+                <button class="popup-close-btn"
+                        onclick="PhoneChangesAlert.close()"
+                        title="סגור">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            @* ── גוף ── *@
+            <div class="popup-body">
+
+                @* ── מיני סיכום ── *@
+                <div class="popup-summary-grid" id="popupSummaryGrid">
+                    <div class="popup-summary-card new-card">
+                        <div class="card-val" id="popupNewCount">—</div>
+                        <div class="card-lbl">
+                            <i class="fas fa-user-plus"
+                            style="color:#22c55e;margin-left:.3rem"></i>
+                            עובדים חדשים
+                        </div>
+                    </div>
+                    <div class="popup-summary-card removed-card">
+                        <div class="card-val" id="popupRemovedCount">—</div>
+                        <div class="card-lbl">
+                            <i class="fas fa-user-minus"
+                            style="color:#ef4444;margin-left:.3rem"></i>
+                            עובדים שהוסרו
+                        </div>
+                    </div>
+                    <div class="popup-summary-card changed-card">
+                        <div class="card-val" id="popupChangedCount">—</div>
+                        <div class="card-lbl">
+                            <i class="fas fa-user-edit"
+                            style="color:#f59e0b;margin-left:.3rem"></i>
+                            שינויים בפרטים
+                        </div>
+                    </div>
+                    <div class="popup-summary-card reapprove-card">
+                        <div class="card-val" id="popupReApproveCount">—</div>
+                        <div class="card-lbl">
+                            <i class="fas fa-redo"
+                            style="color:#3b82f6;margin-left:.3rem"></i>
+                            ממתינים לאישור מחדש
+                        </div>
+                    </div>
+                </div>
+
+                @* ── מידע קובץ ── *@
+                <div class="popup-file-info" id="popupFileInfo">
+                    <i class="fas fa-clock"></i>
+                    <span>עודכן לאחרונה:</span>
+                    <strong id="popupFileDate">—</strong>
+                </div>
+
+            </div>
+
+            @* ── כפתורי פעולה ── *@
+            <div class="popup-actions">
+                <label class="popup-dont-show">
+                    <input type="checkbox"
+                        id="dontShowTodayCheck">
+                    אל תציג שוב היום
+                </label>
+
+                <button class="popup-btn-secondary"
+                        onclick="PhoneChangesAlert.close()">
+                    <i class="fas fa-times"></i>
+                    סגור
+                </button>
+
+                <a href="/PhoneDirectoryChanges/Index"
+                class="popup-btn-primary">
+                    <i class="fas fa-exchange-alt"></i>
+                    עבור לניהול שינויים
+                </a>
+            </div>
+
+        </div>
+    </div>
     <!-- JavaScript Files -->
     <!-- Core Classes -->
-    <script src="~/js/flatpickr-helper.js"asp-append-version="true"></script>
-    <script src="~/js/NotificationManager.js"asp-append-version="true"></script>
-    <script src="~/js/SectionManager.js"asp-append-version="true"></script>
-    <script src="~/js/ShiftsManager.js"asp-append-version="true"></script>
-    <script src="~/js/MessagesManager.js"asp-append-version="true"></script>
-    <script src="~/js/ProceduresManager.js"asp-append-version="true"></script>
-    <script src="~/js/DailyTasksManager.js"asp-append-version="true"></script>
-    <script src="~/js/EmployeeTasksManager.js"asp-append-version="true"></script>
-    <script src="~/js/PhoneDirectoryManager.js"asp-append-version="true"></script>
-    <script src="~/js/ActivityManager.js"asp-append-version="true"></script>
-    <script src="~/js/teamLinksManager.js"asp-append-version="true"></script>
-    <script src="~/js/NOCPortalApp.js"asp-append-version="true"></script>
-    <script src="~/js/SectionDragManager.js"asp-append-version="true"></script>
-    <script src="/js/DataCenterManager.js"asp-append-version="true"></script>
-    <script src="/js/AlertsManager.js"asp-append-version="true"></script>
+    <script src="/js/UserSettingsManager.js"></script>
+    <script src="~/js/flatpickr-helper.js" asp-append-version="true"></script>
+    <script src="~/js/NotificationManager.js" asp-append-version="true"></script>
+    <script src="~/js/SectionManager.js" asp-append-version="true"></script>
+    <script src="~/js/ShiftsManager.js" asp-append-version="true"></script>
+    <script src="~/js/MessagesManager.js" asp-append-version="true"></script>
+    <script src="~/js/ProceduresManager.js" asp-append-version="true"></script>
+    <script src="~/js/DailyTasksManager.js" asp-append-version="true"></script>
+    <script src="~/js/EmployeeTasksManager.js" asp-append-version="true"></script>
+    <script src="~/js/PhoneDirectoryManager.js" asp-append-version="true"></script>
+    <script src="~/js/ActivityManager.js" asp-append-version="true"></script>
+    <script src="~/js/teamLinksManager.js" asp-append-version="true"></script>
+    <script src="~/js/NOCPortalApp.js" asp-append-version="true"></script>
+    <script src="~/js/SectionDragManager.js" asp-append-version="true"></script>
+    <script src="/js/DataCenterManager.js" asp-append-version="true"></script>
+    <script src="/js/AlertsManager.js" asp-append-version="true"></script>
     <script src="/js/AlertProcedureMappingManager.js" asp-append-version="true"></script>
-    <script src="/js/ChangesManager.js"asp-append-version="true"></script>
+    <script src="/js/ChangesManager.js" asp-append-version="true"></script>
     <script src="/js/message-popup.js"></script>
 
     <!-- Main Application -->
-    <script src="~/js/main.js"asp-append-version="true"></script>
+    <script src="~/js/main.js" asp-append-version="true"></script>
     <script>
         // ==========================================
         // Portal Theme Toggle (Dark/Light Mode)
         // ==========================================
         
         function initPortalTheme() {
-            const savedTheme = localStorage.getItem('portalColorTheme') || 'light';
+            const savedTheme = userSettings.getItem('portalColorTheme') || 'light';
             applyPortalTheme(savedTheme);
         }
 
@@ -3413,7 +3926,7 @@
             const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
             const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
             applyPortalTheme(newTheme);
-            localStorage.setItem('portalColorTheme', newTheme);
+            userSettings.setItem('portalColorTheme', newTheme);
         }
 
         function applyPortalTheme(theme) {
@@ -3442,7 +3955,7 @@
         
         // אתחול מיידי למניעת flash
         (function() {
-            const savedTheme = localStorage.getItem('portalColorTheme');
+            const savedTheme = userSettings.getItem('portalColorTheme');
             if (savedTheme === 'dark') {
                 document.documentElement.setAttribute('data-theme', 'dark');
             }
@@ -3525,12 +4038,185 @@
                 'lastSelectedEmployee'
             ];
             
-            keysToRemove.forEach(key => localStorage.removeItem(key));
+            keysToRemove.forEach(key => userSettings.removeItem(key));
             
             // מחק מ-sessionStorage
             sessionStorage.removeItem('currentUser');
             
         }
+        // ══════════════════════════════════════════════════════════════════
+        // PhoneChangesAlert - ניהול התראת שינויים ספר טלפונים
+        // ══════════════════════════════════════════════════════════════════
+        const PhoneChangesAlert = {
+
+            // ─── מפתח localStorage ───────────────────────────────────────
+            STORAGE_KEY: 'phoneChangesAlertDismissed',
+
+            // ─── אתחול ───────────────────────────────────────────────────
+            async init() {
+                // ─── בדוק אם Admin או NOC ────────────────────────────────
+                // הפונקציה תרוץ רק אם הכפתור קיים ב-DOM
+                const alertBtn = document.getElementById('phoneChangesAlertBtn');
+                if (!alertBtn) return;
+
+                await this.checkForChanges();
+            },
+
+            // ─── בדוק שינויים מהשרת ──────────────────────────────────────
+            async checkForChanges() {
+                try {
+                    const res  = await fetch(
+                        '/PhoneDirectoryChanges/GetPendingChangesCount',
+                        { method: 'GET' }
+                    );
+                    const data = await res.json();
+
+                    if (!data.success) return;
+
+                    // ← בדוק גם pending וגם reApprove
+                    const hasPending   = data.pendingCount   > 0;
+                    const hasReApprove = data.reApproveCount > 0;
+                    if (!hasPending && !hasReApprove) {
+                        const btn = document.getElementById('phoneChangesAlertBtn');
+                        if (btn) {
+                            btn.classList.remove('visible');
+                        }
+                        return;
+                    }
+                    // ─── עדכן כפתור ──────────────────────────────────────
+                    this.updateAlertButton(data.pendingCount, data.reApproveCount);
+
+                    // ─── הצג פופאפ (אם לא נדחה היום) ────────────────────
+                    if (!this.isDismissedToday()) {
+                        this.showPopup(data);
+                    }
+
+                } catch (err) {
+                    console.warn('PhoneChangesAlert: לא ניתן לבדוק שינויים', err);
+                }
+            },
+
+            // ─── עדכן כפתור התראה ────────────────────────────────────────
+            updateAlertButton(pendingCount, reApproveCount = 0) {
+                    const btn     = document.getElementById('phoneChangesAlertBtn');
+                    const countEl = document.getElementById('phoneChangesCount');
+
+                    if (!btn) return;
+
+                    btn.classList.add('visible');
+
+                    // ← הצג מונה כולל
+                    const total = (pendingCount || 0) + (reApproveCount || 0);
+                    if (countEl) countEl.textContent = total;
+                },
+
+            // ─── הצג פופאפ ───────────────────────────────────────────────
+            showPopup(data) {
+                const overlay = document.getElementById(
+                    'phoneChangesPopupOverlay');
+                if (!overlay) return;
+
+                this.updatePopupData(data);
+
+                // ← הוסף class לכותרת אם יש reApprove
+                const subtitle = document.getElementById('popupSubtitle');
+                if (subtitle) {
+                    subtitle.classList.toggle(
+                        'has-reapprove',
+                        (data.reApproveCount ?? 0) > 0
+                    );
+                }
+
+                overlay.classList.add('visible');
+                document.body.style.overflow = 'hidden';
+            },
+
+            // ─── עדכן נתונים בפופאפ ──────────────────────────────────────
+            updatePopupData(data) {
+                // ─── כותרת משנה ──────────────────────────────────────────
+                const subtitle = document.getElementById('popupSubtitle');
+                if (subtitle) {
+                    const parts = [];
+                    if (data.pendingCount > 0)
+                        parts.push(`${data.pendingCount} ממתינים לאישור`);
+                    if (data.reApproveCount > 0)
+                        parts.push(`${data.reApproveCount} ממתינים לאישור מחדש`);
+
+                    subtitle.textContent = parts.length > 0
+                        ? parts.join(' | ')
+                        : 'נמצאו שינויים';
+                }
+
+                // ─── כרטיסי סיכום ────────────────────────────────────────
+                const newEl     = document.getElementById('popupNewCount');
+                const removedEl = document.getElementById('popupRemovedCount');
+                const changedEl = document.getElementById('popupChangedCount');
+                const reApproveEl = document.getElementById('popupReApproveCount');
+
+                if (newEl     && data.summary)
+                    newEl.textContent     = data.summary.newEmployees     ?? 0;
+                if (removedEl && data.summary)
+                    removedEl.textContent = data.summary.removedEmployees ?? 0;
+                if (changedEl && data.summary)
+                    changedEl.textContent = data.summary.fieldChanges     ?? 0;
+                if (reApproveEl && data.reApproveCount)
+                    reApproveEl.textContent = data.reApproveCount     ?? 0;
+
+                // ─── תאריך קובץ ──────────────────────────────────────────
+                const dateEl = document.getElementById('popupFileDate');
+                if (dateEl && data.fileDate)
+                    dateEl.textContent = data.fileDate;
+            },
+
+            // ─── סגור פופאפ ──────────────────────────────────────────────
+            close() {
+                const overlay = document.getElementById(
+                    'phoneChangesPopupOverlay');
+                if (!overlay) return;
+
+                // ─── בדוק "אל תציג שוב היום" ─────────────────────────────
+                const dontShow = document.getElementById('dontShowTodayCheck');
+                if (dontShow?.checked) {
+                    this.dismissToday();
+                }
+
+                overlay.classList.remove('visible');
+                document.body.style.overflow = '';
+            },
+
+            // ─── סגור בלחיצה על overlay ──────────────────────────────────
+            closeOnOverlay(event) {
+                // ─── סגור רק אם לחצו על ה-overlay עצמו ──────────────────
+                if (event.target === event.currentTarget) {
+                    this.close();
+                }
+            },
+
+            // ─── שמור דחייה להיום ────────────────────────────────────────
+            dismissToday() {
+                const today = new Date().toDateString();
+                userSettings.setItem(this.STORAGE_KEY, today);
+            },
+
+            // ─── בדוק אם נדחה היום ───────────────────────────────────────
+            isDismissedToday() {
+                const stored = userSettings.getItem(this.STORAGE_KEY);
+                if (!stored) return false;
+                return stored === new Date().toDateString();
+            }
+        };
+
+        // ── אתחול בטעינת הדף ──────────────────────────────────────────────
+        document.addEventListener('DOMContentLoaded', () => {
+            PhoneChangesAlert.init();
+        });
+
+        // ── סגירה ב-Escape ────────────────────────────────────────────────
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                PhoneChangesAlert.close();
+            }
+        });
     </script>
 </body>
 

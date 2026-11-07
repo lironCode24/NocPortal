@@ -133,8 +133,14 @@ class AlertsManager {
     // פונקציה לטעינת נתונים מ-localStorage
     loadFromLocalStorage(key) {
         try {
-            const value = localStorage.getItem(key);
-            return value ? JSON.parse(value) : null;
+            const value = userSettings.getItem(key);
+            if (value === null || value === undefined) return null;
+            try {
+                return JSON.parse(value);
+            } catch {
+                // הערך הוא string פשוט (לא JSON) - החזר אותו ישירות
+                return value;
+            }
         } catch (error) {
             console.error(`Error loading ${key} from localStorage:`, error);
             return null;
@@ -144,7 +150,7 @@ class AlertsManager {
     // פונקציה לשמירת נתונים ב-localStorage
     saveToLocalStorage(key, value) {
         try {
-            localStorage.setItem(key, JSON.stringify(value));
+            userSettings.setItem(key, JSON.stringify(value));
         } catch (error) {
             console.error(`Error saving ${key} to localStorage:`, error);
         }
@@ -828,10 +834,8 @@ class AlertsManager {
             return; // ← יטופל ב-initialize אחרי loadMappings
         }
 
-        // ── הגדר severities תקינות לפופאפ לפי הסינונים הפעילים ──
-        const VALID_SEVERITIES = this.severityFilters.length > 0
-            ? this.severityFilters
-            : ['CRITICAL', 'MAJOR', 'UNKNOWN'];
+        // ── הגדר severities תקינות לפופאפ ──
+        const VALID_SEVERITIES = ['CRITICAL', 'MAJOR', 'UNKNOWN'];
 
         // ── זיהוי כניסה ראשונה ──
         const isFirstEverLoad = this.knownAlertIds.size === 0 && this._isFirstLoad;
@@ -3060,6 +3064,1246 @@ class AlertsManager {
         }
     }
 
+    // ============================================================
+    // שליחת תזכורת על התראות נבחרות
+    // ============================================================
+    async bulkSendReminder() {
+        if (this.selectedAlerts.length === 0) {
+            this.showError('יש לבחור לפחות התראה אחת לשליחת תזכורת');
+            return;
+        }
+
+        const selectedAlertObjects = this.selectedAlerts
+            .map(id => this.alerts.find(a => a.id === id))
+            .filter(Boolean);
+
+        if (selectedAlertObjects.length === 0) return;
+
+        // ── קבץ לפי Responsible Team ──
+        const groupedByTeam = {};
+        selectedAlertObjects.forEach(alert => {
+            const team = (alert.contacts || '').trim() || 'ללא צוות';
+            if (!groupedByTeam[team]) groupedByTeam[team] = [];
+            groupedByTeam[team].push(alert);
+        });
+
+        this._openReminderEditPopup(groupedByTeam);
+    }
+
+    // ── חילוץ מספר קריאה מהערות ──
+    _extractIncidentNumber(alert) {
+        if (!alert.notes) return null;
+
+        const notesArray = Array.isArray(alert.notes)
+            ? alert.notes
+            : [{ text: String(alert.notes) }];
+
+        for (const note of notesArray) {
+            const text = (typeof note === 'string')
+                ? note
+                : (note.text || '');
+
+            // חפש INC + 12 ספרות (או פחות)
+            const match = text.match(/INC\d{6,15}/i);
+            if (match) return match[0].toUpperCase();
+        }
+        return null;
+    }
+
+    // ── בניית HTML טבלה לתצוגה מקדימה ──
+    _buildReminderPreviewTable(alerts, includeIncident = false) {
+        const severityColors = {
+            'CRITICAL': '#e53e3e',
+            'MAJOR': '#dd6b20',
+            'UNKNOWN': '#805ad5'
+        };
+
+        const rows = alerts.map(a => {
+            const severityBg =
+                severityColors[(a.severity || '').toUpperCase()] || '#718096';
+            const openedDate = a.timestamp
+                ? this.formatDate(a.timestamp) : '-';
+            const msg = (a.message || '-');
+            const msgShort = msg.length > 80
+                ? msg.substring(0, 80) + '...' : msg;
+            const incNum = this._extractIncidentNumber(a);
+
+            let incidentCell = '';
+            if (includeIncident) {
+                incidentCell = `
+                <td style="padding:7px 10px;border:1px solid #ddd;
+                           text-align:center;font-size:12px;
+                           font-weight:700;color:#0d6efd;">
+                    ${this.escapeHtml(incNum || '-')}
+                </td>`;
+            }
+
+            return `
+            <tr style="background:#fff;">
+                <td style="padding:7px 10px;border:1px solid #ddd;
+                           text-align:center;font-size:12px;
+                           white-space:nowrap;">
+                    ${this.escapeHtml(openedDate)}
+                </td>
+                <td style="padding:7px 10px;border:1px solid #ddd;
+                           text-align:center;font-size:12px;"
+                    title="${this.escapeHtml(msg)}">
+                    ${this.escapeHtml(a.host || '-')}
+                </td>
+                <td style="padding:7px 10px;border:1px solid #ddd;
+                           text-align:center;font-size:12px;"
+                    title="${this.escapeHtml(msg)}">
+                    ${this.escapeHtml(msgShort)}
+                </td>
+                <td style="padding:7px 10px;border:1px solid #ddd;
+                           text-align:center;font-size:12px;">
+                    ${this.escapeHtml(a.hostAddress || '-')}
+                </td>
+                <td style="padding:7px 10px;border:1px solid #ddd;
+                           text-align:center;font-size:12px;">
+                    <span style="display:inline-block;padding:3px 10px;
+                                 border-radius:12px;font-size:11px;
+                                 font-weight:700;background:${severityBg};
+                                 color:#fff;">
+                        ${this.escapeHtml(a.severity || 'UNKNOWN')}
+                    </span>
+                </td>
+                ${incidentCell}
+            </tr>`;
+        }).join('');
+
+        const incidentHeader = includeIncident
+            ? `<th style="padding:7px 10px;border:1px solid #4a1a7a;
+                      color:#fff;text-align:center;">מספר קריאה</th>`
+            : '';
+
+        return `
+        <table style="width:100%;border-collapse:collapse;
+                      direction:rtl;font-size:12px;">
+            <thead>
+                <tr style="background:#320F5B;">
+                    <th style="padding:7px 10px;border:1px solid #4a1a7a;
+                               color:#fff;text-align:center;
+                               direction:ltr;">תאריך ושעה</th>
+                    <th style="padding:7px 10px;border:1px solid #4a1a7a;
+                               color:#fff;text-align:center;">שם שרת</th>
+                    <th style="padding:7px 10px;border:1px solid #4a1a7a;
+                               color:#fff;text-align:center;">התראה</th>
+                    <th style="padding:7px 10px;border:1px solid #4a1a7a;
+                               color:#fff;text-align:center;">כתובת IP</th>
+                    <th style="padding:7px 10px;border:1px solid #4a1a7a;
+                               color:#fff;text-align:center;">חומרה</th>
+                    ${incidentHeader}
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>`;
+    }
+
+    // ── בניית נוסח מייל לפי סוג ──
+    _buildReminderMailContent(alerts, teamEmail) {
+        const hasIncident = alerts.some(
+            a => this._extractIncidentNumber(a) !== null
+        );
+        const count = alerts.length;
+        const isSingle = count === 1;
+
+        if (hasIncident) {
+            // ── נוסח עם מספרי קריאה ──
+            const subject = isSingle
+                ? `תזכורת - התראה פתוחה הדורשת טיפול`
+                : `תזכורת - התראות פתוחות הדורשות טיפול`;
+
+            const tableHTML = this._buildReminderPreviewTable(alerts, true);
+
+            const body = `
+            <p style="margin:0 0 12px 0;">היי,</p>
+            <p style="margin:0 0 12px 0;">
+                ${isSingle
+                    ? 'התראה זו פתוחה ועדיין לא טופלה.'
+                    : `${count} התראות אלו פתוחות ועדיין לא טופלו.`}
+                <br>
+                כמו כן, נפתחה עליה${isSingle ? '' : 'ן'} קריאה במערכת ONIT.
+                <br>
+                אם ההתראה${isSingle ? '' : 'ות'} לא קריטי${isSingle ? 'ת' : 'ות'}
+                או שהניטור לא נכון, אנא העבירו את הקריאה לצורך
+                טיוב ההתראה לצוות שליטה ובקרה.
+                <br>
+                אנא בדיקתכם וטיפולכם בהקדם.
+            </p>
+            ${tableHTML}`;
+
+            return { subject, body, hasIncident: true };
+
+        } else {
+            // ── נוסח ללא מספרי קריאה ──
+            const subject = isSingle
+                ? `תזכורת - התראה פתוחה הדורשת טיפול`
+                : `תזכורת - התראות פתוחות הדורשות טיפול`;
+
+            const tableHTML = this._buildReminderPreviewTable(alerts, false);
+
+            const alertWord = isSingle ? 'התראה פתוחה' : `${count} התראות פתוחות`;
+            const treatWord = isSingle ? 'טופלה' : 'טופלו';
+            const checkWord = isSingle ? 'ההתראה המפורטת מטה' : 'ההתראות המפורטות מטה';
+            const treatWord2 = isSingle ? 'בה' : 'בהן';
+            const notRelWord = isSingle ? 'ההתראה אינה רלוונטית' : 'ההתראות אינן רלוונטיות';
+
+            const body = `
+            <p style="margin:0 0 12px 0;">היי,</p>
+            <p style="margin:0 0 12px 0;">
+                ברצוננו להזכיר כי קיימ${isSingle ? 'ת' : 'ות'}
+                <strong>${alertWord}</strong> במערכת הניטור
+                שעדיין לא ${treatWord}.
+            </p>
+            <p style="margin:0 0 12px 0;">
+                אנא בדקו את פרטי ${checkWord}
+                וטפלו ${treatWord2} בהקדם.
+            </p>
+            ${tableHTML}
+            <p style="margin:16px 0 0 0;color:#555;">
+                במידה ו${notRelWord} או שנדרש לתקן את הניטור,<br>
+                אנא עדכנו את צוות שליטה ובקרה.
+            </p>
+            <p style="margin:12px 0 0 0;">תודה</p>`;
+
+            return { subject, body, hasIncident: false };
+        }
+    }
+
+    // ── פופאפ עריכת תזכורת ──
+    _openReminderEditPopup(groupedByTeam) {
+        const existing = document.getElementById('alertReminderModal');
+        if (existing) existing.remove();
+
+        const teams = Object.keys(groupedByTeam);
+        const totalAlerts = Object.values(groupedByTeam)
+            .reduce((s, arr) => s + arr.length, 0);
+
+        // ── בנה תצוגה מקדימה לכל צוות ──
+        const teamPreviews = teams.map((team, idx) => {
+            const alerts = groupedByTeam[team];
+            const { subject, body, hasIncident } =
+                this._buildReminderMailContent(alerts, team);
+            const teamEmail = team.includes('@') ? team : '';
+
+            return `
+            <div class="reminder-team-block"
+                 data-team="${this.escapeHtml(team)}"
+                 data-idx="${idx}"
+                 style="
+                     border: 1.5px solid #e0e4f0;
+                     border-radius: 12px;
+                     margin-bottom: 16px;
+                     overflow: hidden;
+                 ">
+                <!-- כותרת צוות -->
+                <div style="
+                    background: linear-gradient(135deg,#320F5B,#667eea);
+                    padding: 10px 16px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                ">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <i class="fas fa-users" style="color:#fff;"></i>
+                        <strong style="color:#fff;font-size:0.9rem;">
+                            ${this.escapeHtml(team)}
+                        </strong>
+                        <span style="
+                            background:rgba(255,255,255,0.2);
+                            color:#fff;
+                            border-radius:12px;
+                            padding:1px 8px;
+                            font-size:0.75rem;
+                        ">
+                            ${alerts.length} התראות
+                            ${hasIncident
+                    ? '<i class="fas fa-ticket-alt" title="יש מספרי קריאה" style="margin-right:4px;"></i>'
+                    : ''}
+                        </span>
+                    </div>
+                    <!-- שדה To לצוות -->
+                    <input
+                        id="reminderTo_${idx}"
+                        type="text"
+                        value="${this.escapeHtml(teamEmail)}"
+                        placeholder="כתובת מייל לצוות זה..."
+                        style="
+                            padding: 5px 10px;
+                            border: 1.5px solid rgba(255,255,255,0.4);
+                            border-radius: 7px;
+                            font-size: 0.82rem;
+                            background: rgba(255,255,255,0.15);
+                            color: #fff;
+                            min-width: 220px;
+                            direction: ltr;
+                        "
+                        placeholder="email@example.com">
+                </div>
+
+                <!-- נושא -->
+                <div style="
+                    padding: 10px 16px 6px;
+                    background: #f8f9ff;
+                    border-bottom: 1px solid #e0e4f0;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                ">
+                    <label style="
+                        font-size:0.78rem;
+                        font-weight:700;
+                        color:#555;
+                        white-space:nowrap;
+                    ">נושא:</label>
+                    <input
+                        id="reminderSubject_${idx}"
+                        type="text"
+                        value="${this.escapeHtml(subject)}"
+                        style="
+                            flex:1;
+                            padding:5px 10px;
+                            border:1.5px solid #ddd;
+                            border-radius:7px;
+                            font-size:0.85rem;
+                            box-sizing:border-box;
+                        ">
+                </div>
+
+                <!-- תצוגה מקדימה -->
+                <div style="
+                    padding: 14px 16px;
+                    background: #fff;
+                    font-size: 13px;
+                    color: #333;
+                    line-height: 1.7;
+                    direction: rtl;
+                ">
+                    ${body}
+                </div>
+            </div>`;
+        }).join('');
+
+        // ── בנה מודל ──
+        const modal = document.createElement('div');
+        modal.id = 'alertReminderModal';
+        modal.style.cssText = `
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.55);
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        direction: rtl;
+        font-family: Arial, sans-serif;
+    `;
+
+        modal.innerHTML = `
+        <div style="
+            background: white;
+            border-radius: 14px;
+            width: 95%;
+            max-width: 1200px;
+            max-height: 92vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        ">
+            <!-- Header -->
+            <div style="
+                background: linear-gradient(135deg, #320F5B, #667eea);
+                padding: 18px 22px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                flex-shrink: 0;
+            ">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <i class="fas fa-bell" style="color:white;font-size:1.2rem;"></i>
+                    <div>
+                        <h3 style="margin:0;color:white;
+                                   font-size:1.05rem;font-weight:700;">
+                            שליחת תזכורת על ${totalAlerts} התראות
+                        </h3>
+                        <p style="margin:3px 0 0;
+                                  color:rgba(255,255,255,0.75);
+                                  font-size:0.8rem;">
+                            ${teams.length} קבוצות לפי Responsible Team
+                        </p>
+                    </div>
+                </div>
+                <button id="reminderCloseBtn" style="
+                    background: rgba(255,255,255,0.2);
+                    border: 2px solid rgba(255,255,255,0.3);
+                    color: white;
+                    width: 32px; height: 32px;
+                    border-radius: 50%;
+                    cursor: pointer;
+                    font-size: 1rem;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                ">&times;</button>
+            </div>
+
+            <!-- CC שורה גלובלית + כפתור שלח אליי -->
+            <div style="
+                padding: 10px 22px;
+                background: #f8f9ff;
+                border-bottom: 1px solid #e0e4f0;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                flex-shrink: 0;
+                flex-wrap: wrap;
+            ">
+                <label style="
+                    font-size:0.85rem;
+                    font-weight:700;
+                    color:#444;
+                    white-space:nowrap;
+                ">
+                    <i class="fas fa-copy"
+                    style="color:#667eea;margin-left:4px;"></i>
+                    עותק (CC) לכל המיילים:
+                </label>
+                <input id="reminderGlobalCc"
+                    type="text"
+                    value="noc@menora.co.il;talyoh@menoramivt.co.il"
+                    style="
+                        flex:1;
+                        min-width:200px;
+                        padding:7px 12px;
+                        border:1.5px solid #ddd;
+                        border-radius:8px;
+                        font-size:0.88rem;
+                        direction:ltr;
+                    ">
+
+                <!-- ✦ כפתור "שלח אליי" - מרכז את כל ההתראות למייל אחד -->
+                <button id="reminderSendToMeBtn"
+                        title="שלח את כל ההתראות למייל שלך במייל אחד מרוכז"
+                        style="
+                            display:inline-flex;
+                            align-items:center;
+                            gap:6px;
+                            padding:8px 14px;
+                            background:#f0f4ff;
+                            border:1.5px solid #667eea;
+                            border-radius:8px;
+                            color:#667eea;
+                            font-size:0.82rem;
+                            font-weight:700;
+                            cursor:pointer;
+                            white-space:nowrap;
+                            transition:all 0.2s;
+                            flex-shrink:0;
+                        ">
+                    <i class="fas fa-user-circle"></i>
+                    שלח אליי (מרוכז)
+                </button>
+
+                <!-- אזור סטטוס -->
+                <div id="reminderSendToMeStatus" style="
+                    width:100%;
+                    font-size:0.78rem;
+                    color:#667eea;
+                    min-height:16px;
+                    display:flex;
+                    align-items:center;
+                    gap:5px;
+                "></div>
+            </div>
+
+            <!-- Body - רשימת צוותים -->
+            <div style="
+                padding: 16px 22px;
+                overflow-y: auto;
+                flex: 1;
+            ">
+                ${teamPreviews}
+            </div>
+
+            <!-- הודעת שגיאה -->
+            <div id="reminderError" style="
+                display: none;
+                margin: 0 22px 8px;
+                padding: 8px 12px;
+                background: #fff5f5;
+                border: 1px solid #feb2b2;
+                border-radius: 6px;
+                color: #c53030;
+                font-size: 0.85rem;
+                flex-shrink: 0;
+            "></div>
+
+            <!-- Footer -->
+            <div style="
+                padding: 14px 22px;
+                border-top: 1px solid #e2e8f0;
+                background: #f8f9fa;
+                display: flex;
+                gap: 10px;
+                justify-content: flex-end;
+                flex-shrink: 0;
+            ">
+                <button id="reminderSendBtn" style="
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 7px;
+                    padding: 10px 24px;
+                    background: linear-gradient(135deg, #320F5B, #667eea);
+                    color: white;
+                    border: none;
+                    border-radius: 9px;
+                    font-size: 0.95rem;
+                    font-weight: 700;
+                    cursor: pointer;
+                    font-family: inherit;
+                ">
+                    <i class="fas fa-paper-plane"></i>
+                    שלח תזכורות (${teams.length} מיילים)
+                </button>
+                <button id="reminderCancelBtn" style="
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 7px;
+                    padding: 10px 20px;
+                    background: #f1f5f9;
+                    color: #555;
+                    border: 1.5px solid #ddd;
+                    border-radius: 9px;
+                    font-size: 0.95rem;
+                    font-weight: 600;
+                    cursor: pointer;
+                    font-family: inherit;
+                ">
+                    <i class="fas fa-times"></i>
+                    ביטול
+                </button>
+            </div>
+        </div>
+    `;
+
+        document.body.appendChild(modal);
+
+        // ── מאזינים ──
+        const closeModal = () => modal.remove();
+
+        document.getElementById('reminderCloseBtn')
+            .addEventListener('click', closeModal);
+        document.getElementById('reminderCancelBtn')
+            .addEventListener('click', closeModal);
+
+        const escHandler = (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+                document.removeEventListener('keydown', escHandler);
+            }
+        };
+        document.addEventListener('keydown', escHandler);
+
+        document.getElementById('reminderSendBtn')
+            .addEventListener('click', () => {
+                this._submitReminders(groupedByTeam, teams);
+            });
+
+        // ══════════════════════════════════════════════════════════
+        // ✦ כפתור "שלח אליי" - מרכז את כל ההתראות למייל אחד
+        // ══════════════════════════════════════════════════════════
+        const reminderSendToMeBtn = document.getElementById('reminderSendToMeBtn');
+        const reminderSendToMeStatus = document.getElementById('reminderSendToMeStatus');
+
+        reminderSendToMeBtn.addEventListener('click', async () => {
+            reminderSendToMeBtn.disabled = true;
+            reminderSendToMeBtn.innerHTML =
+                '<i class="fas fa-spinner fa-spin"></i> טוען...';
+
+            try {
+                // ── קבל את המייל של המשתמש המחובר ──
+                const myEmail = await this.getCurrentUserEmail();
+
+                if (!myEmail || !myEmail.includes('@')) {
+                    if (reminderSendToMeStatus) {
+                        reminderSendToMeStatus.innerHTML =
+                            `<i class="fas fa-exclamation-circle" style="color:#e53e3e;"></i>
+                     <span style="color:#e53e3e;">
+                         לא נמצאה כתובת מייל למשתמש המחובר
+                     </span>`;
+                        setTimeout(() => { reminderSendToMeStatus.innerHTML = ''; }, 4000);
+                    }
+                    return;
+                }
+
+                // ── אסוף את כל ההתראות מכל הצוותים ──
+                const allAlerts = Object.values(groupedByTeam).flat();
+
+                if (allAlerts.length === 0) {
+                    if (reminderSendToMeStatus) {
+                        reminderSendToMeStatus.innerHTML =
+                            `<i class="fas fa-info-circle" style="color:#667eea;"></i>
+                     <span style="color:#667eea;">לא נמצאו התראות לשליחה</span>`;
+                        setTimeout(() => { reminderSendToMeStatus.innerHTML = ''; }, 3000);
+                    }
+                    return;
+                }
+
+                // ── בנה נושא ──
+                const defaultSubject = allAlerts.length === 1
+                    ? `תזכורת - התראה פתוחה הדורשת טיפול`
+                    : `תזכורת - ${allAlerts.length} התראות פתוחות הדורשות טיפול`;
+
+                // ── סגור את פופאפ התזכורות ──
+                document.getElementById('alertReminderModal')?.remove();
+
+                // ── פתח פופאפ עריכה מרוכז ──
+                this._openReminderSendToMePopup(allAlerts, myEmail, defaultSubject, groupedByTeam);
+
+            } catch (err) {
+                console.error('reminderSendToMe error:', err);
+                if (reminderSendToMeStatus) {
+                    reminderSendToMeStatus.innerHTML =
+                        `<i class="fas fa-exclamation-circle" style="color:#e53e3e;"></i>
+                 <span style="color:#e53e3e;">שגיאה בטעינת פרטי המשתמש</span>`;
+                    setTimeout(() => { reminderSendToMeStatus.innerHTML = ''; }, 4000);
+                }
+            } finally {
+                reminderSendToMeBtn.disabled = false;
+                reminderSendToMeBtn.innerHTML =
+                    '<i class="fas fa-user-circle"></i> שלח אליי (מרוכז)';
+            }
+        });
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // בניית גוף מייל מרוכז עם חלוקה לפי צוותים
+    // ══════════════════════════════════════════════════════════
+    _buildReminderBodyByTeams(groupedByTeam) {
+        const teams = Object.keys(groupedByTeam);
+        const totalAlerts = Object.values(groupedByTeam)
+            .reduce((s, arr) => s + arr.length, 0);
+
+        // ── בנה סקשן לכל צוות ──
+        const teamSections = teams.map(team => {
+            const alerts = groupedByTeam[team];
+            const hasIncident = alerts.some(
+                a => this._extractIncidentNumber(a) !== null
+            );
+            const tableHTML = this._buildReminderPreviewTable(alerts, hasIncident);
+
+            return `
+            <div style="margin-bottom:24px;">
+
+                <!-- כותרת צוות -->
+                <div style="
+                    background: linear-gradient(135deg, #320F5B, #667eea);
+                    padding: 8px 14px;
+                    border-radius: 8px 8px 0 0;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                ">
+                    <span style="
+                        color: #fff;
+                        font-size: 13px;
+                        font-weight: 700;
+                    ">
+                        צוות: ${this.escapeHtml(team)}
+                    </span>
+                    <span style="
+                        background: rgba(255,255,255,0.2);
+                        color: #fff;
+                        border-radius: 10px;
+                        padding: 1px 8px;
+                        font-size: 11px;
+                    ">
+                        ${alerts.length} התראות
+                    </span>
+                </div>
+
+                <!-- טבלת ההתראות של הצוות -->
+                <div style="border: 1.5px solid #e0e4f0; border-top: none;
+                            border-radius: 0 0 8px 8px; overflow: hidden;">
+                    ${tableHTML}
+                </div>
+            </div>
+        `;
+        }).join('');
+
+        return `
+        <p style="margin:0 0 8px 0;">היי,</p>
+        <p style="margin:0 0 16px 0;">
+            להלן <strong>${totalAlerts} התראות פתוחות</strong>
+            הדורשות טיפול, מחולקות לפי צוות אחראי:
+        </p>
+        ${teamSections}
+        <p style="margin:16px 0 0 0; color:#555;">
+            במידה וההתראות אינן רלוונטיות או שנדרש לתקן את הניטור,<br>
+            אנא עדכנו את צוות שליטה ובקרה.
+        </p>
+        <p style="margin:12px 0 0 0;">תודה</p>
+    `;
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // פופאפ עריכה לפני שליחת תזכורת מרוכזת "שלח אליי"
+    // ══════════════════════════════════════════════════════════
+    _openReminderSendToMePopup(allAlerts, myEmail, defaultSubject, groupedByTeam) {
+        const existing = document.getElementById('reminderSendToMeModal');
+        if (existing) existing.remove();
+
+        this._currentReminderGroupedByTeam = groupedByTeam;
+        // ── בנה תוכן המייל ──
+        // ── בנה גוף מייל עם חלוקה לפי צוותים ──
+        const body = this._buildReminderBodyByTeams(groupedByTeam);
+        const modal = document.createElement('div');
+        modal.id = 'reminderSendToMeModal';
+        modal.style.cssText = `
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.55);
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        direction: rtl;
+        font-family: Arial, sans-serif;
+    `;
+
+        modal.innerHTML = `
+        <div style="
+            background: white;
+            border-radius: 14px;
+            width: 95%;
+            max-width: 1200px;
+            max-height: 92vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        ">
+            <!-- Header -->
+            <div style="
+                background: linear-gradient(135deg, #320F5B, #667eea);
+                padding: 18px 22px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                flex-shrink: 0;
+            ">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <i class="fas fa-user-circle" style="color:white; font-size:1.2rem;"></i>
+                    <div>
+                        <h3 style="margin:0; color:white;
+                                   font-size:1.05rem; font-weight:700;">
+                            שלח אליי - ${allAlerts.length} התראות מרוכזות
+                        </h3>
+                        <p style="margin:3px 0 0;
+                                  color:rgba(255,255,255,0.75);
+                                  font-size:0.8rem;">
+                            מייל אחד עם כל ההתראות יישלח אליך
+                        </p>
+                    </div>
+                </div>
+                <button id="reminderSendToMeCloseBtn" style="
+                    background: rgba(255,255,255,0.2);
+                    border: 2px solid rgba(255,255,255,0.3);
+                    color: white;
+                    width: 32px; height: 32px;
+                    border-radius: 50%;
+                    cursor: pointer;
+                    font-size: 1rem;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                ">&times;</button>
+            </div>
+
+            <!-- Body -->
+            <div style="
+                padding: 18px 22px;
+                overflow-y: auto;
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                gap: 14px;
+            ">
+                <!-- שדה To -->
+                <div>
+                    <label style="
+                        display: block;
+                        font-size: 0.85rem;
+                        font-weight: 700;
+                        color: #444;
+                        margin-bottom: 5px;
+                    ">
+                        <i class="fas fa-user" style="color:#667eea; margin-left:4px;"></i>
+                        אל (To) *
+                    </label>
+                    <input id="reminderSendToMeToInput"
+                           type="text"
+                           value="${this.escapeHtml(myEmail)}"
+                           style="
+                               width: 100%;
+                               padding: 9px 12px;
+                               border: 1.5px solid #ddd;
+                               border-radius: 8px;
+                               font-size: 0.92rem;
+                               box-sizing: border-box;
+                               font-family: inherit;
+                               direction: ltr;
+                               text-align: left;
+                           ">
+                </div>
+
+                <!-- שדה Subject -->
+                <div>
+                    <label style="
+                        display: block;
+                        font-size: 0.85rem;
+                        font-weight: 700;
+                        color: #444;
+                        margin-bottom: 5px;
+                    ">
+                        <i class="fas fa-heading" style="color:#667eea; margin-left:4px;"></i>
+                        נושא *
+                    </label>
+                    <input id="reminderSendToMeSubject"
+                           type="text"
+                           value="${this.escapeHtml(defaultSubject)}"
+                           style="
+                               width: 100%;
+                               padding: 9px 12px;
+                               border: 1.5px solid #ddd;
+                               border-radius: 8px;
+                               font-size: 0.92rem;
+                               box-sizing: border-box;
+                               font-family: inherit;
+                           ">
+                </div>
+
+                <!-- תצוגה מקדימה -->
+                <div>
+                    <label style="
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                        font-size:0.85rem;
+                        font-weight:700;
+                        color:#444;
+                        margin-bottom:8px;
+                        cursor:pointer;
+                    " id="reminderSendToMePreviewLabel">
+                        <span>
+                            <i class="fas fa-eye" style="color:#667eea; margin-left:4px;"></i>
+                            תצוגה מקדימה של המייל
+                        </span>
+                        <span id="reminderSendToMePreviewIcon"
+                              style="font-size:0.8rem; color:#667eea;">
+                            <i class="fas fa-chevron-up"></i>
+                        </span>
+                    </label>
+
+                    <div id="reminderSendToMePreviewBox" style="
+                        border: 1.5px solid #e0e4f0;
+                        border-radius: 10px;
+                        overflow: hidden;
+                    ">
+                        <!-- כותרת מייל מדומה -->
+                        <div style="
+                            background: #f8f9ff;
+                            border-bottom: 1px solid #e0e4f0;
+                            padding: 10px 14px;
+                            font-size: 0.78rem;
+                            color: #666;
+                            display: flex;
+                            flex-direction: column;
+                            gap: 3px;
+                        ">
+                            <div>
+                                <strong>מ:</strong>
+                                <span style="color:#320F5B;">
+                                    noc@menoramivt.co.il (NOC Portal)
+                                </span>
+                            </div>
+                            <div id="reminderSendToMePreviewTo">
+                                <strong>אל:</strong>
+                                <span>${this.escapeHtml(myEmail)}</span>
+                            </div>
+                            <div id="reminderSendToMePreviewSubject">
+                                <strong>נושא:</strong>
+                                <span>${this.escapeHtml(defaultSubject)}</span>
+                            </div>
+                        </div>
+
+                        <!-- גוף המייל -->
+                        <div style="
+                            padding: 14px 16px;
+                            background: #fff;
+                            font-size: 13px;
+                            color: #333;
+                            line-height: 1.7;
+                            direction: rtl;
+                        ">
+                            ${body}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- הודעת שגיאה -->
+                <div id="reminderSendToMeError" style="
+                    display: none;
+                    padding: 8px 12px;
+                    background: #fff5f5;
+                    border: 1px solid #feb2b2;
+                    border-radius: 6px;
+                    color: #c53030;
+                    font-size: 0.85rem;
+                "></div>
+            </div>
+
+            <!-- Footer -->
+            <div style="
+                padding: 14px 22px;
+                border-top: 1px solid #e2e8f0;
+                background: #f8f9fa;
+                display: flex;
+                gap: 10px;
+                justify-content: flex-end;
+                flex-shrink: 0;
+            ">
+                <button id="reminderSendToMeSendBtn" style="
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 7px;
+                    padding: 10px 24px;
+                    background: linear-gradient(135deg, #320F5B, #667eea);
+                    color: white;
+                    border: none;
+                    border-radius: 9px;
+                    font-size: 0.95rem;
+                    font-weight: 700;
+                    cursor: pointer;
+                    font-family: inherit;
+                ">
+                    <i class="fas fa-paper-plane"></i>
+                    שלח מייל (${allAlerts.length} התראות)
+                </button>
+                <button id="reminderSendToMeCancelBtn" style="
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 7px;
+                    padding: 10px 20px;
+                    background: #f1f5f9;
+                    color: #555;
+                    border: 1.5px solid #ddd;
+                    border-radius: 9px;
+                    font-size: 0.95rem;
+                    font-weight: 600;
+                    cursor: pointer;
+                    font-family: inherit;
+                ">
+                    <i class="fas fa-times"></i>
+                    ביטול
+                </button>
+            </div>
+        </div>
+    `;
+
+        document.body.appendChild(modal);
+
+        // ── עדכון תצוגה מקדימה בזמן אמת ──
+        const toInput = document.getElementById('reminderSendToMeToInput');
+        const subjectInput = document.getElementById('reminderSendToMeSubject');
+
+        toInput.addEventListener('input', () => {
+            document.querySelector('#reminderSendToMePreviewTo span')
+                .textContent = toInput.value;
+        });
+
+        subjectInput.addEventListener('input', () => {
+            document.querySelector('#reminderSendToMePreviewSubject span')
+                .textContent = subjectInput.value;
+        });
+
+        // ── פתיחה/סגירה תצוגה מקדימה ──
+        let previewOpen = true;
+        document.getElementById('reminderSendToMePreviewLabel')
+            .addEventListener('click', () => {
+                previewOpen = !previewOpen;
+                const box = document.getElementById('reminderSendToMePreviewBox');
+                const icon = document.getElementById('reminderSendToMePreviewIcon');
+                box.style.display = previewOpen ? '' : 'none';
+                icon.innerHTML = previewOpen
+                    ? '<i class="fas fa-chevron-up"></i>'
+                    : '<i class="fas fa-chevron-down"></i>';
+            });
+
+        // ── סגירה ──
+        const closeModal = () => modal.remove();
+
+        document.getElementById('reminderSendToMeCloseBtn')
+            .addEventListener('click', closeModal);
+        document.getElementById('reminderSendToMeCancelBtn')
+            .addEventListener('click', closeModal);
+
+        const escHandler = (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+                document.removeEventListener('keydown', escHandler);
+            }
+        };
+        document.addEventListener('keydown', escHandler);
+
+        // ── שליחה ──
+        document.getElementById('reminderSendToMeSendBtn')
+            .addEventListener('click', () => {
+                this._submitReminderSendToMe(allAlerts);
+            });
+    }
+
+    // ── שליחת המייל המרוכז "שלח אליי" ──
+    async _submitReminderSendToMe(allAlerts) {
+        const toInput = document.getElementById('reminderSendToMeToInput');
+        const subjectInput = document.getElementById('reminderSendToMeSubject');
+        const errorDiv = document.getElementById('reminderSendToMeError');
+        const sendBtn = document.getElementById('reminderSendToMeSendBtn');
+
+        const to = toInput?.value.trim() || '';
+        const subject = subjectInput?.value.trim() || '';
+
+        // ── ולידציה ──
+        const showError = (msg) => {
+            if (errorDiv) {
+                errorDiv.textContent = msg;
+                errorDiv.style.display = 'block';
+            }
+        };
+
+        if (errorDiv) errorDiv.style.display = 'none';
+
+        if (!to || !to.includes('@')) {
+            showError('יש להזין כתובת מייל תקינה בשדה "אל"');
+            toInput?.focus();
+            return;
+        }
+
+        if (!subject) {
+            showError('יש להזין נושא למייל');
+            subjectInput?.focus();
+            return;
+        }
+
+        try {
+            if (sendBtn) {
+                sendBtn.disabled = true;
+                sendBtn.innerHTML =
+                    '<i class="fas fa-spinner fa-spin"></i> שולח...';
+            }
+
+            const toAddresses = to.split(';')
+                .map(s => s.trim())
+                .filter(Boolean);
+
+            // *** בנה את גוף המייל עם חלוקה לפי צוותים בצד הלקוח ***
+            // *** השתמש ב-this._groupedByTeam שנשמר בעת פתיחת הפופאפ ***
+            const customHtmlBody = this._buildReminderBodyByTeams(
+                this._currentReminderGroupedByTeam
+            );
+
+            // ── קריאה לנקודת הקצה ──
+            const response = await fetch('/Alerts/SendAlertEmail', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify({
+                    alertIds: allAlerts.map(a => a.id),
+                    to: toAddresses,
+                    cc: [],
+                    subject,
+                    isReminder: true,
+                    // *** חדש: שלח את ה-HTML המוכן עם החלוקה לפי צוותים ***
+                    customHtmlBody: customHtmlBody,
+                    incidentNumbers: Object.fromEntries(
+                        allAlerts.map(a => [
+                            a.id,
+                            this._extractIncidentNumber(a)
+                        ]).filter(([id, inc]) => inc !== null)
+                    )
+                }),
+                credentials: 'include'
+            });
+
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            const result = await response.json();
+
+            if (result.success) {
+                document.getElementById('reminderSendToMeModal')?.remove();
+
+                if (typeof NotificationManager !== 'undefined') {
+                    NotificationManager.show(
+                        `מייל מרוכז נשלח בהצלחה אליך על ${allAlerts.length} התראות`,
+                        'success'
+                    );
+                }
+            } else {
+                showError(result.error || 'שגיאה בשליחת המייל');
+                if (sendBtn) {
+                    sendBtn.disabled = false;
+                    sendBtn.innerHTML =
+                        `<i class="fas fa-paper-plane"></i>
+                 שלח מייל (${allAlerts.length} התראות)`;
+                }
+            }
+
+        } catch (error) {
+            console.error('_submitReminderSendToMe error:', error);
+            showError('שגיאה בשליחת המייל: ' + error.message);
+            if (sendBtn) {
+                sendBtn.disabled = false;
+                sendBtn.innerHTML =
+                    `<i class="fas fa-paper-plane"></i>
+             שלח מייל (${allAlerts.length} התראות)`;
+            }
+        }
+    }
+
+    // ── שליחת התזכורות ──
+    async _submitReminders(groupedByTeam, teams) {
+        const errorDiv = document.getElementById('reminderError');
+        const sendBtn = document.getElementById('reminderSendBtn');
+        const globalCc = document.getElementById('reminderGlobalCc')
+            ?.value.trim() || '';
+
+        if (errorDiv) errorDiv.style.display = 'none';
+
+        // ── אסוף נתוני שליחה לכל צוות ──
+        const sendTasks = [];
+
+        for (let idx = 0; idx < teams.length; idx++) {
+            const team = teams[idx];
+            const alerts = groupedByTeam[team];
+            const toVal = document.getElementById(`reminderTo_${idx}`)
+                ?.value.trim() || '';
+            const subj = document.getElementById(`reminderSubject_${idx}`)
+                ?.value.trim() || '';
+
+            if (!toVal || !toVal.includes('@')) {
+                if (errorDiv) {
+                    errorDiv.textContent =
+                        `חסרה כתובת מייל לצוות: "${team}"`;
+                    errorDiv.style.display = 'block';
+                }
+                return;
+            }
+
+            sendTasks.push({ team, alerts, to: toVal, subject: subj, cc: globalCc });
+        }
+
+        // ── שלח ──
+        try {
+            if (sendBtn) {
+                sendBtn.disabled = true;
+                sendBtn.innerHTML =
+                    '<i class="fas fa-spinner fa-spin"></i> שולח...';
+            }
+
+            let successCount = 0;
+            let failCount = 0;
+            const errors = [];
+
+            for (const task of sendTasks) {
+                try {
+                    const toAddresses = task.to
+                        .split(';')
+                        .map(s => s.trim())
+                        .filter(Boolean);
+
+                    const ccAddresses = task.cc
+                        ? task.cc.split(';').map(s => s.trim()).filter(Boolean)
+                        : [];
+
+                    const response = await fetch('/Alerts/SendAlertEmail', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            alertIds: task.alerts.map(a => a.id),
+                            to: toAddresses,
+                            cc: ccAddresses,
+                            subject: task.subject,
+                            isReminder: true,
+                            incidentNumbers: Object.fromEntries(
+                                task.alerts.map(a => [
+                                    a.id,
+                                    this._extractIncidentNumber(a)
+                                ]).filter(([id, inc]) => inc !== null)
+                            )
+                        }),
+                        credentials: 'include'
+                    });
+
+                    if (!response.ok)
+                        throw new Error(`HTTP ${response.status}`);
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        successCount++;
+                    } else {
+                        failCount++;
+                        errors.push(
+                            `${task.team}: ${result.error || 'שגיאה'}`
+                        );
+                    }
+                } catch (err) {
+                    failCount++;
+                    errors.push(`${task.team}: ${err.message}`);
+                }
+            }
+
+            // ── סגור מודל ──
+            document.getElementById('alertReminderModal')?.remove();
+
+            // ── הודעת סיכום ──
+            if (successCount > 0 && typeof NotificationManager !== 'undefined') {
+                NotificationManager.show(
+                    `תזכורות נשלחו בהצלחה ל-${successCount} צוותים`,
+                    'success'
+                );
+            }
+            if (failCount > 0 && typeof NotificationManager !== 'undefined') {
+                NotificationManager.show(
+                    `${failCount} שליחות נכשלו: ${errors.join(', ')}`,
+                    'error'
+                );
+            }
+
+        } catch (err) {
+            console.error('_submitReminders error:', err);
+            if (errorDiv) {
+                errorDiv.textContent = 'שגיאה בשליחת התזכורות: ' + err.message;
+                errorDiv.style.display = 'block';
+            }
+            if (sendBtn) {
+                sendBtn.disabled = false;
+                sendBtn.innerHTML =
+                    `<i class="fas fa-paper-plane"></i>
+                 שלח תזכורות (${teams.length} מיילים)`;
+            }
+        }
+    }
+
     // ── עזר: צבע רקע לפי severity ──
     _getSeverityBgColor(severity) {
         switch ((severity || '').toUpperCase()) {
@@ -3135,6 +4379,11 @@ class AlertsManager {
         <button id="screenshotBtn" class="bulk-action-btn screenshot-btn" title="Screenshot Selected - צילום מסך" ${!hasSelectedAlerts ? 'disabled' : ''}>
             <i class="fas fa-camera"></i>
         </button>
+        <button id="bulkReminderBtn" class="bulk-action-btn bulk-reminder-btn"
+                title="Send Reminder - שליחת תזכורת על ההתראות הנבחרות"
+                ${!hasSelectedAlerts ? 'disabled' : ''}>
+            <i class="fas fa-bell"></i>
+        </button>
         <button id="bulkMailBtn" class="bulk-action-btn bulk-mail-btn"
                 title="Send Mail - שליחת מייל על ההתראות הנבחרות"
                 ${!hasSelectedAlerts ? 'disabled' : ''}>
@@ -3168,6 +4417,8 @@ class AlertsManager {
                 .addEventListener('click', () => this.exportToExcel());
             bulkActionsBar.querySelector('.bulk-mail-btn')
                 .addEventListener('click', () => this.bulkSendMail());
+            bulkActionsBar.querySelector('.bulk-reminder-btn')
+                .addEventListener('click', () => this.bulkSendReminder());
         }
 
         // הצג את הסרגל תמיד
@@ -3390,6 +4641,16 @@ class AlertsManager {
                 <div class="alert-modal-body">
 
                     ${warningHtml}
+                    <div id="bulkActionModalError" style="
+                                    display: none;
+                                    padding: 8px 12px;
+                                    background: #fff5f5;
+                                    border: 1px solid #feb2b2;
+                                    border-radius: 6px;
+                                    color: #c53030;
+                                    font-size: 0.85rem;
+                                    margin-bottom: 10px;
+                                "></div>
 
                     <!-- IDs נשמרים: bulkActionForm, bulkAction -->
                     <form id="bulkActionForm">
@@ -3487,10 +4748,27 @@ class AlertsManager {
 
         const note = document.getElementById('bulkNote').value;
 
-        if (!userName || ((action === 'ASSIGN' || action === 'CLOSE') && !note)) {
-            this.showError(action === 'ASSIGN'
-                ? 'יש למלא את כל השדות'
-                : 'יש לבחור שם משתמש');
+        const showModalError = (msg) => {
+            const errorEl = document.getElementById('bulkActionModalError');
+            if (errorEl) {
+                errorEl.textContent = msg;
+                errorEl.style.display = 'block';
+                setTimeout(() => { errorEl.style.display = 'none'; }, 4000);
+            }
+        };
+
+        if (!userName) {
+            showModalError('יש לבחור שם משתמש');
+            document.getElementById('bulkUserName')?.focus();
+            return;
+        }
+
+        if ((action === 'ASSIGN' || action === 'CLOSE') && !note) {
+            const errorMsg = action === 'CLOSE'
+                ? 'יש להזין הערה לסגירת התראות'
+                : 'יש להזין מספר קריאה או הערה לשיוך התראות';
+            showModalError(errorMsg);
+            document.getElementById('bulkNote')?.focus();
             return;
         }
 
@@ -4646,7 +5924,7 @@ class AlertsManager {
 
                         // חפש נוהל תואם להודעת ההתראה
                         const matchedProc = alertProcedureMappingManager
-                            .findMatchingProcedure(alert.message);
+                            .findMatchingProcedure(alert.message, alert.host || '');
 
                         if (matchedProc) {
                             const procBtn = alertProcedureMappingManager
@@ -4660,7 +5938,9 @@ class AlertsManager {
                         td.style.minWidth = '10px';
                         td.style.textAlign = 'left';
 
+                        // הוסף גם בדיקת HOST כ-fallback
                         const pingTarget = alert.hostAddress || alert.host || '';
+                        const pingTargetHost = alert.host || '';  // ← HOST כ-fallback
 
                         const hasPingLost = !this.isFullscreenMode &&
                             alert.message &&
@@ -4668,12 +5948,12 @@ class AlertsManager {
 
                         if (hasPingLost && pingTarget) {
                             const pingBtnId = `ping-btn-${alert.id}`;
-
                             td.innerHTML = `
             <button
                 id="${pingBtnId}"
                 class="alert-ping-btn alert-ping-idle"
                 data-target="${this.escapeHtml(pingTarget)}"
+                data-host="${this.escapeHtml(alert.host || '')}"
                 data-alert-id="${this.escapeHtml(alert.id)}"
                 title="PING ► ${this.escapeHtml(pingTarget)}"
                 style="
@@ -4968,10 +6248,15 @@ class AlertsManager {
             disabled: !hasSelected
         });
 
-        // הוסף לרשימת menuLinks לפני הסגירה:
         menuLinks.push({
             text: `Send Mail${hasSelected ? ` (${selectedCount})` : ''}`,
             action: () => this.bulkSendMail(),
+            disabled: !hasSelected
+        });
+
+        menuLinks.push({
+            text: `Send Reminder${hasSelected ? ` (${selectedCount})` : ''}`,
+            action: () => this.bulkSendReminder(),
             disabled: !hasSelected
         });
 
@@ -6125,13 +7410,13 @@ class AlertsManager {
     // שמירת העובד האחרון שנבחר ב-localStorage
     saveLastSelectedEmployee(employeeName) {
         if (employeeName && employeeName !== '') {
-            localStorage.setItem('lastSelectedEmployee', employeeName);
+            userSettings.setItem('lastSelectedEmployee', employeeName);
         }
     }
 
     // קבלת העובד האחרון שנבחר מ-localStorage
     getLastSelectedEmployee() {
-        return localStorage.getItem('lastSelectedEmployee') || '';
+        return userSettings.getItem('lastSelectedEmployee') || '';
     }
 
     // הגדרת עובד ברירת מחדל בתיבת הבחירה
@@ -7639,6 +8924,9 @@ class AlertsManager {
         const btn = document.querySelector(
             `.alert-ping-btn[data-alert-id="${alertId}"]`);
 
+        // ── קבל גם את ה-HOST מה-data attribute ──
+        const hostFallback = btn?.dataset?.host || '';
+
         // ── מצב: טוען ──
         if (btn) {
             btn.disabled = true;
@@ -7670,6 +8958,9 @@ class AlertsManager {
         }
 
         try {
+            // ══════════════════════════════════════════════════════
+            // שלב 1: פינג לפי IP (target הראשי)
+            // ══════════════════════════════════════════════════════
             const res = await fetch(
                 `/Servers/PingServer?name=${encodeURIComponent(target)}`,
                 { method: 'GET', credentials: 'include' }
@@ -7679,69 +8970,153 @@ class AlertsManager {
             const data = await res.json();
             if (!data.success) throw new Error(data.error || 'שגיאה');
 
-            const rtt = data.isAlive && data.avgRtt > 0
-                ? `${Math.round(data.avgRtt)}ms` : '';
+            // ══════════════════════════════════════════════════════
+            // שלב 2: אם לא מגיב לפי IP - נסה לפי HOST
+            // ══════════════════════════════════════════════════════
+            let finalData = data;
+            let triedHost = false;
+
+            if (!data.isAlive &&
+                hostFallback &&
+                hostFallback !== target &&
+                hostFallback.trim() !== '') {
+
+                triedHost = true;
+
+                if (btn) {
+                    btn.innerHTML = `
+                <i class="fas fa-spinner fa-spin"
+                   style="font-size:0.7rem"></i>
+                בודק HOST...`;
+                }
+
+                try {
+                    const hostRes = await fetch(
+                        `/Servers/PingServer?name=${encodeURIComponent(hostFallback)}`,
+                        { method: 'GET', credentials: 'include' }
+                    );
+
+                    if (hostRes.ok) {
+                        const hostData = await hostRes.json();
+                        if (hostData.success && hostData.isAlive) {
+                            // ← HOST מגיב! השתמש בתוצאה שלו
+                            finalData = {
+                                ...hostData,
+                                // ← סמן שהצלחנו דרך HOST
+                                targetType: 'host',
+                                originalTarget: target,
+                                hostTarget: hostFallback
+                            };
+                        }
+                    }
+                } catch (hostErr) {
+                    console.warn('Host ping failed:', hostErr.message);
+                    // ← המשך עם תוצאת ה-IP המקורית
+                }
+            }
+
+            // ══════════════════════════════════════════════════════
+            // שלב 3: עדכן UI לפי התוצאה הסופית
+            // ══════════════════════════════════════════════════════
+            const rtt = finalData.isAlive && finalData.avgRtt > 0
+                ? `${Math.round(finalData.avgRtt)}ms` : '';
 
             if (btn) {
                 btn.disabled = false;
 
-                if (data.isAlive) {
-                    // ── מגיב - ירוק בולט ──
+                if (finalData.isAlive) {
+                    // ── מגיב - ירוק ──
                     btn.className = 'alert-ping-btn alert-ping-alive';
+
+                    // ── תווית: IP או HOST ──
+                    let viaLabel = '';
+                    if (finalData.targetType === 'host' ||
+                        finalData.targetType === 'name') {
+                        viaLabel = `<span style="font-size:0.6rem;
+                        opacity:0.8;margin-right:2px">
+                        via HOST</span>`;
+                    } else if (finalData.targetType === 'ip') {
+                        viaLabel = `<span style="font-size:0.6rem;
+                        opacity:0.8;margin-right:2px">
+                        via IP</span>`;
+                    }
+
                     btn.innerHTML = `
-                    <i class="fas fa-check-circle"
-                       style="font-size:0.75rem"></i>
-                    ${rtt || 'OK'}`;
+                <i class="fas fa-check-circle"
+                   style="font-size:0.75rem"></i>
+                ${rtt || 'OK'}
+                ${viaLabel}`;
+
                     btn.style.cssText = `
-                    flex-shrink:0;
-                    display:inline-flex;
-                    align-items:center;
-                    gap:5px;
-                    padding:3px 9px;
-                    height:24px;
-                    background:#14532d;
-                    border:2px solid #22c55e;
-                    border-radius:6px;
-                    color:#86efac;
-                    font-size:0.72rem;
-                    font-weight:700;
-                    cursor:pointer;
-                    white-space:nowrap;
-                    box-shadow:0 2px 8px rgba(34,197,94,0.5);
-                    transition:all 0.2s;
-                    letter-spacing:0.03em;
-                    direction: rtl;
-                `;
-                    btn.title = `✅ מגיב${rtt ? ' | ' + rtt : ''} | ${target}`;
+                flex-shrink:0;
+                display:inline-flex;
+                align-items:center;
+                gap:5px;
+                padding:3px 9px;
+                height:24px;
+                background:#14532d;
+                border:2px solid #22c55e;
+                border-radius:6px;
+                color:#86efac;
+                font-size:0.72rem;
+                font-weight:700;
+                cursor:pointer;
+                white-space:nowrap;
+                box-shadow:0 2px 8px rgba(34,197,94,0.5);
+                transition:all 0.2s;
+                letter-spacing:0.03em;
+                direction: rtl;
+            `;
+
+                    // ── Tooltip מפורט ──
+                    const targetUsed = finalData.targetType === 'host'
+                        ? hostFallback
+                        : target;
+                    btn.title = `✅ מגיב${rtt ? ' | ' + rtt : ''} | ${targetUsed}`;
+
+                    if (finalData.hasMismatch) {
+                        btn.style.borderColor = '#f59e0b';
+                        btn.style.background = '#1a3a1a';
+                        btn.title += ` | ⚠️ ${(finalData.mismatches || []).join(', ')}`;
+                    }
 
                 } else {
-                    // ── לא מגיב - אדום בולט ──
+                    // ── לא מגיב (גם לא לפי IP וגם לא לפי HOST) ──
                     btn.className = 'alert-ping-btn alert-ping-dead';
+
+                    // ── הצג מה נוסה ──
+                    let triedText = target;
+                    if (triedHost && hostFallback && hostFallback !== target) {
+                        triedText = `IP+HOST`;
+                    }
+
                     btn.innerHTML = `
-                    <i class="fas fa-times-circle"
-                       style="font-size:0.75rem"></i>
-                    לא מגיב`;
+                <i class="fas fa-times-circle"
+                   style="font-size:0.75rem"></i>
+                לא מגיב`;
+
                     btn.style.cssText = `
-                    flex-shrink:0;
-                    display:inline-flex;
-                    align-items:center;
-                    gap:5px;
-                    padding:3px 9px;
-                    height:24px;
-                    background:#7f1d1d;
-                    border:2px solid #ef4444;
-                    border-radius:6px;
-                    color:#fca5a5;
-                    font-size:0.72rem;
-                    font-weight:700;
-                    cursor:pointer;
-                    white-space:nowrap;
-                    box-shadow:0 2px 8px rgba(239,68,68,0.5);
-                    transition:all 0.2s;
-                    letter-spacing:0.03em;
-                    direction: rtl;
-                `;
-                    btn.title = `❌ לא מגיב | ${target}`;
+                flex-shrink:0;
+                display:inline-flex;
+                align-items:center;
+                gap:5px;
+                padding:3px 9px;
+                height:24px;
+                background:#7f1d1d;
+                border:2px solid #ef4444;
+                border-radius:6px;
+                color:#fca5a5;
+                font-size:0.72rem;
+                font-weight:700;
+                cursor:pointer;
+                white-space:nowrap;
+                box-shadow:0 2px 8px rgba(239,68,68,0.5);
+                transition:all 0.2s;
+                letter-spacing:0.03em;
+                direction: rtl;
+            `;
+
+                    btn.title = `❌ לא מגיב | נוסה: ${triedText}`;
                 }
 
                 // ── אפס לכחול אחרי 45 שניות ──
@@ -7749,45 +9124,72 @@ class AlertsManager {
                     if (!btn.isConnected) return;
                     btn.className = 'alert-ping-btn alert-ping-idle';
                     btn.innerHTML = `
-                    <i class="fas fa-satellite-dish"
-                       style="font-size:0.7rem"></i>
-                    PING`;
+                <i class="fas fa-satellite-dish"
+                   style="font-size:0.7rem"></i>
+                PING`;
                     btn.style.cssText = `
-                    flex-shrink:0;
-                    display:inline-flex;
-                    align-items:center;
-                    gap:5px;
-                    padding:3px 9px;
-                    height:24px;
-                    background:#4f46e5;
-                    border:2px solid #6366f1;
-                    border-radius:6px;
-                    color:#fff;
-                    font-size:0.72rem;
-                    font-weight:700;
-                    cursor:pointer;
-                    white-space:nowrap;
-                    box-shadow:0 2px 6px rgba(99,102,241,0.5);
-                    transition:all 0.2s;
-                    letter-spacing:0.03em;
-                    direction: rtl;
-                `;
+                flex-shrink:0;
+                display:inline-flex;
+                align-items:center;
+                gap:5px;
+                padding:3px 9px;
+                height:24px;
+                background:#4f46e5;
+                border:2px solid #6366f1;
+                border-radius:6px;
+                color:#fff;
+                font-size:0.72rem;
+                font-weight:700;
+                cursor:pointer;
+                white-space:nowrap;
+                box-shadow:0 2px 6px rgba(99,102,241,0.5);
+                transition:all 0.2s;
+                letter-spacing:0.03em;
+                direction: rtl;
+            `;
                     btn.title = `PING ► ${target}`;
                     btn.disabled = false;
                 }, 45000);
             }
 
             // ── Toast ──
-            const icon = data.isAlive ? '🟢' : '🔴';
-            const msg = data.isAlive
-                ? `${icon} ${target}: מגיב${rtt ? ' | ' + rtt : ''}`
-                : `${icon} ${target}: לא מגיב`;
+            const icon = finalData.isAlive ? '🟢' : '🔴';
+            const ltr = value => `\u2066${value}\u2069`;
 
-            if (typeof NotificationManager !== 'undefined') {
-                NotificationManager.show(msg,
-                    data.isAlive ? 'success' : 'error');
+            let msg = '';
+
+            if (finalData.isAlive) {
+                const targetUsed = (
+                    finalData.targetType === 'host' ||
+                    finalData.targetType === 'name'
+                )
+                    ? hostFallback
+                    : target;
+
+                msg = `${icon} מגיב: ${ltr(targetUsed)}`;
+
+                if (rtt) {
+                    msg += ` | זמן תגובה: ${ltr(rtt)}`;
+                }
+
+                if (triedHost && finalData.targetType !== 'ip') {
+                    msg += ` | כתובת ה-IP לא הגיבה, הצליח דרך ${ltr('HOST')}`;
+                }
+
+            } else {
+                if (triedHost) {
+                    msg = `${icon} IP ו-HOST לא הגיבו | IP: ${ltr(target)} HOST: ${ltr(hostFallback)}`;
+                } else {
+                    msg = `${icon} IP לא הגיב | IP: ${ltr(target)}`;
+                }
             }
 
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.show(
+                    msg,
+                    finalData.isAlive ? 'success' : 'error'
+                );
+            }
         } catch (err) {
             console.error('pingAlertTarget error:', err);
 
@@ -7795,29 +9197,29 @@ class AlertsManager {
                 btn.disabled = false;
                 btn.className = 'alert-ping-btn alert-ping-error';
                 btn.innerHTML = `
-                <i class="fas fa-exclamation-triangle"
-                   style="font-size:0.7rem"></i>
-                שגיאה`;
+            <i class="fas fa-exclamation-triangle"
+               style="font-size:0.7rem"></i>
+            שגיאה`;
                 btn.style.cssText = `
-                flex-shrink:0;
-                display:inline-flex;
-                align-items:center;
-                gap:5px;
-                padding:3px 9px;
-                height:24px;
-                background:#78350f;
-                border:2px solid #f59e0b;
-                border-radius:6px;
-                color:#fcd34d;
-                font-size:0.72rem;
-                font-weight:700;
-                cursor:pointer;
-                white-space:nowrap;
-                box-shadow:0 2px 6px rgba(245,158,11,0.4);
-                transition:all 0.2s;
-                letter-spacing:0.03em;
-                direction: rtl;
-            `;
+            flex-shrink:0;
+            display:inline-flex;
+            align-items:center;
+            gap:5px;
+            padding:3px 9px;
+            height:24px;
+            background:#78350f;
+            border:2px solid #f59e0b;
+            border-radius:6px;
+            color:#fcd34d;
+            font-size:0.72rem;
+            font-weight:700;
+            cursor:pointer;
+            white-space:nowrap;
+            box-shadow:0 2px 6px rgba(245,158,11,0.4);
+            transition:all 0.2s;
+            letter-spacing:0.03em;
+            direction: rtl;
+        `;
                 btn.title = `⚠️ שגיאה: ${err.message}`;
             }
 

@@ -50,8 +50,8 @@ class RackMetricsDashboard {
 
     saveToLocalStorage() {
         try {
-            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.racksMetrics));
-            localStorage.setItem(this.STORAGE_TIMESTAMP_KEY, Date.now().toString());
+            userSettings.setItem(this.STORAGE_KEY, JSON.stringify(this.racksMetrics));
+            userSettings.setItem(this.STORAGE_TIMESTAMP_KEY, Date.now().toString());
         } catch (e) {
             console.warn('Could not save to localStorage:', e);
         }
@@ -59,13 +59,13 @@ class RackMetricsDashboard {
 
     loadFromLocalStorage() {
         try {
-            const timestamp = localStorage.getItem(this.STORAGE_TIMESTAMP_KEY);
+            const timestamp = userSettings.getItem(this.STORAGE_TIMESTAMP_KEY);
             if (!timestamp) return false;
 
             const age = Date.now() - parseInt(timestamp);
             if (age > this.CACHE_MAX_AGE_MS) return false;
 
-            const data = localStorage.getItem(this.STORAGE_KEY);
+            const data = userSettings.getItem(this.STORAGE_KEY);
             if (!data) return false;
 
             const parsed = JSON.parse(data);

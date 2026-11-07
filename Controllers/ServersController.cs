@@ -12,18 +12,20 @@ using System.Data;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Authorization;
+using NocPortal.Services; 
 
 public class ServersController : Controller
 {
     // ─── נתיבים ───────────────────────────────────────────────
-    private readonly string _baseDir;
+    private readonly string _baseDir =
+        PortalPaths.UnderFiles("servers");
     private readonly string _serverProdPath;
     
     private readonly string _outputServersPath;
     private readonly string _mappingPath;
 
-    private readonly string _jsonStorePath;
-    private readonly string _systemsCatalogPath;
+    private readonly string _jsonStorePath =
+        PortalPaths.UnderFiles(@"servers_data.json");
 
     private static readonly object _fileLock = new object();
 
@@ -34,14 +36,17 @@ public class ServersController : Controller
 
     private readonly IConfiguration _configuration;
     private readonly SecretsService _secrets; 
+    private readonly UserService _userService; 
+
+    // ─── נתיב קובץ הרשאות שרתים ────────────────────────────────
+    private readonly string _serversPermissionsPath =
+        PortalPaths.UnderFiles(@"servers_permissions.json");
+
+    private static readonly object _permLock = new object();
 
     public ServersController(IConfiguration configuration,
-        SecretsService secrets,
-        IWebHostEnvironment env)  
+        SecretsService secrets, UserService userService) 
     {
-        _baseDir = Path.Combine(env.WebRootPath, "assets", "files", "servers");
-        _jsonStorePath = Path.Combine(env.WebRootPath, "assets", "files", "servers_data.json");
-        _systemsCatalogPath = Path.Combine(env.WebRootPath, "assets", "files", "systems_catalog.json");
         _outputServersPath = Path.Combine(_baseDir,
             "OUTPUT_SERVERS_19-05-26.xlsx");
         _mappingPath = Path.Combine(_baseDir,
@@ -58,6 +63,7 @@ public class ServersController : Controller
             "PROD_ONLY.xlsx");
         _configuration = configuration;
         _secrets       = secrets;  
+        _userService   = userService; 
     }
 
     // ─── GET: קבל את כל השרתים ────────────────────────────────
@@ -96,12 +102,32 @@ public class ServersController : Controller
         {
             var username = GetCurrentUsername();
             var isAdmin  = IsCurrentUserAdmin();
-            
+            var isEditor = IsCurrentUserEditor();
+
+            // ─── אדמינים קשיחים של המערכת (לא ניתן להסיר) ───────────
+            var systemAdmins = new List<string>
+            {
+                "talyoh",
+                "admin",
+                "administrator"
+            };
+
+            // ─── אדמינים של דשבורד השרתים (מקובץ הרשאות) ────────────
+            var perms  = LoadServersPermissions();
+            var admins = perms.Admins
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
             return Json(new
             {
-                success  = true,
-                username = username,
-                isAdmin  = isAdmin
+                success      = true,
+                username     = username,
+                isAdmin      = isAdmin,
+                isEditor     = isEditor,
+                // ─── אדמינים קשיחים - לא ניתן להסיר ─────────────────
+                systemAdmins = systemAdmins,
+                // ─── אדמינים של הדשבורד - ניתן לנהל ─────────────────
+                admins       = admins
             });
         }
         catch (Exception ex)
@@ -175,8 +201,8 @@ public class ServersController : Controller
     {
         try
         {
-            // ─── בדוק הרשאות אדמין ───────────────────────────────
-            if (!IsCurrentUserAdmin())
+            // ─── בדוק הרשאות עריכה (אדמין או עורך) ─────────────
+            if (!IsCurrentUserEditor())
                 return Json(new
                 {
                     success = false,
@@ -184,42 +210,47 @@ public class ServersController : Controller
                 });
 
             if (string.IsNullOrEmpty(request?.ServerName))
-                return Json(new
-                {
-                    success = false,
-                    error   = "שם שרת נדרש"
-                });
+                return Json(new { success = false, error = "שם שרת נדרש" });
 
             var servers = LoadFromJson();
             var server  = servers.FirstOrDefault(
                 s => s.Name == request.ServerName);
 
             if (server == null)
-                return Json(new
-                {
-                    success = false,
-                    error   = "שרת לא נמצא"
-                });
+                return Json(new { success = false, error = "שרת לא נמצא" });
 
-            // ─── עדכן שדות (רק אם נשלחו) ────────────────────────
-            if (request.Environment != null) 
-                server.Environment = NormalizeEnvironment(request.Environment);
-            if (request.IsVirtual      != null) server.IsVirtual      = request.IsVirtual;
-            if (request.OS             != null) server.OS             = request.OS;
-            if (request.SystemName     != null) server.SystemName     = request.SystemName;
-            if (request.CatalogNumber  != null) server.CatalogNumber  = request.CatalogNumber;
-            if (request.SystemStatus   != null) server.SystemStatus   = request.SystemStatus;
-            if (request.SystemManager  != null) server.SystemManager  = request.SystemManager;
-            if (request.BootType       != null) server.BootType       = request.BootType;
-            if (request.Domain         != null) server.Domain         = request.Domain;
-            if (request.Department     != null) server.Department     = request.Department;
-            if (request.Team           != null) server.Team           = request.Team;
-            if (request.CanShutdown    != null) server.CanShutdown    = request.CanShutdown;
-            if (request.ScannedVia     != null) server.ScannedVia     = request.ScannedVia;
-            if (request.IsHealthy      != null) server.IsHealthy      = request.IsHealthy;
-            if (request.Notes          != null) server.Notes          = request.Notes;
-            if (request.MappingNotes   != null) server.MappingNotes   = request.MappingNotes;
-            if (request.HardwareVendor != null) server.HardwareVendor = request.HardwareVendor;
+            // ─── עורך רגיל - שדות מוגבלים ──────────────────────
+            if (!IsCurrentUserAdmin())
+            {
+                // עורך יכול לעדכן רק שדות אלו:
+                if (request.IsHealthy      != null) server.IsHealthy      = request.IsHealthy;
+                if (request.SystemStatus   != null) server.SystemStatus   = request.SystemStatus;
+                if (request.Notes          != null) server.Notes          = request.Notes;
+                if (request.MappingNotes   != null) server.MappingNotes   = request.MappingNotes;
+                if (request.CanShutdown    != null) server.CanShutdown    = request.CanShutdown;
+                if (request.BootType       != null) server.BootType       = request.BootType;
+            }
+            else
+            {
+                // ─── אדמין - עדכן את כל השדות ──────────────────
+                if (request.Environment    != null) server.Environment    = NormalizeEnvironment(request.Environment);
+                if (request.IsVirtual      != null) server.IsVirtual      = request.IsVirtual;
+                if (request.OS             != null) server.OS             = request.OS;
+                if (request.SystemName     != null) server.SystemName     = request.SystemName;
+                if (request.CatalogNumber  != null) server.CatalogNumber  = request.CatalogNumber;
+                if (request.SystemStatus   != null) server.SystemStatus   = request.SystemStatus;
+                if (request.SystemManager  != null) server.SystemManager  = request.SystemManager;
+                if (request.BootType       != null) server.BootType       = request.BootType;
+                if (request.Domain         != null) server.Domain         = request.Domain;
+                if (request.Department     != null) server.Department     = request.Department;
+                if (request.Team           != null) server.Team           = request.Team;
+                if (request.CanShutdown    != null) server.CanShutdown    = request.CanShutdown;
+                if (request.ScannedVia     != null) server.ScannedVia     = request.ScannedVia;
+                if (request.IsHealthy      != null) server.IsHealthy      = request.IsHealthy;
+                if (request.Notes          != null) server.Notes          = request.Notes;
+                if (request.MappingNotes   != null) server.MappingNotes   = request.MappingNotes;
+                if (request.HardwareVendor != null) server.HardwareVendor = request.HardwareVendor;
+            }
 
             server.LastUpdated = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
             server.UpdatedBy   = GetCurrentUsername();
@@ -257,7 +288,6 @@ public class ServersController : Controller
         return value.Trim();
     }
 
-    // ─── הוסף לתחתית הקלאס ServersController ────────────────────
     private bool IsCurrentUserAdmin()
     {
         // ── אפשרות 1: לפי Role ──────────────────────────────────
@@ -273,18 +303,36 @@ public class ServersController : Controller
         if (roleClaim.Equals("admin",
                 StringComparison.OrdinalIgnoreCase)) return true;
 
-        // ── אפשרות 3: רשימת אדמינים קבועה ──────────────────────
-        // ← שנה לפי שמות המשתמשים האדמינים בארגון שלך
-        var adminUsers = new HashSet<string>(
+        // ── אפשרות 3: קרא מקובץ הרשאות דינמי ───────────────────
+        var username = GetCurrentUsername();
+        var perms = LoadServersPermissions();
+
+        if (perms.Admins.Contains(username,
+                StringComparer.OrdinalIgnoreCase))
+            return true;
+
+        // ── fallback: רשימה קשיחה ────────────────────────────────
+        var hardcodedAdmins = new HashSet<string>(
             StringComparer.OrdinalIgnoreCase)
         {
             "talyoh",
             "admin",
             "administrator"
         };
+        return hardcodedAdmins.Contains(username);
+    }
+
+    // ─── בדוק אם המשתמש הנוכחי הוא עורך ────────────────────────
+    private bool IsCurrentUserEditor()
+    {
+        // ─── אדמין = גם עורך ────────────────────────────────────
+        if (IsCurrentUserAdmin()) return true;
 
         var username = GetCurrentUsername();
-        return adminUsers.Contains(username);
+        var perms    = LoadServersPermissions();
+
+        return perms.Editors.Contains(
+            username, StringComparer.OrdinalIgnoreCase);
     }
 
     // ─── POST: ייבא מ-XLSX (רענון ידני) ──────────────────────
@@ -1073,6 +1121,10 @@ public IActionResult SearchServer(string name)
     {
         try
         {
+            // ─── עורך או אדמין יכולים לעדכן הערות ──────────────
+            if (!IsCurrentUserEditor())
+                return Json(new { success = false, error = "אין הרשאה" });
+
             if (string.IsNullOrEmpty(request?.ServerName))
                 return Json(new { success = false, error = "שם שרת נדרש" });
 
@@ -1272,6 +1324,10 @@ public IActionResult SearchServer(string name)
     {
         try
         {
+            // ─── עורך או אדמין יכולים לעדכן סטטוס ──────────────
+            if (!IsCurrentUserEditor())
+                return Json(new { success = false, error = "אין הרשאה" });
+
             if (request == null || string.IsNullOrEmpty(request.ServerName))
                 return Json(new { success = false, error = "שם שרת נדרש" });
 
@@ -1375,7 +1431,8 @@ public IActionResult SearchServer(string name)
                 });
 
             // ─── טען קטלוג מערכות ────────────────────────────────────
-            var catalogPath = _systemsCatalogPath;
+            var catalogPath =
+                PortalPaths.UnderFiles(@"systems_catalog.json");
 
             if (!System.IO.File.Exists(catalogPath))
                 return Json(new { success = false, error = "קטלוג מערכות לא נמצא" });
@@ -2093,7 +2150,7 @@ public IActionResult SearchServer(string name)
         Dictionary<string, PatchesServerRecord>  nonProdPatches,
         HashSet<string>                          prodOnly,
         Dictionary<string, ServerProdRecord>     serverProd,
-        Dictionary<string, MappingRecord>        mappingData)  // ← חדש
+        Dictionary<string, MappingRecord>        mappingData)  
     {
         var merged = new Dictionary<string, MergedServerInfo>(
             StringComparer.OrdinalIgnoreCase);
@@ -2657,6 +2714,98 @@ public IActionResult SearchServer(string name)
         }
     }
 
+    [HttpPost]
+    public IActionResult RenameServer([FromBody] RenameServerRequest request)
+    {
+        try
+        {
+            if (!IsCurrentUserAdmin())
+                return Json(new
+                {
+                    success = false,
+                    error   = "אין הרשאה לביצוע פעולה זו"
+                });
+
+            var oldName = request?.OldName?.Trim() ?? "";
+            var newName = request?.NewName?.Trim() ?? "";
+
+            if (string.IsNullOrWhiteSpace(oldName))
+                return Json(new { success = false, error = "שם ישן נדרש" });
+
+            if (string.IsNullOrWhiteSpace(newName))
+                return Json(new { success = false, error = "שם חדש נדרש" });
+
+            if (oldName.Equals(newName, StringComparison.OrdinalIgnoreCase))
+                return Json(new { success = false, error = "השם החדש זהה לישן" });
+
+            // ── תווים לא חוקיים בשם שרת ──────────────────────────
+            var invalidChars = new[] { '/', '\\', ':', '*', '?', '"', '<', '>', '|', ' ' };
+            if (newName.Any(c => invalidChars.Contains(c)))
+                return Json(new
+                {
+                    success = false,
+                    error   = "שם שרת לא יכול להכיל: / \\ : * ? \" < > | רווח"
+                });
+
+            if (newName.Length > 63)
+                return Json(new
+                {
+                    success = false,
+                    error   = "שם שרת לא יכול לעלות על 63 תווים"
+                });
+
+            var servers = LoadFromJson();
+
+            // ── בדוק שהשם הישן קיים ──────────────────────────────
+            var server = servers.FirstOrDefault(s =>
+                s.Name.Equals(oldName, StringComparison.OrdinalIgnoreCase));
+
+            if (server == null)
+                return Json(new { success = false, error = "שרת לא נמצא" });
+
+            // ── בדוק שהשם החדש לא תפוס ───────────────────────────
+            var nameExists = servers.Any(s =>
+                !s.Name.Equals(oldName, StringComparison.OrdinalIgnoreCase) &&
+                s.Name.Equals(newName, StringComparison.OrdinalIgnoreCase));
+
+            if (nameExists)
+                return Json(new
+                {
+                    success = false,
+                    error   = $"שרת בשם '{newName}' כבר קיים"
+                });
+
+            // ── שנה את השם ────────────────────────────────────────
+            var oldNameSaved = server.Name;
+            server.Name        = newName;
+            server.LastUpdated = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+            server.UpdatedBy   = GetCurrentUsername();
+
+            // ── הוסף הערה על שינוי השם ───────────────────────────
+            var renameNote = $"[שינוי שם: {oldNameSaved} → {newName} " +
+                            $"| {server.LastUpdated}]";
+
+            server.Notes = string.IsNullOrWhiteSpace(server.Notes)
+                ? renameNote
+                : $"{renameNote}\n{server.Notes}";
+
+            SaveToJson(servers);
+
+            return Json(new
+            {
+                success = true,
+                server  = server,
+                oldName = oldNameSaved,
+                newName = newName,
+                message = $"שרת שונה מ-'{oldNameSaved}' ל-'{newName}'"
+            });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
     // ════════════════════════════════════════════════════════════
     // עזר: בצע פינג + Reverse DNS + בדוק אי-התאמות
     // ════════════════════════════════════════════════════════════
@@ -2880,7 +3029,8 @@ public IActionResult SearchServer(string name)
             var servers = LoadFromJson();
 
             // ─── טען קטלוג מערכות (SystemCatalogRecord) ──────────
-            var catalogPath = _systemsCatalogPath;
+            var catalogPath =
+                PortalPaths.UnderFiles(@"systems_catalog.json");
 
             if (!System.IO.File.Exists(catalogPath))
                 return Json(new
@@ -3289,6 +3439,155 @@ public IActionResult SearchServer(string name)
             return Json(new { success = false, error = ex.Message });
         }
     }
+
+    // ─── טען הרשאות שרתים ────────────────────────────────────────
+    private ServersPermissions LoadServersPermissions()
+    {
+        lock (_permLock)
+        {
+            if (!System.IO.File.Exists(_serversPermissionsPath))
+                return GetDefaultServersPermissions();
+
+            try
+            {
+                var json = System.IO.File.ReadAllText(
+                    _serversPermissionsPath, Encoding.UTF8);
+                return JsonSerializer.Deserialize<ServersPermissions>(
+                    json,
+                    new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    }
+                ) ?? GetDefaultServersPermissions();
+            }
+            catch
+            {
+                return GetDefaultServersPermissions();
+            }
+        }
+    }
+
+    // ─── שמור הרשאות שרתים ───────────────────────────────────────
+    private void SaveServersPermissions(ServersPermissions perms)
+    {
+        lock (_permLock)
+        {
+            var dir = Path.GetDirectoryName(_serversPermissionsPath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+
+            var json = JsonSerializer.Serialize(perms,
+                new JsonSerializerOptions { WriteIndented = true });
+            System.IO.File.WriteAllText(
+                _serversPermissionsPath, json, Encoding.UTF8);
+        }
+    }
+
+    // ─── ברירת מחדל ──────────────────────────────────────────────
+    private ServersPermissions GetDefaultServersPermissions()
+    {
+        return new ServersPermissions
+        {
+            Admins      = new List<string> { "talyoh" },
+            Editors     = new List<string>(),              
+            LastUpdated = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
+            UpdatedBy   = "system"
+        };
+    }
+
+    // ─── GET: קבל הרשאות שרתים ───────────────────────────────────
+    [HttpGet]
+    public IActionResult GetServersPermissions()
+    {
+        try
+        {
+            if (!IsCurrentUserAdmin())
+                return Json(new { success = false, error = "אין הרשאה" });
+
+            var perms = LoadServersPermissions();
+            return Json(new { success = true, permissions = perms });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    // ─── POST: שמור הרשאות שרתים ─────────────────────────────────
+    [HttpPost]
+    public IActionResult SavePermissions(
+        [FromBody] ServersPermissions request)
+    {
+        try
+        {
+            if (!IsCurrentUserAdmin())
+                return Json(new { success = false, error = "אין הרשאה" });
+
+            if (request == null)
+                return Json(new { success = false, error = "בקשה לא תקינה" });
+
+            var currentUser = GetCurrentUsername();
+
+            // ─── וודא שהמשתמש הנוכחי נשאר אדמין ───
+            if (!request.Admins.Contains(
+                    currentUser, StringComparer.OrdinalIgnoreCase))
+                request.Admins.Add(currentUser);
+
+            // ─── הסר כפילויות ───
+            request.Admins  = request.Admins
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            request.Editors = (request.Editors ?? new List<string>())
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+            request.LastUpdated = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+            request.UpdatedBy   = currentUser;
+
+            SaveServersPermissions(request);
+
+            return Json(new
+            {
+                success     = true,
+                message     = "הרשאות נשמרו בהצלחה",
+                permissions = request
+            });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
+
+    // ─── GET: קבל רשימת משתמשים ─────────────────────────────────
+    [HttpGet]
+    public IActionResult GetAllUsers()
+    {
+        try
+        {
+            if (!IsCurrentUserAdmin())
+                return Json(new { success = false, error = "אין הרשאה" });
+
+            // ─── קרא משתמשים מ-UserService (זהה לקטלוג) ────────
+            var users = _userService.GetAllUsers();
+
+            return Json(new
+            {
+                success = true,
+                users   = users
+                    .Select(u => new
+                    {
+                        username    = u.Username,
+                        displayName = u.DisplayName ?? u.Username,
+                        role        = u.Role.ToString()
+                    })
+                    .OrderBy(u => u.displayName)
+                    .ToList()
+            });
+        }
+        catch (Exception ex)
+        {
+            return Json(new { success = false, error = ex.Message });
+        }
+    }
 }
 
 // ─── Extension Method ─────────────────────────────────────────
@@ -3605,4 +3904,20 @@ public class AddServerRequest
 public class GetBigFixForServersRequest
 {
     public List<string> ServerNames { get; set; } = new();
+}
+
+// הוסף בסוף הקובץ, לפני הסגירה
+public class RenameServerRequest
+{
+    public string OldName { get; set; } = "";
+    public string NewName { get; set; } = "";
+}
+
+// ─── מודל הרשאות שרתים ───────────────────────────────────────
+public class ServersPermissions
+{
+    public List<string> Admins      { get; set; } = new();
+    public List<string> Editors     { get; set; } = new();  
+    public string       LastUpdated { get; set; } = "";
+    public string?      UpdatedBy   { get; set; }
 }

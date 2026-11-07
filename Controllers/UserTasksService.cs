@@ -12,14 +12,10 @@ public class UserTasksService
     private const int MaxRetries = 3;
     private const int RetryDelayMs = 100;
 
-    public UserTasksService() : this(null)
+    public UserTasksService()
     {
-    }
-
-    public UserTasksService(IWebHostEnvironment? env)
-    {
-        var webRoot = env?.WebRootPath ?? AppContext.BaseDirectory;
-        _userTasksFilePath = Path.Combine(webRoot, "assets", "files", "user_personal_tasks.txt");
+        _userTasksFilePath = 
+            PortalPaths.UnderFiles(@"user_personal_tasks.txt");
     }
 
     public List<EmployeeTask> GetTasksByUsername(string username)

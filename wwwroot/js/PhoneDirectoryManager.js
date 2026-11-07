@@ -24,6 +24,7 @@ class PhoneDirectoryManager {
             phone: true,
             extension: true,
             email: true,
+            division:   false,
             actions: true      // Always visible (disabled checkbox)
         };
 
@@ -69,7 +70,7 @@ class PhoneDirectoryManager {
 
     // Load column visibility from localStorage
     loadColumnVisibility() {
-        const saved = localStorage.getItem('phoneDirectoryColumns');
+        const saved = userSettings.getItem('phoneDirectoryColumns');
         if (saved) {
             try {
                 const parsed = JSON.parse(saved);
@@ -90,7 +91,7 @@ class PhoneDirectoryManager {
 
     // Save column visibility to localStorage
     saveColumnVisibility() {
-        localStorage.setItem('phoneDirectoryColumns', JSON.stringify(this.visibleColumns));
+        userSettings.setItem('phoneDirectoryColumns', JSON.stringify(this.visibleColumns));
     }
 
     // Update checkboxes based on current visibility settings
@@ -137,6 +138,7 @@ class PhoneDirectoryManager {
             phone: true,
             extension: true,
             email: true,
+            division:   false,
             actions: true
         };
         this.saveColumnVisibility();
@@ -156,7 +158,7 @@ class PhoneDirectoryManager {
 
     // Restore filter section collapsed state
     restoreFilterSectionState() {
-        const phoneFiltersCollapsed = localStorage.getItem('phoneFiltersSectionCollapsed');
+        const phoneFiltersCollapsed = userSettings.getItem('phoneFiltersSectionCollapsed');
         if (phoneFiltersCollapsed === 'true' || phoneFiltersCollapsed == null) {
             document.getElementById('phoneFiltersContent')?.classList.add('collapsed');
             document.getElementById('phoneFiltersCollapseBtn')?.classList.add('collapsed');
@@ -174,7 +176,7 @@ class PhoneDirectoryManager {
             this.updateActiveFiltersDisplay();
         }
 
-        localStorage.setItem('phoneFiltersSectionCollapsed', content.classList.contains('collapsed'));
+        userSettings.setItem('phoneFiltersSectionCollapsed', content.classList.contains('collapsed'));
     }
 
     async loadPhoneDirectory() {
@@ -226,6 +228,7 @@ class PhoneDirectoryManager {
                     <tr>
                         <th class="${this.getColumnClass('fullName')}">שם מלא</th>
                         <th class="${this.getColumnClass('role')}">תפקיד</th>
+                        <th class="${this.getColumnClass('division')}">אגף</th>
                         <th class="${this.getColumnClass('domain')}">תחום</th>
                         <th class="${this.getColumnClass('department')}">מחלקה</th>
                         <th class="${this.getColumnClass('team')}">צוות</th>
@@ -264,6 +267,7 @@ class PhoneDirectoryManager {
             <tr ondblclick="phoneDirectoryManager.editContact(${contactId})">
                 <td class="${this.getColumnClass('fullName')}">${this.escapeHtml(person.fullName)}</td>
                 <td class="${this.getColumnClass('role')} employee-role">${this.escapeHtml(person.role || '')}</td>
+                <td class="${this.getColumnClass('division')}">${this.escapeHtml(person.division || '')}</td>
                 <td class="${this.getColumnClass('domain')}">${this.escapeHtml(person.domain || '')}</td>
                 <td class="${this.getColumnClass('department')}">${this.escapeHtml(person.department || '')}</td>
                 <td class="${this.getColumnClass('team')}">${this.escapeHtml(person.team || '')}</td>
@@ -466,6 +470,7 @@ class PhoneDirectoryManager {
             const matchesSearch = !searchTerm ||
                 person.fullName.toLowerCase().includes(searchTerm) ||
                 (person.role && person.role.toLowerCase().includes(searchTerm)) ||
+                (person.division && person.division.toLowerCase().includes(searchTerm)) ||
                 (person.domain && person.domain.toLowerCase().includes(searchTerm)) ||
                 (person.department && person.department.toLowerCase().includes(searchTerm)) ||
                 (person.team && person.team.toLowerCase().includes(searchTerm)) ||
@@ -639,7 +644,6 @@ class PhoneDirectoryManager {
             case 'search':
                 this.filters.search = '';
                 this.clearSearch();
-                if (searchInput) searchInput.value = '';
                 break;
 
             case 'sort':
@@ -707,6 +711,7 @@ class PhoneDirectoryManager {
             baseData = baseData.filter(person => {
                 return person.fullName.toLowerCase().includes(searchTerm) ||
                     (person.role && person.role.toLowerCase().includes(searchTerm)) ||
+                    (person.division && person.division.toLowerCase().includes(searchTerm)) ||
                     (person.domain && person.domain.toLowerCase().includes(searchTerm)) ||
                     (person.department && person.department.toLowerCase().includes(searchTerm)) ||
                     (person.team && person.team.toLowerCase().includes(searchTerm)) ||
@@ -766,6 +771,7 @@ class PhoneDirectoryManager {
         document.getElementById('contactSubmitBtn').textContent = 'שמור שינויים';
         document.getElementById('contactFullName').value = contact.fullName;
         document.getElementById('contactRole').value = contact.role || '';
+        document.getElementById('contactDivision').value  = contact.division    || '';
         document.getElementById('contactDomain').value = contact.domain || '';
         document.getElementById('contactDepartment').value = contact.department || '';
         document.getElementById('contactTeam').value = contact.team || '';
@@ -798,6 +804,7 @@ class PhoneDirectoryManager {
     async saveContact() {
         const fullName = document.getElementById('contactFullName').value.trim();
         const role = document.getElementById('contactRole').value.trim();
+        const division    = document.getElementById('contactDivision').value.trim();  // ← חדש
         const phoneNumber = document.getElementById('contactPhone').value.trim();
         const domain = document.getElementById('contactDomain').value.trim();
         const department = document.getElementById('contactDepartment').value.trim();
@@ -886,6 +893,7 @@ class PhoneDirectoryManager {
             id: this.editingContactId,
             fullName: fullName,
             role: role,
+            division:    division, 
             domain: domain,
             department: department,
             team: team,

@@ -82,6 +82,15 @@
             <i class="fas fa-exchange-alt"></i>
             <span>שינויים - ספר טלפונים</span>
         </a>
+
+        <!-- ניהול שליחת אישורי כניסה אוטומטים - מייל אישור כניסה -->
+        <a asp-action="BlockedDaysManager"
+        asp-controller="Messages"
+        class="nav-item @(currentAction == "BlockedDaysManager" ? "active" : "")"
+        title="ניהול שליחת אישורי כניסה אוטומטים">
+            <i class="fas fa-calendar-times"></i>
+            <span>ניהול שליחת אישורי כניסה אוטומטים</span>
+        </a>
         
         <!-- מפריד -->
         <div class="nav-separator"></div>
@@ -114,7 +123,7 @@
                 'lastSelectedEmployee'
             ];
             
-            keysToRemove.forEach(key => localStorage.removeItem(key));
+            keysToRemove.forEach(key => userSettings.removeItem(key));
             
             // מחק מ-sessionStorage
             sessionStorage.removeItem('currentUser');

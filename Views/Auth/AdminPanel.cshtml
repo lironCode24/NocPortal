@@ -613,7 +613,7 @@
             <div class="permissions-grid" id="permissionsGrid">
                 @foreach (var dashboard in allDashboards)
                 {
-                    @if (dashboard.DashboardId != "systems-catalog")
+                    @if (dashboard.DashboardId != "systems-catalog" && dashboard.DashboardId != "activities")
                     {
                     <label class="permission-card" id="perm-card-@dashboard.DashboardId">
                         <input type="checkbox"

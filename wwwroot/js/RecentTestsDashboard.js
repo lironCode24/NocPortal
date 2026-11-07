@@ -7,7 +7,8 @@ class RecentTestsDashboard {
         this.allTests = [];
 
         // *** הרשאות ***
-        this.canEdit = this.checkEditPermission();
+        this.canEdit;
+        this.isAdmin;
 
         // סינון
         this.searchTerm = '';
@@ -54,7 +55,7 @@ class RecentTestsDashboard {
 
         // *** Runner type ***
         this._lastRunnerType =
-            localStorage.getItem('rtLastRunnerType') || 'noc';
+            userSettings.getItem('rtLastRunnerType') || 'noc';
 
         // *** Polling ***
         this._pendingRunCaseId = null;
@@ -77,7 +78,7 @@ class RecentTestsDashboard {
                 sortColumn: this.sortColumn,
                 sortDirection: this.sortDirection,
             };
-            localStorage.setItem(
+            userSettings.setItem(
                 this._storageKey,
                 JSON.stringify(state)
             );
@@ -91,7 +92,7 @@ class RecentTestsDashboard {
     // ==========================================
     _loadFiltersFromCache() {
         try {
-            const raw = localStorage.getItem(this._storageKey);
+            const raw = userSettings.getItem(this._storageKey);
             if (!raw) return {};
             const parsed = JSON.parse(raw);
 
@@ -128,7 +129,7 @@ class RecentTestsDashboard {
     // ==========================================
     _clearFiltersCache() {
         try {
-            localStorage.removeItem(this._storageKey);
+            userSettings.removeItem(this._storageKey);
         } catch (err) {
             console.warn('Could not clear filters cache:', err);
         }
@@ -137,7 +138,9 @@ class RecentTestsDashboard {
     // ==========================================
     // אתחול
     // ==========================================
-    initialize() {
+    async initialize() {
+        // טען הרשאות מהשרת לפני הכל
+        await this._loadPermissionsFromServer();
         this.container = document.getElementById(this.containerId);
         if (!this.container) {
             console.error(`Container #${this.containerId} not found`);
@@ -146,11 +149,9 @@ class RecentTestsDashboard {
 
         this.addStyles();
         this.renderShell();
-
-        // *** שחזר מצב UI מהקאש לאחר renderShell ***
         this._restoreUIFromCache();
-
         this.bindEvents();
+
 
         Promise.all([
             this._loadDowntimeSystems(),
@@ -159,6 +160,621 @@ class RecentTestsDashboard {
 
         this.refreshInterval = setInterval(
             () => this.loadData(), this.REFRESH_MS);
+    }
+
+    // ==========================================
+    // *** טעינת הרשאות מהשרת ***
+    // ==========================================
+    async _loadPermissionsFromServer() {
+        try {
+            const res = await fetch('/SuiteResults/GetCurrentUser',
+                { credentials: 'include' });
+            const data = await res.json();
+
+            if (data.success) {
+                this.currentUser = {
+                    ...this.currentUser,
+                    username: data.username,
+                    role: data.role,
+                    privilegedUsers: data.privilegedUsers || [],
+                    editors: data.editors || [],
+                    runners: data.runners || [],
+                    viewers: data.viewers || []
+                };
+                this.canEdit = this.checkEditPermission();
+                this.isAdmin = this.currentUser.role === "Admin";
+                this._updatePermissionsUI();
+            }
+        } catch (err) {
+            console.warn('_loadPermissionsFromServer error:', err);
+        }
+    }
+
+
+    // ==========================================
+    // *** עדכון UI לפי הרשאות ***
+    // ==========================================
+    _updatePermissionsUI() {
+        // ─── הצג/הסתר כפתור Manage Mappings ───
+        const mappingsBtn = document.getElementById('rtManageMappingsBtn');
+        if (mappingsBtn)
+            mappingsBtn.style.display = this.canEdit ? 'flex' : 'none';
+
+        // ─── הצג/הסתר כפתור Permissions ───
+        const permBtn = document.getElementById('rtPermissionsBtn');
+        if (permBtn)
+            permBtn.style.display = this.canEdit ? 'flex' : 'none';
+
+        // ─── הצג/הסתר כפתורי עריכה בטבלה ───
+        document.querySelectorAll('.rt-map-btn').forEach(btn => {
+            btn.style.display = this.canEdit ? '' : 'none';
+        });
+    }
+
+    // ==========================================
+    // *** פתיחת פופאפ ניהול הרשאות ***
+    // ==========================================
+    async _openPermissionsModal() {
+        const existing = document.getElementById('rtPermissionsModal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'rtPermissionsModal';
+        modal.className = 'rt-popup-overlay';
+        modal.style.display = 'flex';
+
+        modal.innerHTML = `
+    <div class="rt-mapping-popup rt-mapping-popup-wide"
+         style="max-width:900px">
+        <div class="rt-popup-header">
+            <span class="rt-popup-title">
+                <i class="fas fa-user-shield"></i>
+                ניהול הרשאות — דשבורד בדיקות
+                <span style="padding:2px 10px;
+                    background:rgba(239,68,68,0.15);
+                    border:1px solid rgba(239,68,68,0.35);
+                    border-radius:8px;color:#fca5a5;
+                    font-size:0.72rem;font-weight:700;
+                    margin-right:6px">
+                    Admin Only
+                </span>
+            </span>
+            <button class="rt-popup-close" id="rtPermClose">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div style="display:flex;align-items:center;
+                    justify-content:center;padding:40px;
+                    gap:12px;color:#666">
+            <i class="fas fa-spinner fa-spin"
+               style="color:#6366f1;font-size:1.2rem"></i>
+            <span>טוען הרשאות...</span>
+        </div>
+    </div>`;
+
+        document.body.appendChild(modal);
+        document.body.style.overflow = 'hidden';
+
+        document.getElementById('rtPermClose')
+            ?.addEventListener('click', () => {
+                modal.remove();
+                document.body.style.overflow = '';
+            });
+
+        try {
+            const [permsRes, usersRes] = await Promise.all([
+                fetch('/SuiteResults/GetSuitePermissions',
+                    { credentials: 'include' }),
+                fetch('/SuiteResults/GetAllUsers',
+                    { credentials: 'include' })
+            ]);
+
+            const permsData = await permsRes.json();
+            const usersData = await usersRes.json();
+
+            if (!permsData.success)
+                throw new Error(permsData.message || 'שגיאה בטעינת הרשאות');
+
+            this._renderPermissionsContent(
+                modal,
+                permsData.permissions,
+                usersData.success ? usersData.users : []
+            );
+
+        } catch (err) {
+            const popup = modal.querySelector('.rt-mapping-popup');
+            if (popup) {
+                popup.innerHTML += `
+            <div style="padding:20px;color:#f87171;
+                        text-align:center;font-size:0.88rem">
+                <i class="fas fa-exclamation-circle"></i>
+                שגיאה: ${this.escHtml(err.message)}
+            </div>`;
+            }
+        }
+    }
+
+    // ==========================================
+    // *** רינדור תוכן פופאפ הרשאות ***
+    // ==========================================
+    _renderPermissionsContent(modalEl, perms, allUsers) {
+
+        const roleGroups = [
+            {
+                key: 'admins',
+                label: 'אדמינים',
+                desc: 'גישה מלאה: ניהול מיפויים, עריכה, הרצה, ניהול הרשאות',
+                icon: 'fa-crown',
+                color: '#ef4444',
+                users: perms.admins || []
+            },
+            {
+                key: 'runners',
+                label: 'מריצים',
+                desc: 'יכולים להריץ בדיקות בודדות דרך CloudBeat',
+                icon: 'fa-play-circle',
+                color: '#22c55e',
+                users: perms.runners || []
+            },
+            {
+                key: 'editors',
+                label: 'עורכים',
+                desc: 'יכולים לערוך טסטים וסוויטות ללא הרשאת ניהול הרשאות',
+                icon: 'fa-edit',
+                color: '#3b82f6',
+                users: perms.editors || []
+            },
+        ];
+
+        // ─── שמור state מקומי ───
+        this._permissionsState = {
+            admins: [...(perms.admins || [])],
+            editors: [...(perms.editors || [])],
+            runners: [...(perms.runners || [])],
+            viewers: [...(perms.viewers || [])]
+        };
+        this._allUsersCache = allUsers;
+
+        // ─── בנה select אפשרויות ───
+        const buildUserSelect = (groupKey, currentUsers) => {
+            const available = allUsers.filter(u =>
+                !currentUsers.some(cu =>
+                    cu.toLowerCase() === u.username.toLowerCase()));
+
+            return `
+        <div style="display:flex;gap:6px;padding:8px 10px;
+                    border-top:1px solid rgba(255,255,255,0.05);
+                    background:rgba(255,255,255,0.02)">
+            <select id="rtPermAdd_${groupKey}"
+                    style="flex:1;background:#252535;
+                           border:1px solid #3a3a5a;
+                           border-radius:6px;color:#e0e0e0;
+                           padding:6px 10px;font-size:0.8rem;
+                           outline:none;direction:rtl">
+                <option value="">— בחר משתמש להוספה —</option>
+                ${available.map(u => `
+                    <option value="${this.escHtml(u.username)}">
+                        ${this.escHtml(u.displayName || u.username)}
+                        ${u.username !== (u.displayName || u.username)
+                    ? `(${this.escHtml(u.username)})`
+                    : ''}
+                    </option>`).join('')}
+            </select>
+            <button style="background:rgba(34,197,94,0.12);
+                           border:1px solid rgba(34,197,94,0.35);
+                           border-radius:6px;color:#86efac;
+                           cursor:pointer;padding:6px 12px;
+                           font-size:0.8rem;transition:all 0.2s;
+                           display:flex;align-items:center;gap:4px"
+                    onclick="window._rtDashboard
+                        ._addRtPermissionUser('${groupKey}')">
+                <i class="fas fa-plus"></i>
+            </button>
+        </div>`;
+        };
+
+        // ─── בנה תגיות משתמשים ───
+        const buildUserTags = (groupKey, users) => {
+            if (users.length === 0) return `
+        <div style="display:flex;align-items:center;gap:6px;
+                    font-size:0.75rem;color:#444;font-style:italic;
+                    padding:4px 2px;width:100%">
+            <i class="fas fa-user-slash"></i>
+            אין משתמשים בקבוצה זו
+        </div>`;
+
+            return users.map(username => {
+                const user = allUsers.find(u =>
+                    u.username.toLowerCase() === username.toLowerCase());
+                const displayName = user?.displayName || username;
+                const isCurrentUser = username.toLowerCase() ===
+                    (this.currentUser?.username || '').toLowerCase();
+
+                return `
+            <div style="display:inline-flex;align-items:center;
+                        gap:5px;padding:3px 8px;
+                        background:rgba(99,102,241,0.12);
+                        border:1px solid rgba(99,102,241,0.25);
+                        border-radius:8px;font-size:0.75rem;
+                        color:#a5b4fc"
+                 data-username="${this.escHtml(username)}"
+                 data-group="${groupKey}"
+                 id="rtPermTag_${groupKey}_${this.escHtml(username)}">
+                <i class="fas fa-user"
+                   style="font-size:0.65rem;opacity:0.6"></i>
+                <span style="font-weight:600">
+                    ${this.escHtml(displayName)}
+                    ${username !== displayName
+                        ? `<span style="opacity:0.5;font-size:0.7rem">
+                               (${this.escHtml(username)})
+                           </span>`
+                        : ''}
+                </span>
+                ${isCurrentUser
+                        ? `<i class="fas fa-lock"
+                          style="font-size:0.6rem;color:#fcd34d"
+                          title="זה אתה — לא ניתן להסיר"></i>`
+                        : `<button style="background:none;border:none;
+                                      color:#555;cursor:pointer;
+                                      font-size:0.6rem;padding:1px 3px;
+                                      border-radius:50%;
+                                      transition:all 0.15s;
+                                      display:flex;align-items:center"
+                               title="הסר מהקבוצה"
+                               onclick="window._rtDashboard
+                                   ._removeRtPermissionUser(
+                                       '${groupKey}',
+                                       '${this.escHtml(username)}'
+                                   )">
+                           <i class="fas fa-times"></i>
+                       </button>`}
+            </div>`;
+            }).join('');
+        };
+
+        // ─── בנה HTML קבוצות ───
+        const groupsHtml = roleGroups.map(group => `
+    <div style="background:rgba(255,255,255,0.02);
+                border:1px solid ${group.color}22;
+                border-radius:10px;overflow:hidden;
+                display:flex;flex-direction:column">
+
+        <!-- כותרת קבוצה -->
+        <div style="display:flex;align-items:flex-start;
+                    gap:10px;padding:12px 14px;
+                    background:rgba(255,255,255,0.03);
+                    border-bottom:1px solid ${group.color}22">
+            <div style="width:36px;height:36px;border-radius:8px;
+                        background:${group.color}18;
+                        border:1px solid ${group.color}33;
+                        color:${group.color};
+                        display:flex;align-items:center;
+                        justify-content:center;font-size:0.9rem;
+                        flex-shrink:0">
+                <i class="fas ${group.icon}"></i>
+            </div>
+            <div style="flex:1;min-width:0">
+                <div style="font-size:0.88rem;font-weight:700;
+                            color:${group.color};
+                            display:flex;align-items:center;
+                            gap:7px;margin-bottom:3px">
+                    ${group.label}
+                    <span id="rtPermCount_${group.key}"
+                          style="display:inline-flex;
+                                 align-items:center;
+                                 justify-content:center;
+                                 min-width:20px;height:18px;
+                                 padding:0 5px;border-radius:9px;
+                                 font-size:0.68rem;font-weight:700;
+                                 background:${group.color}18;
+                                 border:1px solid ${group.color}33;
+                                 color:${group.color}">
+                        ${group.users.length}
+                    </span>
+                </div>
+                <div style="font-size:0.72rem;color:#666;
+                            line-height:1.4">
+                    ${group.desc}
+                </div>
+            </div>
+        </div>
+
+        <!-- תגיות משתמשים -->
+        <div id="rtPermUsers_${group.key}"
+             style="padding:8px 10px;display:flex;
+                    flex-wrap:wrap;gap:5px;
+                    min-height:44px;flex:1">
+            ${buildUserTags(group.key, group.users)}
+        </div>
+
+        <!-- הוספת משתמש -->
+        ${buildUserSelect(group.key, group.users)}
+    </div>`).join('');
+
+        // ─── עדכן תוכן הפופאפ ───
+        const popup = modalEl.querySelector('.rt-mapping-popup');
+        popup.innerHTML = `
+    <div class="rt-popup-header">
+        <span class="rt-popup-title">
+            <i class="fas fa-user-shield"></i>
+            ניהול הרשאות — דשבורד בדיקות
+        </span>
+        <button class="rt-popup-close" id="rtPermClose">
+            <i class="fas fa-times"></i>
+        </button>
+    </div>
+
+    <!-- מידע עדכון אחרון -->
+    <div style="display:flex;align-items:center;gap:10px;
+                padding:8px 20px;
+                background:rgba(99,102,241,0.06);
+                border-bottom:1px solid rgba(99,102,241,0.15);
+                font-size:0.78rem;color:#888">
+        <i class="fas fa-info-circle" style="color:#6366f1"></i>
+        <span>
+            עדכון אחרון:
+            <strong style="color:#a5b4fc">
+                ${perms.lastUpdated || '—'}
+            </strong>
+        </span>
+    </div>
+
+    <!-- קבוצות הרשאות -->
+    <div class="rt-mapping-body">
+        <div style="display:grid;
+                    grid-template-columns:repeat(auto-fill,minmax(360px,1fr));
+                    gap:14px">
+            ${groupsHtml}
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div style="display:flex;gap:10px;padding:14px 18px;
+                border-top:1px solid #2a2a4e;
+                justify-content:space-between;align-items:center">
+        <div style="font-size:0.75rem;color:#555;
+                    display:flex;align-items:center;gap:6px">
+            <i class="fas fa-exclamation-triangle"
+               style="color:#f59e0b"></i>
+            שינויים נכנסים לתוקף מיד לאחר השמירה
+        </div>
+        <div style="display:flex;gap:8px">
+            <button id="rtPermCancel"
+                    style="padding:7px 14px;
+                           background:transparent;
+                           border:1px solid #444;
+                           border-radius:6px;color:#999;
+                           font-size:0.85rem;cursor:pointer;
+                           display:flex;align-items:center;gap:6px;
+                           font-family:inherit">
+                <i class="fas fa-times"></i> ביטול
+            </button>
+            <button id="rtPermSave"
+                    style="padding:8px 20px;
+                           background:linear-gradient(
+                               135deg,#4f46e5,#7c3aed);
+                           border:none;border-radius:6px;
+                           color:white;font-size:0.85rem;
+                           font-weight:700;cursor:pointer;
+                           display:flex;align-items:center;gap:6px;
+                           font-family:inherit">
+                <i class="fas fa-save"></i>
+                שמור הרשאות
+            </button>
+        </div>
+    </div>`;
+
+        // ─── אירועים ───
+        document.getElementById('rtPermClose')
+            ?.addEventListener('click', () => {
+                modalEl.remove();
+                document.body.style.overflow = '';
+            });
+
+        document.getElementById('rtPermCancel')
+            ?.addEventListener('click', () => {
+                modalEl.remove();
+                document.body.style.overflow = '';
+            });
+
+        document.getElementById('rtPermSave')
+            ?.addEventListener('click', () =>
+                this._saveRtPermissions(modalEl));
+
+        // ─── שמור reference גלובלי ───
+        window._rtDashboard = this;
+    }
+
+    // ==========================================
+    // *** הוסף משתמש לקבוצה ***
+    // ==========================================
+    _addRtPermissionUser(groupKey) {
+        const select = document.getElementById(`rtPermAdd_${groupKey}`);
+        const username = select?.value?.trim();
+
+        if (!username) {
+            this.showError('בחר משתמש להוספה');
+            return;
+        }
+
+        const group = this._permissionsState[groupKey];
+        if (!group) return;
+
+        if (group.some(u =>
+            u.toLowerCase() === username.toLowerCase())) {
+            this.showError('המשתמש כבר קיים בקבוצה');
+            return;
+        }
+
+        group.push(username);
+        this._refreshRtPermissionGroup(groupKey);
+    }
+
+    // ==========================================
+    // *** הסר משתמש מקבוצה ***
+    // ==========================================
+    _removeRtPermissionUser(groupKey, username) {
+        if (groupKey === 'admins' &&
+            username.toLowerCase() ===
+            (this.currentUser?.username || '').toLowerCase()) {
+            this.showError('לא ניתן להסיר את עצמך מהאדמינים');
+            return;
+        }
+
+        const group = this._permissionsState[groupKey];
+        if (!group) return;
+
+        const idx = group.findIndex(
+            u => u.toLowerCase() === username.toLowerCase());
+        if (idx === -1) return;
+
+        group.splice(idx, 1);
+        this._refreshRtPermissionGroup(groupKey);
+    }
+
+    // ==========================================
+    // *** רענן תצוגת קבוצה ***
+    // ==========================================
+    _refreshRtPermissionGroup(groupKey) {
+        const allUsers = this._allUsersCache || [];
+        const groupUsers = this._permissionsState[groupKey] || [];
+
+        // ─── עדכן מונה ───
+        const countEl = document.getElementById(
+            `rtPermCount_${groupKey}`);
+        if (countEl) countEl.textContent = groupUsers.length;
+
+        // ─── עדכן תגיות ───
+        const usersWrap = document.getElementById(
+            `rtPermUsers_${groupKey}`);
+
+        if (!usersWrap) return;
+
+        if (groupUsers.length === 0) {
+            usersWrap.innerHTML = `
+        <div style="display:flex;align-items:center;gap:6px;
+                    font-size:0.75rem;color:#444;
+                    font-style:italic;padding:4px 2px;width:100%">
+            <i class="fas fa-user-slash"></i>
+            אין משתמשים בקבוצה זו
+        </div>`;
+        } else {
+            usersWrap.innerHTML = groupUsers.map(username => {
+                const user = allUsers.find(u =>
+                    u.username.toLowerCase() === username.toLowerCase());
+                const displayName = user?.displayName || username;
+                const isCurrentUser = username.toLowerCase() ===
+                    (this.currentUser?.username || '').toLowerCase();
+
+                return `
+            <div style="display:inline-flex;align-items:center;
+                        gap:5px;padding:3px 8px;
+                        background:rgba(99,102,241,0.12);
+                        border:1px solid rgba(99,102,241,0.25);
+                        border-radius:8px;font-size:0.75rem;
+                        color:#a5b4fc">
+                <i class="fas fa-user"
+                   style="font-size:0.65rem;opacity:0.6"></i>
+                <span style="font-weight:600">
+                    ${this.escHtml(displayName)}
+                </span>
+                ${isCurrentUser
+                        ? `<i class="fas fa-lock"
+                          style="font-size:0.6rem;color:#fcd34d"
+                          title="זה אתה"></i>`
+                        : `<button style="background:none;border:none;
+                                      color:#555;cursor:pointer;
+                                      font-size:0.6rem;padding:1px 3px;
+                                      border-radius:50%;
+                                      transition:all 0.15s"
+                               onclick="window._rtDashboard
+                                   ._removeRtPermissionUser(
+                                       '${groupKey}',
+                                       '${this.escHtml(username)}'
+                                   )">
+                           <i class="fas fa-times"></i>
+                       </button>`}
+            </div>`;
+            }).join('');
+        }
+
+        // ─── עדכן select ───
+        const select = document.getElementById(
+            `rtPermAdd_${groupKey}`);
+        if (select) {
+            const available = allUsers.filter(u =>
+                !groupUsers.some(g =>
+                    g.toLowerCase() === u.username.toLowerCase()));
+
+            select.innerHTML = `
+        <option value="">— בחר משתמש להוספה —</option>
+        ${available.map(u => `
+            <option value="${this.escHtml(u.username)}">
+                ${this.escHtml(u.displayName || u.username)}
+            </option>`).join('')}`;
+        }
+    }
+
+    // ==========================================
+    // *** שמור הרשאות לשרת ***
+    // ==========================================
+    async _saveRtPermissions(modalEl) {
+        const saveBtn = document.getElementById('rtPermSave');
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.innerHTML =
+                '<i class="fas fa-spinner fa-spin"></i> שומר...';
+        }
+
+        try {
+            const payload = {
+                admins: this._permissionsState.admins,
+                editors: this._permissionsState.editors,
+                runners: this._permissionsState.runners,
+                viewers: this._permissionsState.viewers
+            };
+
+            const res = await fetch(
+                '/SuiteResults/SaveSuitePermissions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+            if (!data.success)
+                throw new Error(data.message || 'שגיאה בשמירה');
+
+            modalEl.remove();
+            document.body.style.overflow = '';
+
+            this.showError('✅ הרשאות נשמרו בהצלחה');
+
+            // ─── רענן הרשאות ───
+            await this._loadPermissionsFromServer();
+
+        } catch (err) {
+            this.showError('שגיאה: ' + err.message);
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML =
+                    '<i class="fas fa-save"></i> שמור הרשאות';
+            }
+        }
+    }
+
+    // הוסף פונקציה לעדכון UI לפי הרשאות
+    _updateAdminUI() {
+        // הצג/הסתר כפתור Manage Mappings
+        const manageBtn = document.getElementById('rtManageMappingsBtn');
+        if (manageBtn) {
+            manageBtn.style.display = this.canEdit ? 'flex' : 'none';
+        }
+        // הצג/הסתר כפתורי עריכה בטבלה
+        document.querySelectorAll('.rt-map-btn').forEach(btn => {
+            btn.style.display = this.canEdit ? '' : 'none';
+        });
     }
 
     // ==========================================
@@ -206,15 +822,30 @@ class RecentTestsDashboard {
     // ==========================================
     checkEditPermission() {
         if (!this.currentUser) return false;
-        const { role, username, privilegedUsers } = this.currentUser;
 
-        // *** privilegedUsers מגיע מהשרת דרך currentUser ***
-        const privList = Array.isArray(privilegedUsers)
+        const {
+            role,
+            username,
+            privilegedUsers,
+            editors
+        } = this.currentUser;
+
+        const user = (username || '').toLowerCase();
+
+        if (role === 'Admin') return true;
+
+        const adminList = Array.isArray(privilegedUsers)
             ? privilegedUsers.map(u => u.toLowerCase())
             : [];
 
-        if (privList.includes((username || '').toLowerCase())) return true;
-        if (role === 'Admin') return true;
+        if (adminList.includes(user)) return true;
+
+        const editorList = Array.isArray(editors)
+            ? editors.map(u => u.toLowerCase())
+            : [];
+
+        if (editorList.includes(user)) return true;
+
         return false;
     }
 
@@ -645,6 +1276,13 @@ class RecentTestsDashboard {
                             title="Manage CloudBeat Mappings">
                         <i class="fas fa-link"></i>
                         <span>CB Mappings</span>
+                    </button>` : ''}
+                    ${this.isAdmin ? `
+                    <button class="rt-manage-mappings-btn"
+                            id="rtPermissionsBtn"
+                            title="ניהול הרשאות">
+                        <i class="fas fa-user-shield"></i>
+                        <span>הרשאות</span>
                     </button>` : ''}
                     <button class="rt-refresh-btn" id="rtRefreshBtn" title="Refresh">
                         <i class="fas fa-sync-alt"></i>
@@ -1605,6 +2243,10 @@ class RecentTestsDashboard {
                 this.renderTable();
             }
 
+            // פתיחת ניהול הרשאות
+            if (e.target.closest('#rtPermissionsBtn'))
+                this._openPermissionsModal();
+
             // רענון
             if (e.target.closest('#rtRefreshBtn'))
                 this.loadData();
@@ -1708,7 +2350,7 @@ class RecentTestsDashboard {
                         .forEach(c => c.classList.remove('selected'));
                     runnerCard.classList.add('selected');
                     this._lastRunnerType = radio.value;
-                    localStorage.setItem('rtLastRunnerType', radio.value);
+                    userSettings.setItem('rtLastRunnerType', radio.value);
                 }
             }
 
@@ -3001,7 +3643,7 @@ class RecentTestsDashboard {
         const runnerType = runnerRadio?.value || this._lastRunnerType;
 
         this._lastRunnerType = runnerType;
-        localStorage.setItem('rtLastRunnerType', runnerType);
+        userSettings.setItem('rtLastRunnerType', runnerType);
 
         if (confirmBtn) {
             confirmBtn.disabled = true;
@@ -6144,6 +6786,132 @@ class RecentTestsDashboard {
             background: rgba(122,179,239,0.08) !important;
             border-color: rgba(122,179,239,0.4) !important;
             color: #7ab3ef !important;
+        }
+        /* ===== כפתור ניהול הרשאות ===== */
+        .rt-permissions-btn {
+            background: rgba(99,102,241,0.12);
+            border: 1px solid rgba(99,102,241,0.35);
+            border-radius: 7px;
+            color: #a5b4fc;
+            cursor: pointer;
+            padding: 6px 12px;
+            font-size: 0.78rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+        .rt-permissions-btn:hover {
+            background: rgba(99,102,241,0.25);
+            border-color: rgba(99,102,241,0.65);
+            color: #c4b5fd;
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(99,102,241,0.25);
+        }
+
+        #rtPermissionsModal .rt-mapping-popup{
+            direction: rtl;
+        }
+        /* ===== תגיות משתמשים בפופאפ הרשאות ===== */
+        .rt-perm-user-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 8px;
+            background: rgba(99,102,241,0.12);
+            border: 1px solid rgba(99,102,241,0.25);
+            border-radius: 8px;
+            font-size: 0.75rem;
+            color: #a5b4fc;
+            transition: all 0.15s;
+        }
+        .rt-perm-user-tag:hover {
+            background: rgba(99,102,241,0.2);
+            border-color: rgba(99,102,241,0.45);
+        }
+
+        .rt-perm-remove-btn {
+            background: none;
+            border: none;
+            color: #555;
+            cursor: pointer;
+            font-size: 0.6rem;
+            padding: 1px 3px;
+            border-radius: 50%;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+        }
+        .rt-perm-remove-btn:hover {
+            background: rgba(239,68,68,0.2);
+            color: #fca5a5;
+        }
+
+        .rt-perm-empty {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            color: #444;
+            font-style: italic;
+            padding: 4px 2px;
+            width: 100%;
+        }
+
+        .rt-perm-add-wrap {
+            display: flex;
+            gap: 6px;
+            padding: 8px 10px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            background: rgba(255,255,255,0.02);
+        }
+
+        .rt-perm-add-select {
+            flex: 1;
+            background: #252535;
+            border: 1px solid #3a3a5a;
+            border-radius: 6px;
+            color: #e0e0e0;
+            padding: 6px 10px;
+            font-size: 0.8rem;
+            outline: none;
+            direction: rtl;
+            transition: border-color 0.2s;
+        }
+        .rt-perm-add-select:focus {
+            border-color: #6366f1;
+        }
+        .rt-perm-add-select option {
+            background: #252535;
+        }
+
+        .rt-perm-add-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            background: rgba(34,197,94,0.12);
+            border: 1px solid rgba(34,197,94,0.35);
+            border-radius: 6px;
+            color: #86efac;
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: all 0.15s;
+            flex-shrink: 0;
+        }
+        .rt-perm-add-btn:hover {
+            background: rgba(34,197,94,0.25);
+            border-color: rgba(34,197,94,0.6);
+            transform: scale(1.08);
+        }
+
+        .rt-perm-groups-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 14px;
         }
         `;
 

@@ -73,13 +73,13 @@ class DailyTasksManager {
     // Save last selected employee to localStorage
     saveLastSelectedEmployee(employeeName) {
         if (employeeName && employeeName !== '') {
-            localStorage.setItem('lastSelectedEmployee', employeeName);
+            userSettings.setItem('lastSelectedEmployee', employeeName);
         }
     }
 
     // Get last selected employee from localStorage
     getLastSelectedEmployee() {
-        return localStorage.getItem('lastSelectedEmployee') || '';
+        return userSettings.getItem('lastSelectedEmployee') || '';
     }
 
     // Set default employee in select dropdown
@@ -381,16 +381,14 @@ class DailyTasksManager {
             const currentUser = this.getCurrentUserName();
 
             if (currentUser) {
-                // ← שנה: סמן ישירות עם היוזר המחובר
+                // ← כשמסמנים מהתראה - סמן ישירות עם היוזר המחובר
+                // (אין אפשרות "בוצע עבור" מהתראה - פשוט סמן)
                 await this.markTaskAsCompleted(taskId, currentUser);
                 NotificationManager.show('המשימה סומנה כבוצעה', 'success');
             } else {
                 // fallback - פתח דיאלוג
                 await this.openEmployeeSelectionModal(taskId);
-                NotificationManager.show(
-                    'בחר עובד לסימון המשימה כבוצעה',
-                    'info'
-                );
+                NotificationManager.show('בחר עובד לסימון המשימה כבוצעה', 'info');
             }
         } catch (error) {
             console.error('Error marking task as completed from alarm:', error);
@@ -417,7 +415,7 @@ class DailyTasksManager {
 
         this.loadTasksForDate(todayISO);
 
-        const filtersCollapsed = localStorage.getItem('dailyTaskFiltersSectionCollapsed');
+        const filtersCollapsed = userSettings.getItem('dailyTaskFiltersSectionCollapsed');
         if (filtersCollapsed === 'true' || filtersCollapsed == null) {
             document.getElementById('dailyTasksFiltersContent')?.classList.add('collapsed');
             document.getElementById('dailyTasksFiltersCollapseBtn')?.classList.add('collapsed');
@@ -445,12 +443,6 @@ class DailyTasksManager {
 
     // Open employee selection modal
     async openEmployeeSelectionModal(taskId) {
-        const currentUser = this.getCurrentUserName();
-        if (currentUser) {
-            await this.markTaskAsCompleted(taskId, currentUser);
-            return;
-        }
-
         this.isModalOpen = true;
         const task = this.dailyTasks.find(t => t.id === taskId);
         if (!task) return;
@@ -458,15 +450,82 @@ class DailyTasksManager {
         document.getElementById('completionTaskId').value = taskId;
         document.getElementById('completionTaskTitle').textContent = task.title;
 
-        // ← עדכן display ו-hidden input
-        const userName = this.getLastSelectedEmployee() || '';
-        const displayEl = document.getElementById('completionCurrentUserDisplay');
-        const hiddenInput = document.getElementById('completionEmployeeName');
-        if (displayEl) displayEl.textContent = userName || 'לא מזוהה';
-        if (hiddenInput) hiddenInput.value = userName;
+        // אפס את שדה "בוצע עבור"
+        document.getElementById('completionOnBehalfOf').value = '';
+
+        // אפס תצוגה מקדימה
+        document.getElementById('completionPreview').style.display = 'none';
+        document.getElementById('completionPreviewText').textContent = '';
+
+        // ── יוזר מחובר - הצג כטקסט קבוע, לא ניתן לשינוי ──
+        const currentUser = this.getCurrentUserName();
+        const performedByDisplay = document.getElementById('completionPerformedByDisplay');
+        const performedByHidden = document.getElementById('completionEmployeeName');
+
+        if (performedByDisplay) {
+            performedByDisplay.textContent = currentUser || 'לא מזוהה';
+        }
+        if (performedByHidden) {
+            performedByHidden.value = currentUser || '';
+        }
+
+        // ── מלא רק את דרופדאון "בוצע עבור" ──
+        await this.populateEmployeeSelect('completionOnBehalfOf', null);
+
+        // וודא שהאפשרות הריקה קיימת בתחילה
+        const onBehalfSelect = document.getElementById('completionOnBehalfOf');
+        if (onBehalfSelect) {
+            if (!onBehalfSelect.querySelector('option[value=""]')) {
+                const defaultOpt = document.createElement('option');
+                defaultOpt.value = '';
+                defaultOpt.textContent = '-- ביצע עבור עצמו --';
+                onBehalfSelect.insertBefore(defaultOpt, onBehalfSelect.firstChild);
+            }
+            onBehalfSelect.value = '';
+        }
+
+        // עדכן תצוגה מקדימה
+        this.updateCompletionPreview();
 
         document.getElementById('employeeCompletionModal').style.display = 'block';
         document.body.style.overflow = 'hidden';
+    }
+
+    // עדכון תצוגה מקדימה של שם הביצוע
+    updateCompletionPreview() {
+        // ── קרא את היוזר המחובר מהשדה הנסתר ──
+        const performedBy = document.getElementById('completionEmployeeName')?.value?.trim();
+        const onBehalfOf = document.getElementById('completionOnBehalfOf')?.value?.trim();
+        const preview = document.getElementById('completionPreview');
+        const previewText = document.getElementById('completionPreviewText');
+
+        if (!preview || !previewText) return;
+
+        if (!performedBy) {
+            preview.style.display = 'none';
+            previewText.textContent = '';
+            return;
+        }
+
+        let finalName;
+        if (onBehalfOf && onBehalfOf !== performedBy) {
+            finalName = `${performedBy} עבור ${onBehalfOf}`;
+        } else {
+            finalName = performedBy;
+        }
+
+        previewText.textContent = finalName;
+        preview.style.display = 'block';
+    }
+
+    // נקרא כשמשנים את "עובד מבצע"
+    onCompletionEmployeeChange() {
+        this.updateCompletionPreview();
+    }
+
+    // נקרא כשמשנים את "בוצע עבור"
+    onBehalfOfChange() {
+        this.updateCompletionPreview();
     }
 
     // Open skip reason modal
@@ -883,6 +942,20 @@ class DailyTasksManager {
         document.getElementById('employeeCompletionModal').style.display = 'none';
         document.body.style.overflow = 'auto';
         document.getElementById('employeeCompletionForm').reset();
+
+        // אפס תצוגה מקדימה
+        const preview = document.getElementById('completionPreview');
+        if (preview) preview.style.display = 'none';
+
+        const previewText = document.getElementById('completionPreviewText');
+        if (previewText) previewText.textContent = '';
+
+        // אפס את תצוגת היוזר המחובר
+        const performedByDisplay = document.getElementById('completionPerformedByDisplay');
+        if (performedByDisplay) performedByDisplay.textContent = '';
+
+        const performedByHidden = document.getElementById('completionEmployeeName');
+        if (performedByHidden) performedByHidden.value = '';
     }
 
     // סימון משימה כהושלמה עם שם עובד
@@ -1009,6 +1082,7 @@ class DailyTasksManager {
                 return;
             }
 
+            const currentUser = this.getCurrentUserName();
             const requestData = {
                 ...taskData,
                 description: taskData.description || '',
@@ -1017,7 +1091,8 @@ class DailyTasksManager {
                 taskHour: taskData.taskHour || '',
                 taskMinute: taskData.taskMinute || '',
                 daysOfWeek: selectedDays,
-                enableAlarm: taskData.enableAlarm || false
+                enableAlarm: taskData.enableAlarm || false,
+                editorName: currentUser || ''
             };
 
             const response = await fetch(url, {
@@ -1808,6 +1883,7 @@ class DailyTasksManager {
         if (!skipConfirmation && !confirm('האם לבטל את סיבת אי הביצוע?')) {
             return;
         }
+        const currentUser = this.getCurrentUserName();
         const task = this.dailyTasks.find(t => t.id === taskId);
         if (!task) return;
 
@@ -1822,7 +1898,8 @@ class DailyTasksManager {
             completed: false,
             date: task.date,
             completionDate: this.currentTaskDate,
-            skipReason: ''
+            skipReason: '',
+            editorName: currentUser || ''
         };
 
         try {
@@ -2260,32 +2337,43 @@ class DailyTasksManager {
 
     // Helper methods
     isDateInPast(dateString) {
-        const taskDate = new Date(dateString);
         const now = new Date();
 
-        // Reset time for comparison
-        const taskDateOnly = new Date(taskDate);
-        taskDateOnly.setHours(0, 0, 0, 0);
+        // ── יצירת תאריך "היום" לפי שעון מקומי בלבד ──────────────
+        const todayYear  = now.getFullYear();
+        const todayMonth = now.getMonth();
+        const todayDay   = now.getDate();
 
-        const todayOnly = new Date(now);
-        todayOnly.setHours(0, 0, 0, 0);
+        // ── פירוק dateString ידנית (YYYY-MM-DD) ──────────────────
+        // חשוב: לא להשתמש ב-new Date(dateString) ישירות
+        // כי "2024-10-27" מפורש כ-UTC ומשם מגיע הבאג
+        const [yearStr, monthStr, dayStr] = dateString.split('-');
+        const taskYear  = parseInt(yearStr,  10);
+        const taskMonth = parseInt(monthStr, 10) - 1; // חודשים מתחילים מ-0
+        const taskDay   = parseInt(dayStr,   10);
 
-        // Calculate difference in days
-        const diffTime = todayOnly - taskDateOnly;
-        const diffDays = diffTime / (1000 * 60 * 60 * 24);
+        // ── חישוב הפרש ימים לפי שעון מקומי בלבד ─────────────────
+        const todayDateOnly = new Date(todayYear,  todayMonth, todayDay);
+        const taskDateOnly  = new Date(taskYear,   taskMonth,  taskDay);
 
-        // If it's yesterday and current time is before 07:30, allow editing
+        // חלוקה ב-86400000 בטוחה כי שני התאריכים נבנו אותו אופן
+        // (חצות שעון מקומי) - ההפרש בדיוק כפולות של 24 שעות
+        const diffMs   = todayDateOnly.getTime() - taskDateOnly.getTime();
+        const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+        //                ^^ Math.round במקום חלוקה ישירה
+        //                   מטפל בשניות נוספות/חסרות בגלל DST
+
+        // ── אתמול: אפשר לערוך עד 07:30 ───────────────────────────
         if (diffDays === 1) {
-            const currentHour = now.getHours();
+            const currentHour   = now.getHours();
             const currentMinute = now.getMinutes();
 
             // Allow editing until 07:30
             if (currentHour < 7 || (currentHour === 7 && currentMinute < 30)) {
-                return false; // Not considered "past" - allow editing
+                return false; // עדיין מאפשרים עריכה
             }
         }
 
-        // For dates older than yesterday, or after 07:30 - consider as past
         return diffDays >= 1;
     }
 
@@ -2971,7 +3059,7 @@ class DailyTasksManager {
             collapseBtn.classList.add('collapsed');
         }
 
-        localStorage.setItem('dailyTaskFiltersSectionCollapsed', content.classList.contains('collapsed'));
+        userSettings.setItem('dailyTaskFiltersSectionCollapsed', content.classList.contains('collapsed'));
     }
 
     // Get task days display

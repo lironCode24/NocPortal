@@ -126,7 +126,7 @@ namespace NocPortal.Services
        /// <summary>
         /// מחזיר HTML של כפתור פעולה ראשי - תואם Outlook + כל הדפדפנים
         /// </summary>
-        private static string BuildButton(string url, string label, string bgColor)
+        private static string BuildButton(string url, string label, string bgColor,int width = 220)
         {
             return $@"
         <table width=""100%"" cellpadding=""0"" cellspacing=""0"" border=""0""
@@ -138,13 +138,13 @@ namespace NocPortal.Services
               <v:roundrect xmlns:v=""urn:schemas-microsoft-com:vml""
                           xmlns:w=""urn:schemas-microsoft-com:office:word""
                           href=""{url}""
-                          style=""height:48px;v-text-anchor:middle;width:220px;""
+                          style=""height:48px;v-text-anchor:middle;width:{width}px;""
                           arcsize=""20%""
                           stroke=""f""
                           fillcolor=""{bgColor}"">
                 <w:anchorlock/>
                 <center style=""color:#ffffff;font-family:Arial,Helvetica,sans-serif;
-                                font-size:17px;font-weight:700;
+                                font-size:14px;font-weight:700;
                                 letter-spacing:0.3px;"">
                   {label}
                 </center>
@@ -921,6 +921,150 @@ namespace NocPortal.Services
             }
         }
 
+        /// <summary>
+        /// חושף את BuildEmailHtml לשימוש חיצוני - לבניית מייל התראת שינוי
+        /// </summary>
+        public string BuildAlarmEmailHtml(
+            string accentColor,
+            string headerTitle,
+            string headerSubtitle,
+            string bodyContent)
+        {
+            return BuildEmailHtml(
+                accentColor:    accentColor,
+                headerTitle:    headerTitle,
+                headerSubtitle: headerSubtitle,
+                bodyContent:    bodyContent
+            );
+        }
+
+        // ────────────────────────────────────────────────────────────────────
+        //  חדש: שליחת מייל על ביצוע משימה
+        // ────────────────────────────────────────────────────────────────────
+        public async Task<(bool success, string message)> SendTaskCompletionEmailAsync(
+            string toEmail,
+            string ccEmail,
+            string subject,
+            string body,
+            string taskTitle,
+            string completedBy,
+            string completionTime)
+        {
+            try
+            {
+                // אם אין נושא - צור ברירת מחדל
+                if (string.IsNullOrWhiteSpace(subject))
+                    subject = $"משימה הושלמה: {taskTitle}";
+
+                // אם אין גוף - צור ברירת מחדל
+                if (string.IsNullOrWhiteSpace(body))
+                    body = $"המשימה <strong>{taskTitle}</strong> " +
+                        $"הושלמה על ידי <strong>{completedBy}</strong> " +
+                        $"בשעה {completionTime}.";
+
+                var encodedSubject = EncodeSubject(subject);
+
+                // בנה HTML גוף אם הגוף הוא טקסט פשוט
+                var htmlBody = body.Contains("<") ? body : $@"
+                    <p style=""margin:0 0 16px 0;font-size:16px;color:{ColorTextMain};"">
+                        {body}
+                    </p>";
+
+                // הוסף טבלת פרטים
+                var fullBody = $@"
+                    {htmlBody}
+
+                    <table cellpadding=""0"" cellspacing=""0"" border=""0"" 
+                        style=""width:100%;margin-top:16px;"">
+                        {BuildInfoRow("משימה",      taskTitle)}
+                        {BuildInfoRow("בוצע על ידי", completedBy)}
+                        {BuildInfoRow("שעת ביצוע",  completionTime)}
+                        {BuildInfoRow("תאריך",       DateTime.Now.ToString("dd/MM/yyyy"))}
+                    </table>
+
+                    {BuildAlert(
+                        "מייל זה נשלח אוטומטית על ביצוע משימה במערכת NOC Portal.",
+                        ColorSuccess, "#166534")}";
+
+                var html = BuildEmailHtml(
+                    accentColor:    ColorSuccess,
+                    headerTitle:    "✓ משימה הושלמה",
+                    headerSubtitle: taskTitle,
+                    bodyContent:    fullBody);
+
+                // ── שליחה עם CC ──────────────────────────────────────
+                var fromAddress = _config["Email:FromAddress"] ?? "noc@menoramivt.co.il";
+                var fromName    = _config["Email:FromName"]    ?? "NOC Portal";
+
+                using var client = new SmtpClient(SmtpHost, SmtpPort)
+                {
+                    EnableSsl             = false,
+                    DeliveryMethod        = SmtpDeliveryMethod.Network,
+                    UseDefaultCredentials = false,
+                    Credentials           = CredentialCache.DefaultNetworkCredentials,
+                    Timeout               = 10_000
+                };
+
+                using var mail = new MailMessage
+                {
+                    From       = new MailAddress(fromAddress, fromName),
+                    Subject    = encodedSubject,
+                    Body       = html,
+                    IsBodyHtml = true
+                };
+
+                mail.SubjectEncoding = System.Text.Encoding.UTF8;
+                mail.BodyEncoding    = System.Text.Encoding.UTF8;
+                mail.HeadersEncoding = System.Text.Encoding.UTF8;
+
+                mail.To.Add(new MailAddress(toEmail));
+
+                // הוסף CC אם קיים
+                if (!string.IsNullOrWhiteSpace(ccEmail))
+                {
+                    foreach (var cc in ccEmail.Split(
+                        new[] { ',', ';' }, 
+                        StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        var ccTrimmed = cc.Trim();
+                        if (!string.IsNullOrEmpty(ccTrimmed))
+                            mail.CC.Add(new MailAddress(ccTrimmed));
+                    }
+                }
+
+                await client.SendMailAsync(mail);
+
+                _logger.LogInformation(
+                    "[Email] ✅ מייל ביצוע משימה נשלח | משימה: {Task} | אל: {Email}",
+                    taskTitle, toEmail);
+
+                _auditLog?.Log(new AuditLogEntry
+                {
+                    EventType = AuditEventTypes.EmailSent,
+                    Username  = "system",
+                    IpAddress = "system",
+                    Details   = $"מייל ביצוע משימה נשלח | משימה: {taskTitle} | אל: {toEmail}",
+                    Success   = true
+                });
+
+                return (true, "מייל נשלח בהצלחה");
+            }
+            catch (SmtpException ex)
+            {
+                _logger.LogError(ex,
+                    "[Email] ❌ שגיאת SMTP בשליחת מייל ביצוע | משימה: {Task}",
+                    taskTitle);
+                return (false, $"שגיאת שרת מייל: {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "[Email] ❌ שגיאה בשליחת מייל ביצוע | משימה: {Task}",
+                    taskTitle);
+                return (false, $"Error: {ex.Message}");
+            }
+        }
+
         // ── עזר: בניית תוכן ICS ────────────────────────────────────────────
         private string BuildIcsContent(CalendarInviteRequest req)
         {
@@ -1057,6 +1201,72 @@ namespace NocPortal.Services
             return null;
         }
 
+        public async Task<(bool success, string message)> SendValidationReminderEmailAsync(
+        string toEmail,
+        string toName,
+        string systemName,
+        string validateUrl,
+        string catalogNumber  = "",
+        int    daysSinceSent  = 3,
+        string originalSentAt = "")
+        {
+            var subject = EncodeSubject(
+                $"תזכורת: תיקוף פרטי מערכת - {systemName}");
+
+            var catalogRow = !string.IsNullOrWhiteSpace(catalogNumber)
+                ? BuildInfoRow("מספר קטלוגי", catalogNumber)
+                : "";
+
+            // ─── חשב תאריך תפוגה מהמייל המקורי ───
+            string expiryInfo = "";
+            if (!string.IsNullOrWhiteSpace(originalSentAt) &&
+                DateTime.TryParseExact(
+                    originalSentAt,
+                    "yyyy-MM-dd HH:mm",
+                    null,
+                    System.Globalization.DateTimeStyles.None,
+                    out var sentDt))
+            {
+                var expiryDate = sentDt.AddDays(7).ToString("dd/MM/yyyy");
+                expiryInfo = $"הקישור תקף עד <strong>{expiryDate}</strong>";
+            }
+
+           var body = $@"
+            <p style=""margin:0 0 16px 0;font-size:16px;color:{ColorTextMain};"">
+            שלום <strong>{toName}</strong>,
+            לפני <strong>{daysSinceSent} ימים</strong> נשלחה אליך בקשה לתיקוף פרטי המערכת.<br>
+            טרם בוצע תיקוף למערכת.
+            </p>
+
+            <table cellpadding=""0"" cellspacing=""0"" border=""0"" style=""width:100%;"">
+            {catalogRow}
+            {BuildInfoRow("שם מערכת",       systemName)}
+            </table>
+
+            {BuildButton(validateUrl, "תיקוף פרטי המערכת", ColorWarning)}
+
+            {(!string.IsNullOrEmpty(expiryInfo)
+                ? BuildAlert(expiryInfo, ColorWarning, "#92400E")
+                : "")}
+
+            {BuildAlert(
+                "לשאלות נוספות ניתן לפנות אל חדר מחשב/טל יוחאי במייל חוזר.",
+                ColorAccent, "#1E40AF")}";
+
+            var logoBase64 = GetMenoraLogoBase64();
+
+            var html = BuildEmailHtmlWithLogo(
+                accentColor:    ColorWarning,
+                headerTitle:    "תזכורת: טרם בוצע תיקוף",
+                headerSubtitle: $"{systemName}",
+                bodyContent:    body,
+                logoBase64:     logoBase64);
+
+            return await SendEmailAsync(
+                toEmail, toName, subject, html,
+                AuditEventTypes.EmailValidation);
+        }
+
         // ────────────────────────────────────────────────────────────────────
         //  8. בקשת תיקוף מערכת
         // ────────────────────────────────────────────────────────────────────
@@ -1065,7 +1275,8 @@ namespace NocPortal.Services
             string toName,
             string systemName,
             string validateUrl,
-            string catalogNumber = "")
+            string catalogNumber = "",
+            string? managerPageUrl = null)
         {
             var subject = EncodeSubject($"בקשה לתיקוף פרטי מערכת: {systemName}");
 
@@ -1073,6 +1284,17 @@ namespace NocPortal.Services
             var catalogRow = !string.IsNullOrWhiteSpace(catalogNumber)
                 ? BuildInfoRow("מספר קטלוגי", catalogNumber)
                 : "";
+            // ─── הוסף כפתור "כל המערכות שלי" אם יש URL ───
+            var managerPageSection = string.IsNullOrWhiteSpace(managerPageUrl)
+                ? ""
+                : $@"
+                {BuildButton(
+                    managerPageUrl,
+                    "לתיקוף כל המערכות שלי",
+                    "#7C3AED")}";
+
+            // ─── חשב תאריך תפוגה ───
+            var expiryDate = DateTime.Now.AddDays(7).ToString("dd/MM/yyyy");
 
             var body = $@"
             <p style=""margin:0 0 16px 0;font-size:16px;color:{ColorTextMain};"">
@@ -1089,12 +1311,17 @@ namespace NocPortal.Services
             ניתן ללחוץ על הקישור מטה ולעדכן את הפרטים הרלוונטיים.
             הסבר על כל שדה ניתן למצוא בריחוף העכבר על שם השדה.
             </p>
-
             {BuildButton(validateUrl, "תיקוף פרטי המערכת", ColorAccent)}
 
             {BuildAlert(
+                $"הקישור תקף עד תאריך <strong>{expiryDate}</strong>",
+                ColorWarning, "#92400E")}
+
+            {BuildAlert(
                 "לשאלות נוספות ניתן לפנות אל חדר מחשב/טל יוחאי במייל חוזר.",
-                ColorAccent, "#1E40AF")}";
+                ColorAccent, "#1E40AF")}
+                
+            {managerPageSection}";
 
             var logoBase64 = GetMenoraLogoBase64();
 
@@ -1108,6 +1335,70 @@ namespace NocPortal.Services
                 logoBase64:     logoBase64);
 
             return await SendEmailAsync(toEmail, toName, subject, html,AuditEventTypes.EmailValidation);
+        }
+
+        public async Task<(bool ok, string msg)> SendAnnualValidationReminderEmailAsync(
+            string toEmail,
+            string toName,
+            string systemName,
+            string validateUrl,
+            string catalogNumber,
+            string lastValidatedAt)
+        {
+            try
+            {
+                var subject = EncodeSubject(
+                    $"תיקוף שנתי - {systemName} ({catalogNumber})");
+
+                // ─── חשב תאריך תפוגה (7 ימים) ───
+                var expiryDate = DateTime.Now.AddDays(7).ToString("dd/MM/yyyy");
+
+                var catalogRow = !string.IsNullOrWhiteSpace(catalogNumber)
+                    ? BuildInfoRow("מספר קטלוגי", catalogNumber)
+                    : "";
+
+                var body = $@"
+        <p style=""margin:0 0 16px 0;font-size:16px;color:{ColorTextMain};"">
+        שלום <strong>{toName}</strong>,<br>
+        עברה <strong>שנה</strong> מאז תוקפה המערכת שבאחריותך בפעם האחרונה.
+        <br>עליך לבצע תיקוף למערכת בהקדם.
+        </p>
+
+        <table cellpadding=""0"" cellspacing=""0"" border=""0"" style=""width:100%;"">
+        {catalogRow}
+        {BuildInfoRow("שם מערכת",        systemName)}
+        {BuildInfoRow("תיקוף אחרון",     lastValidatedAt)}
+        </table>
+
+        {BuildButton(validateUrl, "תיקוף פרטי המערכת", ColorWarning)}
+
+        {BuildAlert(
+            $"הקישור תקף עד תאריך <strong>{expiryDate}</strong>",
+            ColorWarning, "#92400E")}
+
+        {BuildAlert(
+            "לשאלות נוספות ניתן לפנות אל חדר מחשב/טל יוחאי במייל חוזר.",
+            ColorAccent, "#1E40AF")}";
+
+                var logoBase64 = GetMenoraLogoBase64();
+
+                var html = BuildEmailHtmlWithLogo(
+                    accentColor:    ColorWarning,
+                    headerTitle:    "תיקוף שנתי",
+                    headerSubtitle: $"{systemName}",
+                    bodyContent:    body,
+                    logoBase64:     logoBase64);
+
+                return await SendEmailAsync(
+                    toEmail, toName, subject, html,
+                    AuditEventTypes.EmailValidation);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "[Email] שגיאה בשליחת תזכורת שנתית ל-{Email}", toEmail);
+                return (false, ex.Message);
+            }
         }
 
         // ────────────────────────────────────────────────────────────────────
@@ -1183,7 +1474,7 @@ namespace NocPortal.Services
                 mail.To.Add(new MailAddress(managerEmail, managerName));
 
                 // ─── CC: טל יוחאי ───
-                mail.CC.Add(new MailAddress("talyoh@menoramivt.co.il", "טל יוחאי"));
+                // mail.CC.Add(new MailAddress("talyoh@menoramivt.co.il", "טל יוחאי"));
 
                 await client.SendMailAsync(mail);
                 _auditLog?.Log(new AuditLogEntry
@@ -1191,14 +1482,17 @@ namespace NocPortal.Services
                     EventType = AuditEventTypes.EmailValidation,
                     Username  = "system",
                     IpAddress = "system",
-                    Details   = $"מייל תיקוף נשלח אל {managerEmail} (CC: talyoh) | מערכת: {systemName}",
+                    Details   = $"מייל תיקוף נשלח אל {managerEmail} | מערכת: {systemName}",
+                    // Details   = $"מייל תיקוף נשלח אל {managerEmail} (CC: talyoh) | מערכת: {systemName}",
                     Success   = true
                 });
                 _logger.LogInformation(
-                    "מייל תיקוף נשלח אל {Email} (CC: talyoh) עבור מערכת {System}",
+                    "מייל תיקוף נשלח אל {Email} עבור מערכת {System}",
+                    // "מייל תיקוף נשלח אל {Email} (CC: talyoh) עבור מערכת {System}",
                     managerEmail, systemName);
 
-                return (true, $"מייל נשלח ל-{managerEmail} (CC: טל יוחאי)");
+                return (true, $"מייל נשלח ל-{managerEmail}");
+                // return (true, $"מייל נשלח ל-{managerEmail} (CC: טל יוחאי)");
             }
             catch (SmtpException ex)
             {
@@ -1220,6 +1514,60 @@ namespace NocPortal.Services
                     "שגיאה בשליחת מייל תיקוף ל-{Email}", managerEmail);
                 return (false, $"Error: {ex.Message}");
             }
+        }
+
+        // מתודה חדשה ייעודית לאישור מרובה
+        public async Task<(bool success, string message)> 
+            SendBulkValidationCompletedEmailAsync(
+                string managerEmail,
+                string managerName,
+                List<string> systemNames,    // ← רשימה במקום שם בודד
+                string catalogUrl)
+        {
+            var count   = systemNames.Count;
+            var subject = EncodeSubject(
+                $"אישור תיקוף - {count} מערכות");
+
+            // ניסוח תקין לפי מספר
+            var titleText = count == 1
+                ? $"המערכת <strong>{systemNames[0]}</strong> תוקפה בהצלחה"
+                : $"תוקפו בהצלחה <strong>{count} מערכות</strong>";
+
+            var systemListHtml = string.Join("",
+                systemNames.Select(n =>
+                    $"<li style='padding:4px 0;font-size:14px;" +
+                    $"color:#166534;'>{n}</li>"));
+
+            var body = $@"
+        <p style='margin:0 0 16px 0;font-size:16px;color:{ColorTextMain};'>
+        שלום <strong>{managerName}</strong>,<br>
+        {titleText}.
+        </p>
+
+        <ul style='margin:12px 0;padding-right:20px;
+                background:rgba(34,197,94,0.06);
+                border:1px solid rgba(34,197,94,0.2);
+                border-radius:8px;padding:12px 28px;
+                list-style:none;'>
+        {systemListHtml}
+        </ul>
+
+        {BuildButton(catalogUrl, "מעבר לקטלוג מערכות", ColorSuccess)}";
+
+            var logoBase64 = GetMenoraLogoBase64();
+            var html = BuildEmailHtmlWithLogo(
+                accentColor:    ColorSuccess,
+                headerTitle:    count == 1
+                    ? "מערכת תוקפה בהצלחה"
+                    : $"תוקפו בהצלחה {count} מערכות",
+                headerSubtitle: $"תיקוף בוצע בתאריך " +
+                    $"{DateTime.Now:dd/MM/yyyy HH:mm}",
+                bodyContent:    body,
+                logoBase64:     logoBase64);
+
+            return await SendEmailAsync(
+                managerEmail, managerName, subject, html,
+                AuditEventTypes.EmailValidation);
         }
 
         // ────────────────────────────────────────────────────────────────────
@@ -1274,6 +1622,206 @@ namespace NocPortal.Services
                 bodyContent:    body);
 
             return await SendEmailAsync(toEmail, "טל יוחאי", subject, html,AuditEventTypes.EmailValidation);
+        }
+
+        // ────────────────────────────────────────────────────────────────────
+        //  11. מייל מרוכז - כל קישורי התיקוף לפי מנהל מערכת
+        // ────────────────────────────────────────────────────────────────────
+        public async Task<(bool success, string message)>
+            SendBulkValidationLinksEmailAsync(
+                string toEmail,
+                string toName,
+                Dictionary<string, List<(string systemName,
+                                        string catalogNumber,
+                                        string validateUrl)>> byManager,
+                Dictionary<string, string> managerPageUrls,
+                int totalSystems)
+        {
+            var subject = EncodeSubject(
+                $"קישורי תיקוף מרוכזים - {totalSystems} מערכות");
+
+            var sectionsHtml = new System.Text.StringBuilder();
+
+            foreach (var (managerName, systems) in byManager.OrderBy(k => k.Key))
+            {
+                var isNoManager = managerName == "__no_manager__";
+                var displayName = isNoManager ? "ללא מנהל מערכת" : managerName;
+                var headerColor = isNoManager ? ColorWarning : ColorAccent;
+
+                // ─── קישור לדף המנהל (אם קיים) ───
+                string? managerPageUrl = null;
+            if (managerPageUrls != null)
+                managerPageUrls.TryGetValue(managerName, out managerPageUrl);
+
+                sectionsHtml.Append($@"
+        <div style=""margin-bottom:24px;"">
+
+        <!-- כותרת מנהל -->
+        <table cellpadding=""0"" cellspacing=""0"" border=""0""
+                style=""width:100%;margin-bottom:6px;"">
+            <tr>
+            <td style=""padding:6px 10px;
+                        background-color:{headerColor}18;
+                        border-right:3px solid {headerColor};
+                        direction:rtl;
+                        text-align:right;"">
+                <span style=""font-size:12px;
+                            color:{ColorTextSub};
+                            font-family:Arial,Helvetica,sans-serif;"">
+                מנהל מערכת:
+                </span>
+                <span style=""font-size:15px;
+                            font-weight:700;
+                            color:{headerColor};
+                            font-family:Arial,Helvetica,sans-serif;
+                            margin-right:6px;"">
+                {displayName}
+                </span>
+                <span style=""font-size:12px;
+                            color:{ColorTextSub};
+                            font-family:Arial,Helvetica,sans-serif;"">
+                ({systems.Count} מערכות)
+                </span>
+            </td>
+            </tr>
+        </table>
+
+        <!-- טבלת מערכות -->
+        <table cellpadding=""0"" cellspacing=""0"" border=""0""
+                style=""width:100%;
+                        border-collapse:collapse;
+                        border:1px solid {ColorBorder};
+                        border-radius:6px;
+                        overflow:hidden;"">
+            <thead>
+            <tr style=""background-color:#F8FAFC;"">
+                <th style=""padding:7px 10px;
+                        font-size:12px;
+                        font-weight:700;
+                        color:{ColorTextSub};
+                        text-align:right;
+                        border-bottom:1px solid {ColorBorder};
+                        direction:rtl;
+                        font-family:Arial,Helvetica,sans-serif;"">
+                שם מערכת
+                </th>
+                <th style=""padding:7px 10px;
+                        font-size:12px;
+                        font-weight:700;
+                        color:{ColorTextSub};
+                        text-align:center;
+                        border-bottom:1px solid {ColorBorder};
+                        width:110px;
+                        font-family:Arial,Helvetica,sans-serif;"">
+                קישור
+                </th>
+            </tr>
+            </thead>
+            <tbody>
+        ");
+
+                foreach (var (sysName, catalogNum, url) in systems)
+                {
+                    sectionsHtml.Append($@"
+                        <tr>
+                            <td style=""padding:8px 10px;
+                                    border-bottom:1px solid {ColorBorder};
+                                    direction:rtl;
+                                    text-align:right;
+                                    vertical-align:middle;"">
+                                <span style=""font-size:14px;
+                                            font-weight:600;
+                                            color:{ColorTextMain};
+                                            font-family:Arial,Helvetica,sans-serif;"">
+                                    {sysName}
+                                </span>
+                                {(!string.IsNullOrEmpty(catalogNum)
+                                    ? $"<br><span style=\"font-family:monospace;font-size:11px;" +
+                                    $"color:{ColorAccent};background:#EEF2FF;" +
+                                    $"padding:1px 6px;border-radius:3px;" +
+                                    $"direction:ltr;display:inline-block;margin-top:2px;\">" +
+                                    $"{catalogNum}</span>"
+                                    : "")}
+                            </td>
+                            <td style=""padding:8px 10px;
+                                    border-bottom:1px solid {ColorBorder};
+                                    width:120px;
+                                    text-align:center;
+                                    vertical-align:middle;"">
+                                <a href=""{url}""
+                                style=""color:{ColorAccent};
+                                        text-decoration:none;
+                                        font-size:13px;
+                                        font-weight:600;"">
+                                    לחץ לתיקוף ↗
+                                </a>
+                            </td>
+                        </tr>
+                    ");
+                }
+
+                // ✅ בנה את הכפתור מחוץ ל-string - פותר את כל שגיאות ה-interpolation
+                if (!string.IsNullOrWhiteSpace(managerPageUrl))
+                {
+                    // בנה את הכפתור תחילה למשתנה נפרד
+                    var managerBtn = BuildButton(
+                        managerPageUrl,
+                        $"לתיקוף כל המערכות של {displayName}",
+                        "#7C3AED",
+                        width: 320);
+
+                    sectionsHtml.Append($@"
+                        <tr>
+                            <td colspan=""2""
+                                style=""padding:10px 16px;
+                                    background-color:#F5F3FF;
+                                    border-top:2px solid #DDD6FE;
+                                    text-align:center;"">
+                                {managerBtn}
+                            </td>
+                        </tr>
+                    ");
+                }
+
+                sectionsHtml.Append(@"
+                    </tbody>
+                </table>
+                </div>
+                ");
+            }
+
+            var expiryDate = DateTime.Now.AddDays(7).ToString("dd/MM/yyyy");
+
+            var body = $@"
+        <p style=""margin:0 0 16px 0;font-size:16px;color:{ColorTextMain};"">
+        שלום,<br>
+        להלן רשימת קישורי התיקוף המרוכזת עבור
+        <strong>{totalSystems}</strong> מערכות,
+        מקובצת לפי מנהל מערכת:
+        </p>
+
+        {sectionsHtml}
+
+        {BuildAlert(
+            $"כל הקישורים תקפים עד תאריך <strong>{expiryDate}</strong>",
+            ColorWarning, "#92400E")}
+
+        {BuildAlert(
+            "ניתן להעביר את הקישורים הרלוונטיים לכל מנהל מערכת.",
+            ColorAccent, "#1E40AF")}";
+
+            var logoBase64 = GetMenoraLogoBase64();
+
+            var html = BuildEmailHtmlWithLogo(
+                accentColor:    ColorAccent,
+                headerTitle:    "קישורי תיקוף מרוכזים",
+                headerSubtitle: "מקובץ לפי מנהל מערכת",
+                bodyContent:    body,
+                logoBase64:     logoBase64);
+
+            return await SendEmailAsync(
+                toEmail, toName, subject, html,
+                AuditEventTypes.EmailValidation);
         }
     }
 }

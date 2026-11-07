@@ -3492,7 +3492,7 @@ function toggleFilterSection(section) {
             updateFiltersDisplay();
         }
 
-        localStorage.setItem('employeeFiltersSectionCollapsed', content.classList.contains('collapsed'));
+        userSettings.setItem('employeeFiltersSectionCollapsed', content.classList.contains('collapsed'));
     } else {
         const content = document.getElementById(section === 'filters' ? 'filtersContent' : 'sortContent');
         const btn = document.getElementById(section === 'filters' ? 'filtersCollapseBtn' : 'sortCollapseBtn');
@@ -3500,7 +3500,7 @@ function toggleFilterSection(section) {
         content.classList.toggle('collapsed');
         btn.classList.toggle('collapsed');
 
-        localStorage.setItem(`${section}SectionCollapsed`, content.classList.contains('collapsed'));
+        userSettings.setItem(`${section}SectionCollapsed`, content.classList.contains('collapsed'));
     }
 }
 
@@ -3607,7 +3607,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ── שחזור מצב סקציית פילטרים ─────────────────────────────
-    const employeeFiltersCollapsed = localStorage.getItem(
+    const employeeFiltersCollapsed = userSettings.getItem(
         'employeeFiltersSectionCollapsed'
     );
     if (employeeFiltersCollapsed === 'true' || employeeFiltersCollapsed == null) {

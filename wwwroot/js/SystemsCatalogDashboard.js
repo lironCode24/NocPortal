@@ -26,6 +26,7 @@ class SystemsCatalogDashboard {
             hasAutomation: 'all',
             departmentManager: 'all',
             requiresValidation: 'all',
+            lastValidationEmailSentAt: 'all',
         };
         this.sortColumn = 'number';
         this.sortDirection = 'asc';
@@ -51,6 +52,10 @@ class SystemsCatalogDashboard {
         this.currentUser = '';
         // ─── Multi-Select ───
         this.selectedSystems = new Set();
+        this._openFilterPopupKey = null;
+
+        this.isNoc = false;
+        this.canSendValidation = false;
     }
 
     async initialize() {
@@ -60,13 +65,97 @@ class SystemsCatalogDashboard {
             return;
         }
         window._scDashboard = this;
+
+        // ─── אתחל SystemsCatalogAdminColumnManagerModal  ───
+        if (typeof SystemsCatalogAdminColumnManager !== 'undefined') {
+            this._adminColMgr = new SystemsCatalogAdminColumnManager(this);
+            this._adminColMgr.addStyles();
+        } else {
+            console.warn('AdminColumnManager not loaded yet');
+        }
+
         this.addStyles();
         this.renderShell();
         this.bindEvents();
-        // ─── בדוק אם יש פילטר ממתין מדשבורד שרתים ───
         this._applyPendingFilter();
         await this._loadCurrentUser();
+        await this._loadColumnDefinitionsFromServer();
         await this.loadData();
+    }
+
+    async _loadColumnDefinitionsFromServer() {
+        try {
+            const res = await fetch('/SystemsCatalog/GetColumnDefinitions',
+                { credentials: 'include' });
+            const data = await res.json();
+
+            if (!data.success || !data.definitions?.columns) return;
+
+            const serverCols = data.definitions.columns;
+            this._serverColumnDefs = serverCols;
+
+            const userVisible = { ...this.visibleColumns };
+            let userOrder = [...this.columnOrder];
+
+            // ─── הוסף עמודות חדשות שהאדמין הוסיף ───
+            serverCols.forEach(col => {
+                if (!(col.key in userVisible)) {
+                    userVisible[col.key] = col.defaultVisible;
+                }
+            });
+
+            // ─── הסר עמודות שהאדמין מחק ───
+            const serverKeys = new Set(serverCols.map(c => c.key));
+            Object.keys(userVisible).forEach(key => {
+                if (key === 'number' || key === 'buttons') return;
+                if (!serverKeys.has(key)) delete userVisible[key];
+            });
+
+            // ─── הוסף עמודות חדשות לסדר (לפני buttons) ───
+            const existingKeys = new Set(userOrder);
+            serverCols.forEach(col => {
+                if (!existingKeys.has(col.key)) {
+                    const btnIdx = userOrder.indexOf('buttons');
+                    if (btnIdx >= 0) {
+                        userOrder.splice(btnIdx, 0, col.key);
+                    } else {
+                        userOrder.push(col.key);
+                    }
+                }
+            });
+
+            // ─── הסר עמודות שנמחקו מהסדר ───
+            let cleanOrder = userOrder.filter(key =>
+                key === 'number' ||
+                key === 'buttons' ||
+                serverKeys.has(key)
+            );
+
+            // ─── תיקון: וודא number תמיד ראשון ו-buttons תמיד אחרון ───
+            cleanOrder = cleanOrder.filter(k => k !== 'number' && k !== 'buttons');
+            cleanOrder = ['number', ...cleanOrder, 'buttons'];
+
+            this.visibleColumns = userVisible;
+            this.columnOrder = cleanOrder;
+
+            // ─── שמור העדפות מעודכנות ───
+            this._savePreferences();
+            // ─── בנה מחדש את גריד הפילטרים (כולל עמודות דינמיות) ───
+            const filtersGrid = document.querySelector('.sc-filters-popup-grid');
+            if (filtersGrid) {
+                filtersGrid.innerHTML = this._buildFilterGroups();
+            }
+            // ─── אתחל פילטרים לעמודות חדשות ───
+            if (serverCols) {
+                serverCols.forEach(col => {
+                    if (!(col.key in this.filters)) {
+                        this.filters[col.key] = 'all';
+                    }
+                });
+            }
+        } catch (err) {
+            console.warn('_loadColumnDefinitionsFromServer error:', err);
+        }
     }
 
     // ══════════════════════════════════════════════════════════
@@ -144,12 +233,16 @@ class SystemsCatalogDashboard {
                 this.isAdmin = data.isAdmin || false;
                 this.isAutomationOnly = data.isAutomationOnly || false;
                 this.currentUser = data.username || '';
+                this.isNoc = data.isNoc || false;
+                this.canSendValidation = data.canSendValidation || false;
             }
             this._updateAdminUI();
         } catch (err) {
             console.warn('_loadCurrentUser error:', err);
             this.isAdmin = false;
+            this.isNoc = false;
             this.isAutomationOnly = false;
+            this.canSendValidation = false;
         }
     }
 
@@ -159,10 +252,26 @@ class SystemsCatalogDashboard {
             el.style.display = this.isAdmin ? 'flex' : 'none';
         });
 
+        // ── הצג/הסתר כפתורי שרתים (NOC + Admin) ──
+        document.querySelectorAll('.sc-view-servers-btn').forEach(el => {
+            el.style.display = (this.isAdmin || this.isNoc) ? '' : 'none';
+        });
+
         // ── הצג כפתור עריכה מרובה רק לאדמין ──
         const multiEditBtn = document.getElementById('scMultiEditBtn');
         if (multiEditBtn) {
             multiEditBtn.style.display = this.isAdmin ? 'flex' : 'none';
+        }
+
+        // ── הצג כפתור תיקוף מרובה לאדמין + canSendValidation ──
+        document.querySelectorAll('.sc-multi-validate-btn, #scBulkValidateBtn').forEach(el => {
+            el.style.display = (this.isAdmin || this.canSendValidation) ? 'flex' : 'none';
+        });
+
+        // ── הצג כפתור ניהול הרשאות רק לאדמין ──
+        const permBtn = document.getElementById('scPermissionsBtn');
+        if (permBtn) {
+            permBtn.style.display = this.isAdmin ? 'flex' : 'none';
         }
 
         const isLoggedIn = this.currentUser &&
@@ -195,7 +304,6 @@ class SystemsCatalogDashboard {
         // (כשמחובר - מציג user-info, כשלא - מציג כפתור לוגין)
         const userMenuSection = document.querySelector('.user-menu-section');
         if (userMenuSection) userMenuSection.style.display = '';
-
         // ── הצג כפתור עריכה גם לעורכי אוטומציה ──
         if (this.isAutomationOnly && !this.isAdmin) {
             document.querySelectorAll('.sc-admin-only').forEach(el => {
@@ -203,8 +311,16 @@ class SystemsCatalogDashboard {
             });
         }
 
-        // ── הצג/הסתר כפתור לוגין ──
-        // this._renderLoginButton(isLoggedIn);
+        const autoImportBtn = document.getElementById('scImportAutoBtn');
+        const autoEmailBtn = document.getElementById('scPrepareAutoEmailBtn');
+        if (autoEmailBtn) {
+            autoEmailBtn.style.display = 
+                (this.isAdmin || this.isAutomationOnly || this.canSendValidation) 
+                ? 'flex' : 'none';
+            autoImportBtn.style.display = 
+                (this.isAdmin || this.isAutomationOnly || this.canSendValidation) 
+                ? 'flex' : 'none';
+        }
     }
 
     // ── כפתור לוגין - מוצג רק כשאין משתמש מחובר ──
@@ -248,11 +364,451 @@ class SystemsCatalogDashboard {
         }
     }
 
+    async _prepareAutomationEmail() {
+        // מצא מערכות ללא אוטומציה
+        const systemsNoAuto = this.filteredSystems.filter(s => 
+            !s.hasAutomation || 
+            s.hasAutomation === 'לא קיימות' || 
+            s.hasAutomation.trim() === ''
+        );
+
+        if (systemsNoAuto.length === 0) {
+            this.showToast(
+                'כל המערכות המסוננות כבר מוגדרות עם סטטוס אוטומציה!', 
+                'success'
+            );
+            return;
+        }
+
+        // הצג מודל בחירה לפני הורדה
+        await this._showAutomationEmailModal(systemsNoAuto);
+    }
+
+    async _showAutomationEmailModal(systems) {
+        const existing = document.getElementById('scAutoEmailModal');
+        if (existing) existing.remove();
+
+        // אסוף מיילים של מנהלים
+        const managerEmailMap = {};
+        
+        const modal = document.createElement('div');
+        modal.id = 'scAutoEmailModal';
+        modal.className = 'sc-modal-overlay';
+
+        const rowsHtml = systems.map(s => `
+            <tr>
+                <td style="padding:6px 10px;font-size:0.82rem;color:#e0e0e0;font-weight:600">
+                    ${this.escHtml(s.name || '')}
+                    <span style="font-size:0.7rem;color:#6366f1;margin-right:6px">
+                        #${this.escHtml(String(s.number || ''))}
+                    </span>
+                </td>
+                <td style="padding:6px 10px;font-size:0.78rem;color:#888">
+                    ${this.escHtml(s.systemManager || '—')}
+                </td>
+                <td style="padding:6px 10px">
+                    <input type="email"
+                        id="scAEEmail_${this.escHtml(s.id)}"
+                        class="sc-edit-input"
+                        style="font-size:0.78rem;padding:4px 8px;direction:ltr"
+                        placeholder="מייל מנהל..."
+                        value=""/>
+                </td>
+            </tr>`).join('');
+
+        modal.innerHTML = `
+    <div class="sc-modal" style="max-width:720px;width:95%">
+        <div class="sc-modal-header">
+            <h3 class="sc-modal-title">
+                <i class="fas fa-robot" style="color:#22c55e"></i>
+                מייל מנהלים - מערכות ללא אוטומציה
+                <span style="
+                    padding:2px 10px;
+                    background:rgba(239,68,68,0.15);
+                    border:1px solid rgba(239,68,68,0.35);
+                    border-radius:8px;color:#fca5a5;
+                    font-size:0.82rem;font-weight:700;
+                    margin-right:6px">
+                    ${systems.length} מערכות
+                </span>
+            </h3>
+            <button class="sc-modal-close" id="scAEClose">&times;</button>
+        </div>
+        
+        <div class="sc-modal-body" style="max-height:60vh;overflow-y:auto">
+
+            <!-- מידע -->
+            <div style="padding:10px 14px;background:rgba(34,197,94,0.08);
+                        border:1px solid rgba(34,197,94,0.25);border-radius:8px;
+                        font-size:0.82rem;color:#86efac;
+                        display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                <i class="fas fa-info-circle" style="color:#22c55e"></i>
+                <span>
+                    יכין קובץ EML להורדה עם כל המנהלים ב-"אל" ורשימת המערכות בגוף המייל.
+                    <strong>לא נשלח אוטומטית</strong> — תפתח ב-Outlook ותשלח ידנית.
+                </span>
+            </div>
+
+            <!-- כפתורי fill -->
+            <div style="display:flex;gap:8px;padding:8px 0;flex-wrap:wrap">
+                <button id="scAEAutoFill"
+                        style="padding:5px 12px;background:rgba(99,102,241,0.15);
+                            border:1px solid rgba(99,102,241,0.4);border-radius:6px;
+                            color:#a5b4fc;font-size:0.78rem;font-weight:600;
+                            cursor:pointer;font-family:inherit;
+                            display:flex;align-items:center;gap:5px">
+                    <i class="fas fa-magic"></i> מלא מיילים אוטומטית
+                </button>
+                <span id="scAEFillStatus"
+                    style="font-size:0.75rem;color:#888;
+                            display:flex;align-items:center"></span>
+            </div>
+
+            <!-- טבלה -->
+            <div style="overflow-x:auto;border-radius:8px;
+                        border:1px solid rgba(255,255,255,0.07)">
+                <table style="width:100%;border-collapse:collapse;
+                            font-size:0.8rem;direction:rtl">
+                    <thead>
+                        <tr style="background:#1a1a2e">
+                            <th style="padding:8px 10px;color:#888;text-align:right;
+                                    font-weight:600;border-bottom:2px solid #2a2a4e">
+                                מערכת
+                            </th>
+                            <th style="padding:8px 10px;color:#888;text-align:right;
+                                    font-weight:600;border-bottom:2px solid #2a2a4e">
+                                מנהל מערכת
+                            </th>
+                            <th style="padding:8px 10px;color:#888;text-align:right;
+                                    font-weight:600;border-bottom:2px solid #2a2a4e">
+                                מייל מנהל
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="sc-modal-footer" style="justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <button class="sc-modal-cancel-btn" id="scAECancel">
+                <i class="fas fa-times"></i> ביטול
+            </button>
+            <button id="scAEDownload"
+                    style="padding:8px 18px;
+                        background:linear-gradient(135deg,#16a34a,#15803d);
+                        border:none;border-radius:6px;color:white;
+                        font-size:0.85rem;font-weight:700;cursor:pointer;
+                        display:flex;align-items:center;gap:6px;
+                        font-family:inherit">
+                <i class="fas fa-download"></i>
+                הורד EML
+            </button>
+        </div>
+    </div>`;
+
+        document.body.appendChild(modal);
+
+        // ── auto-fill מיילים ──
+        const autoFill = async () => {
+            const fillBtn = document.getElementById('scAEAutoFill');
+            const statusEl = document.getElementById('scAEFillStatus');
+            if (fillBtn) {
+                fillBtn.disabled = true;
+                fillBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> מחפש מיילים...';
+            }
+
+            let filled = 0;
+            const uniqueManagers = [...new Set(
+                systems.map(s => s.systemManager).filter(Boolean)
+            )];
+
+            for (const mgr of uniqueManagers) {
+                try {
+                    const res = await fetch(
+                        `/PhoneDirectory/GetManagerEmail?name=${encodeURIComponent(mgr)}`,
+                        { credentials: 'include' }
+                    );
+                    const data = await res.json();
+                    if (data.success && data.email) {
+                        // מלא לכל המערכות של המנהל הזה
+                        systems.filter(s => s.systemManager === mgr).forEach(s => {
+                            const inp = document.getElementById(`scAEEmail_${s.id}`);
+                            if (inp && !inp.value) {
+                                inp.value = data.email;
+                                filled++;
+                            }
+                        });
+                    }
+                } catch(e) {}
+                await new Promise(r => setTimeout(r, 80));
+            }
+
+            if (fillBtn) {
+                fillBtn.disabled = false;
+                fillBtn.innerHTML = '<i class="fas fa-magic"></i> מלא מיילים אוטומטית';
+            }
+            if (statusEl) {
+                statusEl.textContent = filled > 0 
+                    ? `✅ מולאו ${filled} מיילים` 
+                    : 'לא נמצאו מיילים';
+                statusEl.style.color = filled > 0 ? '#86efac' : '#fca5a5';
+            }
+        };
+
+        // ── אירועים ──
+        const closeModal = () => modal.remove();
+
+        document.getElementById('scAEClose')
+            ?.addEventListener('click', closeModal);
+        document.getElementById('scAECancel')
+            ?.addEventListener('click', closeModal);
+
+        document.getElementById('scAEAutoFill')
+            ?.addEventListener('click', autoFill);
+
+        document.getElementById('scAEDownload')
+            ?.addEventListener('click', async () => {
+                // אסוף מיילים
+                const toEmails = [];
+                systems.forEach(s => {
+                    const inp = document.getElementById(`scAEEmail_${s.id}`);
+                    const email = inp?.value?.trim();
+                    if (email && !toEmails.includes(email)) {
+                        toEmails.push(email);
+                    }
+                });
+
+                await this._downloadAutomationStatusEmail(systems, toEmails);
+            });
+
+        // auto-fill אוטומטי בטעינה
+        autoFill();
+    }
+
+    async _downloadAutomationStatusEmail(systems, toEmails) {
+        try {
+            // ── קבץ מערכות לפי מנהל ──
+            const byManager = {};
+            systems.forEach(s => {
+                const mgr = s.systemManager || '(ללא מנהל)';
+                if (!byManager[mgr]) byManager[mgr] = [];
+                byManager[mgr].push(s);
+            });
+
+            // ── בנה גוף המייל HTML ──
+            const logoBase64 = await this._getLogoBase64();
+            const now = new Date().toLocaleDateString('he-IL', {
+                day: '2-digit', month: '2-digit', year: 'numeric'
+            });
+
+            // ── טבלת מערכות לפי מנהל ──
+            let managerSections = '';
+            Object.entries(byManager)
+                .sort(([a],[b]) => a.localeCompare(b, 'he'))
+                .forEach(([manager, managerSystems]) => {
+                    const rows = managerSystems.map(s => `
+                        <tr>
+                            <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb;
+                                    font-size:14px;color:#374151;direction:rtl">
+                                ${this.escHtml(s.name || '')}
+                            </td>
+                            <td style="padding:6px 12px;border-bottom:1px solid #e5e7eb;
+                                    font-size:13px;color:#6366f1;
+                                    font-family:monospace;direction:ltr">
+                                ${this.escHtml(String(s.number || ''))}
+                            </td>
+                        </tr>`).join('');
+
+                    managerSections += `
+                    <div style="margin-bottom:20px;
+                                background:#f9fafb;
+                                border:1px solid #e5e7eb;
+                                border-radius:8px;
+                                overflow:hidden">
+                        <div style="background:#ede9fe;padding:8px 16px;
+                                    font-size:14px;font-weight:700;
+                                    color:#4c1d95;direction:rtl;
+                                    border-bottom:1px solid #ddd6fe">
+                            <span style="margin-left:6px">👤</span>
+                            מנהל מערכת: ${this.escHtml(manager)}
+                            <span style="font-size:12px;font-weight:400;
+                                        color:#7c3aed;margin-right:8px">
+                                (${managerSystems.length} מערכות)
+                            </span>
+                        </div>
+                        <table style="width:100%;border-collapse:collapse">
+                            <thead>
+                                <tr style="background:#f3f4f6">
+                                    <th style="padding:6px 12px;text-align:right;
+                                            font-size:12px;color:#6b7280;
+                                            border-bottom:1px solid #e5e7eb">
+                                        שם מערכת
+                                    </th>
+                                    <th style="padding:6px 12px;text-align:left;
+                                            font-size:12px;color:#6b7280;
+                                            border-bottom:1px solid #e5e7eb">
+                                        מספר קטלוג
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>`;
+                });
+
+            const htmlBody = `<!DOCTYPE html>
+    <html dir="rtl">
+    <head><meta charset="UTF-8"></head>
+    <body style="margin:0;padding:0;background:#f4f4f4;
+                font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;
+                direction:rtl">
+    <table width="100%" cellpadding="0" cellspacing="0"
+        style="background:#f4f4f4;padding:30px 0">
+        <tr><td align="center">
+        <table width="720" cellpadding="0" cellspacing="0"
+            style="background:#ffffff">
+
+            <!-- פס עליון -->
+            <tr><td style="background:#1e1b4b;height:4px;font-size:0;line-height:0">&nbsp;</td></tr>
+
+            <!-- לוגו + כותרת -->
+            <tr>
+                <td style="background:#f5c518;padding:14px 24px;text-align:center">
+                    <img src="${logoBase64}" width="28" height="28"
+                        style="display:inline-block;vertical-align:middle;
+                                border-radius:5px;margin-left:8px"/>
+                    <span style="font-size:18px;font-weight:800;color:#1e1b4b;
+                                vertical-align:middle">
+                        קטלוג מערכות - כתיבת בדיקות אוטומטיות
+                    </span>
+                </td>
+            </tr>
+            <tr><td style="background:#1e1b4b;height:4px;font-size:0;line-height:0">&nbsp;</td></tr>
+
+            <!-- גוף -->
+            <tr>
+                <td style="padding:28px 32px;direction:rtl">
+
+                    <p style="font-size:16px;color:#111827;margin:0 0 16px">
+                        שלום,
+                    </p>
+
+                    <p style="font-size:15px;color:#374151;margin:0 0 16px;line-height:1.6">
+                        לפי רשימת המערכות בקטלוג 
+                        <strong style="color:#dc2626">מוגדר כי למערכות הבאות אין בדיקות אוטומטיות</strong>.
+                    </p>
+
+                    <p style="font-size:15px;color:#374151;margin:0 0 24px;line-height:1.6">
+                        נבקשכם לעדכן את הסטטוס עבור המערכות שבאחריותכם 
+                        (<em>קיימות / לא קיימות / לא רלוונטי</em>) 
+                    </p>
+                    <p style="font-size:15px;color:#374151;margin:0 0 24px;line-height:1.6">
+                       במידה וברצונכם שנכתוב בדיקה אוטומטית השיבו לנו במייל חוזר
+                    </p>
+
+                    <!-- סיכום -->
+                    <div style="background:#fef3c7;border:1px solid #fcd34d;
+                                border-radius:8px;padding:12px 16px;
+                                margin-bottom:24px;font-size:14px;color:#92400e">
+                        <strong>סה"כ מערכות ללא אוטומציה: ${systems.length}</strong>
+                        &nbsp;|&nbsp; תאריך: ${now}
+                    </div>
+
+                    <!-- רשימה לפי מנהל -->
+                    ${managerSections}
+
+                    <p style="font-size:14px;color:#6b7280;
+                            margin:24px 0 0;line-height:1.6">
+                        לשאלות נוספות ניתן לפנות אלינו במייל חוזר.
+                    </p>
+                    <p style="font-size:14px;color:#374151;margin:8px 0 0">
+                        תודה
+                    </p>
+                </td>
+            </tr>
+
+            <!-- footer -->
+            <tr><td style="padding:0 32px"><hr style="border:none;border-top:1px solid #eee;margin:0"></td></tr>
+            <tr>
+                <td style="padding:14px 32px;font-size:11px;color:#aaa;text-align:center">
+                    מייל זה הופק על ידי <strong style="color:#1e1b4b">NOC Portal</strong>
+                </td>
+            </tr>
+
+        </table>
+        </td></tr>
+    </table>
+    </body>
+    </html>`;
+
+            // ── בנה שורת To ──
+            const toLine = toEmails.length > 0
+                ? toEmails.join('; ')
+                : '';
+
+            const subject = `קטלוג מערכות - בדיקות אוטומטיות`;
+
+            // ── בנה EML ──
+            const emlContent =
+                `X-Unsent: 1\r\n` +
+                `To: ${toLine}\r\n` +
+                `Subject: ${subject}\r\n` +
+                `MIME-Version: 1.0\r\n` +
+                `Content-Type: text/html; charset=UTF-8\r\n` +
+                `\r\n` +
+                htmlBody;
+
+            const blob = new Blob([emlContent], { type: 'message/rfc822' });
+            const url  = URL.createObjectURL(blob);
+            const a    = document.createElement('a');
+            a.href     = url;
+            a.download = `automation_request_${now.replace(/\//g, '-')}.eml`;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 2000);
+
+            this.showToast(
+                `📧 קובץ EML הורד — ${systems.length} מערכות, ` +
+                `${toEmails.length} נמענים`,
+                'success'
+            );
+
+            // ── סגור מודל ──
+            document.getElementById('scAutoEmailModal')?.remove();
+
+        } catch(err) {
+            console.error('_downloadAutomationStatusEmail error:', err);
+            this.showToast('שגיאה: ' + err.message, 'error');
+        }
+    }
+
     async loadData() {
         try {
             this.showLoading(true);
-            const res = await fetch('/SystemsCatalog/GetSystems',
-                { credentials: 'include' });
+
+            // ─── נסה תחילה עם credentials (משתמש מחובר) ───
+            let res;
+
+            if (this.currentUser &&
+                this.currentUser.trim() !== '' &&
+                this.currentUser.trim() !== 'מערכת') {
+                // ─── משתמש מחובר - שלח עם credentials ───
+                res = await fetch('/SystemsCatalog/GetSystems', {
+                    credentials: 'include'
+                });
+            } else {
+                // ─── משתמש לא מחובר - השתמש ב-endpoint ציבורי ───
+                res = await fetch('/SystemsCatalog/GetSystemsPublic', {
+                    credentials: 'include'
+                });
+            }
+
             const data = await res.json();
             if (!data.success) {
                 this.showError(data.error || 'שגיאה בטעינת נתונים');
@@ -288,7 +844,12 @@ class SystemsCatalogDashboard {
                     (s.team || '').toLowerCase().includes(term) ||
                     (s.publisher || '').toLowerCase().includes(term) ||
                     (s.supportVendor || '').toLowerCase().includes(term) ||
-                    num.includes(term);
+                    num.includes(term) ||
+                    // ─── חיפוש בשדות דינמיים ───
+                    (this._serverColumnDefs || []).some(col => {
+                        const val = String(s[col.key] || s.dynamicFields?.[col.key] || '').toLowerCase();
+                        return val.includes(term);
+                    });
 
                 // ─── חיפוש לפי שרתים מקושרים ───
                 const matchesServer = this._serverSearchResults &&
@@ -300,69 +861,130 @@ class SystemsCatalogDashboard {
 
         const f = this.filters;
 
-        if (f.requiresValidation && f.requiresValidation !== 'all') {
+        // ─── עזר: סינון עם תמיכה ב-Set ו-__empty__ ───
+        const filterField = (arr, filterVal, getFn, colKey) => {
+            if (!filterVal || filterVal === 'all') return arr;
 
-            if (f.requiresValidation === 'נדרש תיקוף') {
-                result = result.filter(s => s.requiresValidation === true);
+            const colDef = this._serverColumnDefs?.find(c => c.key === colKey);
+            const isMultiSelect = colDef?.fieldType === 'multiselect';
+
+            // ── Multi-select (Set) ──
+            if (filterVal instanceof Set) {
+                if (filterVal.size === 0) return arr;
+                return arr.filter(s => {
+                    const v = (getFn(s) || '').trim();
+                    if (!v) return filterVal.has('__empty__');
+                    
+                    if (isMultiSelect) {
+                        // בדוק כל ערך בתוך המחרוזת המפוצלת
+                        const parts = v.split(',').map(x => x.trim());
+                        return parts.some(part => filterVal.has(part));
+                    }
+                    return filterVal.has(v);
+                });
             }
 
-            if (f.requiresValidation === 'לא נדרש תיקוף') {
-                result = result.filter(s =>
-                    s.requiresValidation === false ||
-                    s.requiresValidation === undefined ||
-                    s.requiresValidation === null
-                );
-            }
-        }
-        const filterField = (arr, filterVal, getFn) => {
-            if (filterVal === 'all') return arr;
             if (filterVal === '__empty__')
                 return arr.filter(s => {
                     const v = getFn(s);
                     return !v || v.trim() === '';
                 });
-            return arr.filter(s => getFn(s) === filterVal);
+
+            if (isMultiSelect) {
+                return arr.filter(s => {
+                    const v = (getFn(s) || '').trim();
+                    return v.split(',').map(x => x.trim()).includes(filterVal);
+                });
+            }
+
+            return arr.filter(s => (getFn(s) || '') === filterVal);
         };
 
-        result = filterField(result, f.number,
-            s => String(s.number || ''));
-        result = filterField(result, f.name,
-            s => s.name || '');
-        result = filterField(result, f.nameEn,
-            s => s.nameEn || '');
-        result = filterField(result, f.status,
-            s => s.status || '');
-        result = filterField(result, f.domain,
-            s => s.domain || '');
-        result = filterField(result, f.department,
-            s => s.department || '');
-        result = filterField(result, f.team,
-            s => s.team || '');
-        result = filterField(result, f.businessDivision,
-            s => s.businessDivision || '');
-        result = filterField(result, f.appClassification,
-            s => s.appClassification || '');
-        result = filterField(result, f.appType,
-            s => s.appType || '');
-        result = filterField(result, f.businessCriticality,
-            s => s.businessCriticality || '');
-        result = filterField(result, f.availabilityRequirement,
-            s => s.availabilityRequirement || '');
-        result = filterField(result, f.environment,
-            s => s.environment || '');
-        result = filterField(result, f.publisher,
-            s => s.publisher || '');
-        result = filterField(result, f.supportVendor,
-            s => s.supportVendor || '');
-        result = filterField(result, f.systemManager,
-            s => s.systemManager || '');
-        result = filterField(result, f.departmentManager,
-            s => s.departmentManager || '');
-        if (f.hasAutomation && f.hasAutomation !== 'all') {
-            result = result.filter(s =>
-                (s.hasAutomation || 'לא קיימות') === f.hasAutomation
-            );
+        // requiresValidation - טיפול מיוחד
+        if (f.requiresValidation && f.requiresValidation !== 'all') {
+            const val = f.requiresValidation;
+            if (val instanceof Set) {
+                result = result.filter(s => {
+                    const v = s.requiresValidation ? 'נדרש תיקוף' : 'לא נדרש תיקוף';
+                    return val.has(v);
+                });
+            } else if (val === 'נדרש תיקוף') {
+                result = result.filter(s => s.requiresValidation === true);
+            } else if (val === 'לא נדרש תיקוף') {
+                result = result.filter(s =>
+                    !s.requiresValidation
+                );
+            }
         }
+
+        result = filterField(result, f.number,
+            s => String(s.number || ''), 'number');
+        result = filterField(result, f.name,
+            s => s.name || '', 'name');
+        result = filterField(result, f.nameEn,
+            s => s.nameEn || '', 'nameEn');
+        result = filterField(result, f.status,
+            s => s.status || '', 'status');
+        result = filterField(result, f.domain,
+            s => s.domain || '', 'domain');
+        result = filterField(result, f.department,
+            s => s.department || '', 'department');
+        result = filterField(result, f.team,
+            s => s.team || '', 'team');
+        result = filterField(result, f.businessDivision,
+            s => s.businessDivision || '', 'businessDivision');
+        result = filterField(result, f.appClassification,
+            s => s.appClassification || '', 'appClassification');
+        result = filterField(result, f.appType,
+            s => s.appType || '', 'appType');
+        result = filterField(result, f.businessCriticality,
+            s => s.businessCriticality || '', 'businessCriticality');
+        result = filterField(result, f.availabilityRequirement,
+            s => s.availabilityRequirement || '', 'availabilityRequirement');
+        result = filterField(result, f.environment,
+            s => s.environment || '', 'environment');
+        result = filterField(result, f.publisher,
+            s => s.publisher || '', 'publisher');
+        result = filterField(result, f.supportVendor,
+            s => s.supportVendor || '', 'supportVendor');
+        result = filterField(result, f.systemManager,
+            s => s.systemManager || '', 'systemManager');
+        result = filterField(result, f.departmentManager,
+            s => s.departmentManager || '', 'departmentManager');
+
+        if (f.hasAutomation && f.hasAutomation !== 'all') {
+            if (f.hasAutomation instanceof Set) {
+                result = result.filter(s => {
+                    const v = s.hasAutomation || 'לא קיימות';
+                    return f.hasAutomation.has(v);
+                });
+            } else {
+                result = result.filter(s =>
+                    (s.hasAutomation || 'לא קיימות') === f.hasAutomation
+                );
+            }
+        }
+
+        // ─── סינון שדות דינמיים מהשרת ───
+        if (this._serverColumnDefs) {
+            const builtInFilterKeys = new Set([
+                'number','name','nameEn','status','domain','department',
+                'team','businessDivision','appClassification','appType',
+                'businessCriticality','availabilityRequirement','environment',
+                'publisher','supportVendor','systemManager','departmentManager',
+                'hasAutomation','requiresValidation','lastValidationEmailSentAt'
+            ]);
+
+            this._serverColumnDefs.forEach(col => {
+                if (builtInFilterKeys.has(col.key)) return;
+                const fVal = this.filters[col.key];
+                if (!fVal || fVal === 'all') return;
+                result = filterField(result, fVal, s =>
+                    this._getDynamicFieldValue(s, col.key)
+                );
+            });
+        }
+
         const col = this.sortColumn;
         const dir = this.sortDirection === 'asc' ? 1 : -1;
 
@@ -401,10 +1023,334 @@ class SystemsCatalogDashboard {
             const bv = (b[col] || '').toString().toLowerCase();
             return av.localeCompare(bv, 'he') * dir;
         });
+        
 
         this.filteredSystems = result;
         this.currentPage = 1;
         this._updateFilterCounter();
+    }
+
+    _updateTableRowsOnly() {
+        const tbody = document.getElementById('scTbody');
+        if (!tbody) {
+            this.renderContent();
+            return;
+        }
+
+        const { page, total, pages } = this._getPaginationInfo();
+
+        if (this.filteredSystems.length === 0) {
+            const content = document.getElementById('scContent');
+            if (content) {
+                content.innerHTML = `
+            <div class="sc-empty">
+                <i class="fas fa-layer-group"></i>
+                <p>לא נמצאו מערכות</p>
+            </div>`;
+            }
+            this.renderPagination(0, 0);
+            return;
+        }
+
+        // ── בנה שורות מחדש ──
+        const defs = this.getColumnDefinitions();
+        // ── הגדרת עמודות: בסיסיות + דינמיות מהשרת ──
+        const allColDefs = this._buildAllColDefs();
+
+        const cols = this.columnOrder
+            .filter(key => this.visibleColumns[key] && allColDefs[key])
+            .map(key => ({ key, ...allColDefs[key] }));
+
+        if (this.isAdmin) {
+            cols.unshift({ key: '_select', label: '', width: '36px' });
+        }
+
+        const rowsHtml = page.map(s => {
+            const statusClass = this._getStatusClass(s.status);
+            const critClass = this._getCriticalityClass(s.businessCriticality);
+            const envClass = this._getEnvClass(s.environment);
+            const isSelected = this.selectedSystems.has(s.id);
+
+            const cells = cols.map(c => {
+                switch (c.key) {
+                    case '_select':
+                        return `
+    <td class="sc-td sc-td-select">
+        ${this.isAdmin || this.canSendValidation ? `<input type="checkbox" class="sc-cb sc-cb-row"
+            data-id="${this.escHtml(s.id)}"
+            ${isSelected ? 'checked' : ''}>` : ''}
+    </td>`;
+                    case 'number':
+                        return `
+                    <td class="sc-td sc-td-center sc-td-number sc-td-sticky-num">
+                        <span class="sc-catalog-num-link"
+                            data-id="${this.escHtml(s.id || '')}"
+                            title="${this.isAdmin || this.canSendValidation
+                                ? 'לחץ לעריכת מערכת'
+                                : 'לחץ לצפייה בפרטי מערכת'}">
+                            ${this.escHtml(String(s.number || ''))}
+                        </span>
+                    </td>`;
+                    case 'name':
+                        return `
+    <td class="sc-td  sc-td-truncate sc-td-name" title="${this.escHtml(s.name || '')}">
+        ${this.escHtml(s.name || '')}
+    </td>`;
+                    case 'nameEn':
+                        return `
+    <td class="sc-td sc-td-truncate sc-td-name" dir="ltr"
+        title="${this.escHtml(s.nameEn || '')}">
+        ${this.escHtml(s.nameEn || '')}
+    </td>`;
+                    case 'description':
+                        return `
+    <td class="sc-td sc-td-desc"
+        title="${this.escHtml(this._cleanDescription(s.description))}">
+        <span class="sc-desc-text">
+            ${this.escHtml(this._cleanDescription(s.description))}
+        </span>
+    </td>`;
+                    case 'status':
+                        return `
+    <td class="sc-td sc-td-center">
+        <span class="sc-badge ${statusClass}">
+            ${this.escHtml(s.status || '')}
+        </span>
+    </td>`;
+                    case 'systemManager':
+                        return `
+    <td class="sc-td sc-td-truncate"
+        title="${this.escHtml(s.systemManager || '')}">
+        ${this.escHtml(s.systemManager || '')}
+    </td>`;
+                    case 'departmentManager':
+                        return `
+    <td class="sc-td sc-td-truncate"
+        title="${this.escHtml(s.departmentManager || '')}">
+        ${this.escHtml(s.departmentManager || '')}
+    </td>`;
+                    case 'team':
+                        return `
+    <td class="sc-td sc-td-truncate"
+        title="${this.escHtml(s.team || '')}">
+        ${this.escHtml(s.team || '')}
+    </td>`;
+                    case 'department':
+                        return `
+    <td class="sc-td sc-td-truncate"
+        title="${this.escHtml(s.department || '')}">
+        ${this.escHtml(s.department || '')}
+    </td>`;
+                    case 'domain':
+                        return `
+    <td class="sc-td sc-td-truncate"
+        title="${this.escHtml(s.domain || '')}">
+        ${this.escHtml(s.domain || '')}
+    </td>`;
+                    case 'businessDivision':
+                        return `
+    <td class="sc-td sc-td-truncate"
+        title="${this.escHtml(s.businessDivision || '')}">
+        ${this.escHtml(s.businessDivision || '')}
+    </td>`;
+                    case 'appClassification':
+                        return `
+    <td class="sc-td sc-td-center">
+        <span class="sc-badge sc-badge-neutral">
+            ${this.escHtml(s.appClassification || '')}
+        </span>
+    </td>`;
+                    case 'appType':
+                        return `
+    <td class="sc-td sc-td-center">
+        <span class="sc-badge sc-badge-type">
+            ${this.escHtml(s.appType || '')}
+        </span>
+    </td>`;
+                    case 'businessCriticality':
+                        return `
+    <td class="sc-td sc-td-center">
+        <span class="sc-badge ${critClass}">
+            ${this.escHtml(s.businessCriticality || '')}
+        </span>
+    </td>`;
+                    case 'availabilityRequirement':
+                        return `
+    <td class="sc-td sc-td-center">
+        <span class="sc-badge sc-badge-avail">
+            ${this.escHtml(s.availabilityRequirement || '')}
+        </span>
+    </td>`;
+                    case 'environment':
+                        return `
+    <td class="sc-td sc-td-center sc-td-truncate" style="direction:ltr" title="${this.escHtml(s.environment || '')}">
+        <span class="sc-badge ${envClass}">
+            ${this._truncateText(this.escHtml(s.environment || ''), 10)}
+        </span>
+    </td>`;
+                    case 'publisher':
+                        return `
+    <td class="sc-td sc-td-truncate"
+        title="${this.escHtml(s.publisher || '')}">
+        ${this.escHtml(s.publisher || '')}
+    </td>`;
+                    case 'supportVendor':
+                        return `
+    <td class="sc-td sc-td-truncate"
+        title="${this.escHtml(s.supportVendor || '')}">
+        ${this.escHtml(s.supportVendor || '')}
+    </td>`;
+                    case 'hasAutomation':
+                        return `
+    <td class="sc-td sc-td-center"
+        title="${this.escHtml(s.automationNote || '')}">
+        ${this._renderAutomationBadge(s.hasAutomation, s.automationNote)}
+    </td>`;
+                    case 'createdAt':
+                        return `
+    <td class="sc-td sc-td-center sc-td-date"
+        title="${this._stripTime(s.createdAt || '')}">
+        <span class="sc-date-text">
+            ${this.escHtml(this._stripTime(s.createdAt || ''))}
+        </span>
+    </td>`;
+                    case 'lastValidatedAt':
+                        return `
+    <td class="sc-td sc-td-center sc-td-date"
+        title="${this._stripTime(s.lastValidatedAt || '')}">
+        <span class="sc-date-text ${s.lastValidatedAt
+                                ? 'sc-validated-date' : 'sc-not-validated'}">
+            ${s.lastValidatedAt
+                                ? this._stripTime(s.lastValidatedAt)
+                                : '—'}
+        </span>
+    </td>`;
+                    case 'requiresValidation':
+                        return `
+    <td class="sc-td sc-td-center">
+        ${s.requiresValidation
+                                ? `<span class="sc-badge sc-badge-requires-validation"
+                                title="מערכת זו מסומנת כדורשת תיקוף">
+                            <i class="fas fa-circle-check"></i>
+                            נדרש תיקוף
+                        </span>`
+                                : `<span class="sc-badge sc-badge-neutral"
+                                style="opacity:0.35">—</span>`}
+    </td>`;
+                    case 'lastValidationEmailSentAt':
+                        return `
+<td class="sc-td sc-td-center sc-td-date"
+    title="${this._formatDateIL(s.lastValidationEmailSentAt || '')}">
+    <span class="sc-date-text ${s.lastValidationEmailSentAt
+                                ? 'sc-validated-date' : 'sc-not-validated'}">
+        ${s.lastValidationEmailSentAt
+                                ? this._formatDateIL(s.lastValidationEmailSentAt)
+                                : '—'}
+    </span>
+</td>`;
+                    case 'buttons':
+                        return `
+    <td class="sc-td sc-td-center sc-td-servers">
+        ${(this.isAdmin || this.isNoc) ? `
+        <button class="sc-view-servers-btn"
+                data-system-name="${this.escHtml(s.name || '')}"
+                title="צפה בשרתים של: ${this.escHtml(s.name || '')}">
+            <i class="fas fa-server"></i>
+        </button>` : ''}
+        ${(this.isAdmin || this.canSendValidation || this.isAutomationOnly) ? `
+        <button class="sc-row-edit-btn"
+                data-id="${this.escHtml(s.id || '')}"
+                title="${this.isAdmin || this.canSendValidation ? 'ערוך מערכת' : 'ערוך אוטומציה'}">
+            <i class="fas ${this.isAdmin || this.canSendValidation ? 'fa-edit' : 'fa-robot'}"></i>
+        </button>` : ''}
+    </td>`;
+                    default: {
+                        // ─── חפש ערך בכל המקומות האפשריים ───
+                        const dynVal = this._getDynamicFieldValue(s, c.key);
+                        return `
+                        <td class="sc-td sc-td-truncate"
+                            title="${this.escHtml(String(dynVal))}">
+                            ${this.escHtml(String(dynVal))}
+                        </td>`;
+                    }
+                }
+            }).join('');
+
+            return `
+<tr class="sc-tr ${isSelected ? 'sc-tr-selected' : ''}"
+    data-id="${this.escHtml(s.id || '')}">
+    ${cells}
+</tr>`;
+        }).join('');
+
+        tbody.innerHTML = rowsHtml;
+
+        // ── עדכן pagination ──
+        this.renderPagination(total, pages);
+
+        // ── עדכן header checkbox ──
+        const cbAll = document.querySelector('.sc-cb-all');
+        if (cbAll) {
+            const allSelected = page.length > 0 &&
+                page.every(s => this.selectedSystems.has(s.id));
+            cbAll.checked = allSelected;
+        }
+
+        this._restoreOpenFilterPopup();
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // קבל ערך שדה דינמי - בדוק את כל המקומות האפשריים
+    // ══════════════════════════════════════════════════════════
+    _getDynamicFieldValue(system, fieldKey) {
+        if (!system || !fieldKey) return '';
+
+        // ─── 1: גישה ישירה camelCase ───
+        if (system[fieldKey] !== undefined && system[fieldKey] !== null) {
+            return String(system[fieldKey]);
+        }
+
+        // ─── 2: גישה ישירה PascalCase ───
+        const pascalKey = fieldKey.charAt(0).toUpperCase() + fieldKey.slice(1);
+        if (system[pascalKey] !== undefined && system[pascalKey] !== null) {
+            return String(system[pascalKey]);
+        }
+
+        // ─── 3: חיפוש case-insensitive על כל מפתחות האובייקט ───
+        const lowerKey = fieldKey.toLowerCase();
+        const matchingKey = Object.keys(system).find(
+            k => k.toLowerCase() === lowerKey
+        );
+        if (matchingKey && system[matchingKey] !== undefined 
+            && system[matchingKey] !== null
+            && String(system[matchingKey]).trim() !== '') {
+            return String(system[matchingKey]);
+        }
+
+        // ─── 4: בדוק ב-dynamicFields (camelCase) ───
+        if (system.dynamicFields?.[fieldKey] !== undefined
+            && system.dynamicFields?.[fieldKey] !== null) {
+            return String(system.dynamicFields[fieldKey]);
+        }
+
+        // ─── 5: בדוק ב-dynamicFields (PascalCase) ───
+        if (system.dynamicFields?.[pascalKey] !== undefined
+            && system.dynamicFields?.[pascalKey] !== null) {
+            return String(system.dynamicFields[pascalKey]);
+        }
+
+        // ─── 6: חיפוש case-insensitive ב-dynamicFields ───
+        if (system.dynamicFields) {
+            const dynMatchKey = Object.keys(system.dynamicFields).find(
+                k => k.toLowerCase() === lowerKey
+            );
+            if (dynMatchKey && system.dynamicFields[dynMatchKey] !== undefined
+                && system.dynamicFields[dynMatchKey] !== null) {
+                return String(system.dynamicFields[dynMatchKey]);
+            }
+        }
+
+        return '';
     }
 
     // ══════════════════════════════════════════════════════════
@@ -549,12 +1495,25 @@ class SystemsCatalogDashboard {
                             title="ייבא סטטוס אוטומציה מאקסל"
                             style="display:none">
                         <i class="fas fa-robot"></i>
-                        ייבא אוטומציה
+                        ייבא
+                    </button>
+                    <button id="scPrepareAutoEmailBtn"
+                            class="sc-mail-auto-btn sc-admin-only"
+                            title="הכן מייל למנהלים - מערכות ללא אוטומציה"
+                            style="display:none">
+                        <i class="fas fa-robot"></i>
+                        מייל
                     </button>
                     <button id="scColManagerBtn"
                             class="sc-col-manager-btn"
                             title="ניהול עמודות">
                         <i class="fas fa-columns"></i>
+                    </button>
+                    <button id="scPermissionsBtn"
+                            class="sc-permissions-btn sc-admin-only"
+                            title="ניהול הרשאות"
+                            style="display:none">
+                        <i class="fas fa-user-shield"></i>
                     </button>
                     <button id="scExportBtn"
                             class="sc-export-btn"
@@ -612,22 +1571,28 @@ class SystemsCatalogDashboard {
             </div>
 
             <div class="sc-scroll-wrapper">
-                <div id="scContent"    class="sc-content"></div>
-                <div id="scPagination" class="sc-pagination"></div>
+                <div id="scContent" class="sc-content"></div>
             </div>
+            <div id="scPagination" class="sc-pagination"></div>
         </div>`;
     }
 
     _updateMultiToolbar() {
-        const toolbar = document.getElementById('srvMultiToolbar');
-        if (toolbar) toolbar.style.display = 'none'; // תמיד מוסתר
-
-        this.updateStats(); // מעדכן את ה-stats bar כולל multi info
+        const count = this.selectedSystems.size;
+        
+        const toolbar = document.getElementById('scMultiToolbar');
+        if (toolbar) {
+            toolbar.style.display = count > 0 ? 'flex' : 'none';
+            const countEl = document.getElementById('scMultiCount');
+            if (countEl) countEl.textContent = count;
+        }
+        
+        this.updateStats();
     }
 
 
     async _openBulkValidationModal() {
-        if (!this.isAdmin || this.selectedSystems.size === 0) return;
+        if ((!this.isAdmin && !this.canSendValidation) || this.selectedSystems.size === 0) return;
 
         // בנה מפה של מנהל → מייל (דרך PhoneDirectory)
         const systemIds = [...this.selectedSystems];
@@ -659,52 +1624,91 @@ class SystemsCatalogDashboard {
             </td>
         </tr>`).join('');
 
-        modal.innerHTML = `
-    <div class="sc-modal" style="max-width:680px;width:95%">
-        <div class="sc-modal-header">
-            <h3 class="sc-modal-title">
-                <i class="fas fa-envelope" style="color:#6366f1"></i>
-                שליחת תיקוף מרובה
-                <span class="sc-multi-edit-count-badge">
-                    ${systems.length} מערכות
-                </span>
-            </h3>
-            <button class="sc-modal-close"
-                    id="scBVClose">&times;</button>
-        </div>
-        <div class="sc-modal-body" style="max-height:60vh;overflow-y:auto">
-            <div style="font-size:0.82rem;color:#888;margin-bottom:12px;
-                        padding:8px 12px;background:rgba(99,102,241,0.06);
-                        border-radius:6px;border:1px solid rgba(99,102,241,0.2)">
-                <i class="fas fa-info-circle" style="color:#6366f1"></i>
-                המערכות יסומנו כ"נדרש תיקוף" ומייל יישלח לכל מנהל.
-                מערכות ללא מנהל/מחלקה יישלח סיכום ל-talyoh.
+modal.innerHTML = `
+<div class="sc-modal" style="max-width:680px;width:95%">
+    <div class="sc-modal-header">
+        <h3 class="sc-modal-title">
+            <i class="fas fa-envelope" style="color:#6366f1"></i>
+            שליחת תיקוף מרובה
+            <span class="sc-multi-edit-count-badge">
+                ${systems.length} מערכות
+            </span>
+        </h3>
+        <button class="sc-modal-close" id="scBVClose">&times;</button>
+    </div>
+    <div class="sc-modal-body" style="max-height:60vh;overflow-y:auto">
+        
+        <!-- ── אפשרות שליחה מרוכזת ── -->
+        <div style="padding:12px 16px;background:rgba(99,102,241,0.08);
+                    border:1px solid rgba(99,102,241,0.25);border-radius:8px;
+                    margin-bottom:12px;">
+            <div style="font-size:0.85rem;font-weight:700;color:#a5b4fc;
+                        margin-bottom:8px;display:flex;align-items:center;gap:6px">
+                <i class="fas fa-envelope-open-text"></i>
+                שליחה מרוכזת (מומלץ)
             </div>
-            <table style="width:100%;border-collapse:collapse;
-                          font-size:0.82rem;direction:rtl">
-                <thead>
-                    <tr style="background:#1a1a2e">
-                        <th style="padding:8px 10px;color:#888;
-                                   text-align:right;font-weight:600;
-                                   border-bottom:2px solid #2a2a4e">
-                            מערכת
-                        </th>
-                        <th style="padding:8px 10px;color:#888;
-                                   text-align:right;font-weight:600;
-                                   border-bottom:2px solid #2a2a4e">
-                            מנהל מערכת
-                        </th>
-                        <th style="padding:8px 10px;color:#888;
-                                   text-align:right;font-weight:600;
-                                   border-bottom:2px solid #2a2a4e">
-                            מייל מנהל
-                        </th>
-                    </tr>
-                </thead>
-                <tbody>${rowsHtml}</tbody>
-            </table>
+            <div style="font-size:0.78rem;color:#888;margin-bottom:10px;line-height:1.5">
+                שלח מייל אחד עם כל הקישורים מקובצים לפי מנהל מערכת.
+                המייל יישלח אליך ותוכל להעביר לכל מנהל את הקישורים הרלוונטיים.
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <input type="email"
+                       id="scBVMyEmail"
+                       class="sc-edit-input"
+                       style="flex:1;min-width:200px;font-size:0.82rem;
+                              padding:6px 10px;direction:ltr"
+                       placeholder="המייל שלך..."/>
+                <button id="scBVSendMerged"
+                        style="padding:7px 16px;
+                               background:linear-gradient(135deg,#4f46e5,#7c3aed);
+                               border:none;border-radius:6px;color:white;
+                               font-size:0.82rem;font-weight:700;cursor:pointer;
+                               display:flex;align-items:center;gap:6px;
+                               font-family:inherit;white-space:nowrap">
+                    <i class="fas fa-paper-plane"></i>
+                    שלח מרוכז
+                </button>
+            </div>
         </div>
-        <div class="sc-modal-footer">
+
+        <!-- ── הפרדה ── -->
+        <div style="display:flex;align-items:center;gap:10px;margin:12px 0;
+                    color:#444;font-size:0.75rem">
+            <div style="flex:1;height:1px;background:#2a2a4e"></div>
+            <span>או שלח מייל נפרד לכל מנהל</span>
+            <div style="flex:1;height:1px;background:#2a2a4e"></div>
+        </div>
+
+        <div style="font-size:0.82rem;color:#888;margin-bottom:12px;
+                    padding:8px 12px;background:rgba(99,102,241,0.06);
+                    border-radius:6px;border:1px solid rgba(99,102,241,0.2)">
+            <i class="fas fa-info-circle" style="color:#6366f1"></i>
+            המערכות יסומנו כ"נדרש תיקוף" ומייל יישלח לכל מנהל.
+        </div>
+        <table style="width:100%;border-collapse:collapse;
+                      font-size:0.82rem;direction:rtl">
+            <thead>
+                <tr style="background:#1a1a2e">
+                    <th style="padding:8px 10px;color:#888;text-align:right;
+                               font-weight:600;border-bottom:2px solid #2a2a4e">
+                        מערכת
+                    </th>
+                    <th style="padding:8px 10px;color:#888;text-align:right;
+                               font-weight:600;border-bottom:2px solid #2a2a4e">
+                        מנהל מערכת
+                    </th>
+                    <th style="padding:8px 10px;color:#888;text-align:right;
+                               font-weight:600;border-bottom:2px solid #2a2a4e">
+                        מייל מנהל
+                    </th>
+                </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+        </table>
+    </div>
+    <div class="sc-modal-footer" style="justify-content:space-between;
+                                        flex-wrap:wrap;gap:8px">
+        <div style="display:flex;gap:8px">
             <button class="sc-modal-cancel-btn" id="scBVCancel">
                 <i class="fas fa-times"></i> ביטול
             </button>
@@ -716,10 +1720,11 @@ class SystemsCatalogDashboard {
                            display:flex;align-items:center;gap:6px;
                            font-family:inherit">
                 <i class="fas fa-paper-plane"></i>
-                שלח תיקוף (${systems.length})
+                שלח נפרד (${systems.length})
             </button>
         </div>
-    </div>`;
+    </div>
+</div>`;
 
         document.body.appendChild(modal);
 
@@ -767,6 +1772,187 @@ class SystemsCatalogDashboard {
             }
         });
 
+        // ─── Auto-fill מייל המשתמש המחובר ───
+        const autoFillMyEmail = async () => {
+            try {
+                const response = await fetch('/Auth/GetCurrentUserEmail', {
+                    credentials: 'include'
+                });
+                if (!response.ok) return;
+                const data = await response.json();
+                const myEmail = data.email || data.username || null;
+                if (myEmail) {
+                    const inp = document.getElementById('scBVMyEmail');
+                    if (inp && !inp.value) inp.value = myEmail;
+                }
+            } catch (err) {
+                console.warn('GetCurrentUserEmail error:', err);
+            }
+        };
+
+        // ─── מלא מייל אוטומטית בטעינה ───
+        autoFillMyEmail();
+
+        // ─── שלח מרוכז ───
+        document.getElementById('scBVSendMerged')
+            ?.addEventListener('click', async () => {
+                const myEmail = document.getElementById('scBVMyEmail')?.value?.trim();
+                
+                if (!myEmail) {
+                    this.showToast('נדרש מייל יעד לשליחה מרוכזת', 'error');
+                    document.getElementById('scBVMyEmail')?.focus();
+                    return;
+                }
+
+                const btn = document.getElementById('scBVSendMerged');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> שולח...';
+                }
+
+                try {
+                    const res = await fetch('/SystemsCatalog/SendBulkValidationLinksToMe', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({
+                            systemIds: systemIds,
+                            toEmail: myEmail
+                        })
+                    });
+                    const data = await res.json();
+
+                    if (!data.success) throw new Error(data.error || 'שגיאה בשליחה');
+
+                    // ─── עדכן מקומית (השרת כבר שמר) ───
+                    systemIds.forEach(id => {
+                        const sys = this.allSystems.find(s => s.id === id);
+                        if (sys) {
+                            sys.requiresValidation = true;
+                            sys.lastValidationEmailSentAt = 
+                                new Date().toISOString().substring(0, 16).replace('T', ' ');
+                        }
+                    });
+                    this.applyFiltersAndSort();
+                    this.renderContent();
+                    this.updateStats();
+
+                    // ─── הצג הצלחה ───
+                    const modalBody = modal.querySelector('.sc-modal-body');
+                    const successDiv = document.createElement('div');
+                    successDiv.style.cssText = `
+                        margin-top:12px;padding:12px 16px;
+                        background:rgba(34,197,94,0.12);
+                        border:1px solid rgba(34,197,94,0.35);
+                        border-radius:8px;color:#86efac;
+                        font-size:0.85rem;font-weight:600;
+                        display:flex;align-items:center;gap:8px;
+                    `;
+                    successDiv.innerHTML = `
+                        <i class="fas fa-check-circle" style="color:#22c55e;font-size:1rem"></i>
+                        <div>
+                            <div>✅ מייל מרוכז נשלח ל-${myEmail}</div>
+                            <div style="font-size:0.75rem;color:#888;margin-top:4px">
+                                ${systemIds.length} קישורים מקובצים לפי מנהל מערכת
+                            </div>
+                        </div>
+                    `;
+                    modalBody.insertBefore(successDiv, modalBody.firstChild);
+
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-check"></i> נשלח!';
+                        btn.style.background = 'rgba(34,197,94,0.2)';
+                        btn.style.border = '1px solid rgba(34,197,94,0.4)';
+                        setTimeout(() => {
+                            btn.innerHTML = '<i class="fas fa-paper-plane"></i> שלח מרוכז';
+                            btn.style.background = '';
+                            btn.style.border = '';
+                        }, 3000);
+                    }
+
+                    this.showToast(`✅ מייל מרוכז נשלח ל-${myEmail}`, 'success');
+
+                } catch (err) {
+                    this.showToast('שגיאה: ' + err.message, 'error');
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-paper-plane"></i> שלח מרוכז';
+                    }
+                }
+            });
+
+        // ─── כפתור "מלא מייל שלי" ───
+        document.getElementById('scBVFillMyEmail')
+            ?.addEventListener('click', async () => {
+                const fillBtn = document.getElementById('scBVFillMyEmail');
+                
+                // ─── קבל מייל של המשתמש המחובר ───
+                let myEmail = '';
+                
+                if (fillBtn) {
+                    fillBtn.disabled = true;
+                    fillBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> מחפש...';
+                }
+                
+                try {
+                    // ─── נסה לקבל מייל לפי שם המשתמש המחובר ───
+                    const response = await fetch('/Auth/GetCurrentUserEmail', {
+                        credentials: 'include'
+                    });
+
+                    if (!response.ok) {
+                        myEmail = null;
+                        return null;
+                    }
+
+                    const data = await response.json();
+                    myEmail = data.email || data.username || null;
+                    
+                } catch (err) {
+                    console.warn('GetManagerEmail (self) error:', err);
+                }
+                
+                if (!myEmail) {
+                    this.showToast('לא נמצא מייל עבור המשתמש המחובר', 'error');
+                    if (fillBtn) {
+                        fillBtn.disabled = false;
+                        fillBtn.innerHTML = '<i class="fas fa-magic"></i></i> מלא מייל שלי';
+                    }
+                    return;
+                }
+                
+                // ─── מלא את המייל שלי בכל השדות הריקים ───
+                let filledCount = 0;
+                systems.forEach(s => {
+                    const inp = document.getElementById(`scBVEmail_${s.id}`);
+                    if (inp) {
+                        inp.value = myEmail;
+                        inp.style.borderColor = '#6366f1';
+                        inp.style.background = 'rgba(99,102,241,0.06)';
+                        setTimeout(() => {
+                            inp.style.borderColor = '';
+                            inp.style.background = '';
+                        }, 2000);
+                        filledCount++;
+                    }
+                });
+                
+                if (fillBtn) {
+                    fillBtn.disabled = false;
+                    fillBtn.innerHTML = `<i class="fas fa-check"></i> מולאו ${filledCount} שדות`;
+                    fillBtn.style.background = 'rgba(34,197,94,0.15)';
+                    fillBtn.style.borderColor = 'rgba(34,197,94,0.4)';
+                    fillBtn.style.color = '#86efac';
+                    
+                    setTimeout(() => {
+                        fillBtn.innerHTML = '<i class="fas fa-magic"></i></i> מלא מייל שלי';
+                    }, 3000);
+                }
+                
+                this.showToast(`✅ מולא המייל ${myEmail} ב-${filledCount} שדות`, 'success');
+            });
+
         // שלח
         document.getElementById('scBVSend')
             ?.addEventListener('click', async () => {
@@ -802,27 +1988,59 @@ class SystemsCatalogDashboard {
                     if (!data.success)
                         throw new Error(data.error || 'שגיאה בשליחה');
 
-                    modal.remove();
-                    this.selectedSystems.clear();
-                    this._updateMultiToolbar();
+                    // אל תסגור את המודל - הצג סטטוס בתוכו
+                    const sendBtn = document.getElementById('scBVSend');
+                    const modalBody = modal.querySelector('.sc-modal-body');
 
-                    // עדכן requiresValidation מקומית
-                    systemIds.forEach(id => {
-                        const sys = this.allSystems.find(s => s.id === id);
-                        if (sys) sys.requiresValidation = true;
-                    });
+                    // הוסף div סטטוס בתחתית ה-modal body:
+                    const statusDiv = document.createElement('div');
+                    statusDiv.style.cssText = `
+                        margin-top:12px;padding:12px 16px;
+                        background:rgba(34,197,94,0.12);
+                        border:1px solid rgba(34,197,94,0.35);
+                        border-radius:8px;color:#86efac;
+                        font-size:0.85rem;font-weight:600;
+                        display:flex;align-items:center;gap:8px;
+                    `;
+                    statusDiv.innerHTML = `
+                        <i class="fas fa-check-circle" style="color:#22c55e;font-size:1rem"></i>
+                        <div>
+                            <div>✅ ${data.message}</div>
+                            ${data.noManagerCount > 0
+                            ? `<div style="font-size:0.78rem;color:#fcd34d;margin-top:4px">
+                                    ⚠️ ${data.noManagerCount} מערכות ללא מנהל - נשלח סיכום לטל יוחאי
+                                </div>`
+                            : ''}
+                            <div style="font-size:0.75rem;color:#888;margin-top:4px">
+                                נשלחו: ${data.sentCount} | סומנו: ${data.markedCount}
+                            </div>
+                        </div>
+                    `;
+                    modalBody.appendChild(statusDiv);
 
-                    this.applyFiltersAndSort();
-                    this.renderContent();
-                    this.updateStats();
-
-                    this.showToast(
-                        `✅ ${data.message}` +
-                        (data.noManagerCount > 0
-                            ? ` | ⚠️ ${data.noManagerCount} ללא מנהל`
-                            : ''),
-                        'success'
-                    );
+                    // שנה את כפתור השליחה לכפתור סגירה:
+                    if (sendBtn) {
+                        sendBtn.disabled = false;
+                        sendBtn.innerHTML = '<i class="fas fa-times"></i> סגור';
+                        sendBtn.style.background = 'rgba(107,114,128,0.2)';
+                        sendBtn.style.border = '1px solid rgba(107,114,128,0.4)';
+                        // החלף event listener:
+                        sendBtn.replaceWith(sendBtn.cloneNode(true));
+                        document.getElementById('scBVSend')
+                            ?.addEventListener('click', () => {
+                                modal.remove();
+                                this.selectedSystems.clear();
+                                this._updateMultiToolbar();
+                                // עדכן requiresValidation מקומית
+                                systemIds.forEach(id => {
+                                    const sys = this.allSystems.find(s => s.id === id);
+                                    if (sys) sys.requiresValidation = true;
+                                });
+                                this.applyFiltersAndSort();
+                                this.renderContent();
+                                this.updateStats();
+                            });
+                    }
                 } catch (err) {
                     this.showToast('שגיאה: ' + err.message, 'error');
                     if (sendBtn) {
@@ -838,7 +2056,7 @@ class SystemsCatalogDashboard {
     // מודל עריכה מרובה - מערכות
     // ══════════════════════════════════════════════════════════
     openMultiEditModal() {
-        if (!this.isAdmin) {
+        if (!this.isAdmin && !this.canSendValidation) {
             this.showToast('אין הרשאה לעריכה', 'error');
             return;
         }
@@ -915,20 +2133,38 @@ class SystemsCatalogDashboard {
                 <label class="sc-edit-label">
                     <i class="fas fa-circle-dot"></i> סטטוס
                 </label>
-                <select id="scMEStatus" class="sc-select sc-edit-select">
-                    <option value="">— ללא שינוי —</option>
-                    ${statuses.map(v =>
-            `<option value="${this.escHtml(v)}">${this.escHtml(v)}</option>`
-        ).join('')}
-                </select>
+                
+                ${this._buildBuiltInFieldHtml({
+                    key: 'status',
+                    elementId: 'scAddStatus',
+                    currentValue: '',
+                    placeholder: '— לא הוגדר —',
+                    fallbackOptions: [
+                        { value: '',                  label: '— לא הוגדר —'    },
+                        { value: 'פעיל',              label: 'פעיל'             },
+                        { value: 'פעילה',             label: 'פעילה'            },
+                        { value: 'לא פעיל',           label: 'לא פעיל'          },
+                        { value: 'לא פעילה',          label: 'לא פעילה'         },
+                        { value: 'בפיתוח',            label: 'בפיתוח'           },
+                        { value: 'בהקמה',             label: 'בהקמה'            },
+                        { value: 'פיילוט',            label: 'פיילוט'           },
+                        { value: 'בהקפאה',            label: 'בהקפאה'           },
+                        { value: 'מיועד לסגירה',      label: 'מיועד לסגירה'     },
+                        { value: 'מבוטלת',            label: 'מבוטלת'           },
+                    ],
+                })}
             </div>
             <div class="sc-edit-field">
                 <label class="sc-edit-label">
                     <i class="fas fa-industry"></i> סביבה
                 </label>
-                <select id="scMEEnv" class="sc-select sc-edit-select">
-                    ${buildSelectOptions(environments)}
-                </select>
+                ${this._buildBuiltInFieldHtml({
+                    key: 'environment',
+                    elementId: 'scMEEnv',
+                    currentValue: '',
+                    placeholder: '— בחר סביבה —',
+                    fallbackOptions: [],   // יקח מ-_buildDynamicOptions אוטומטית
+                })}
             </div>
         </div>
         <div class="sc-edit-row">
@@ -1034,10 +2270,13 @@ class SystemsCatalogDashboard {
                     <i class="fas fa-tag"></i> סיווג יישום
                 </label>
                 <div class="sc-me-combo-wrap">
-                    <select id="scMEAppClassSelect"
-                            class="sc-select sc-edit-select sc-me-combo-select">
-                        ${buildSelectOptions(appClasses)}
-                    </select>
+                    ${this._buildBuiltInFieldHtml({
+                        key: 'appClassification',
+                        elementId: 'scAddAppClass',
+                        currentValue: '',
+                        placeholder: '— בחר סיווג —',
+                        fallbackOptions: [],
+                    })}
                     <input type="text" id="scMEAppClass"
                            class="sc-edit-input sc-me-combo-input"
                            placeholder="או הקלד ידנית..."/>
@@ -1048,10 +2287,13 @@ class SystemsCatalogDashboard {
                     <i class="fas fa-cube"></i> סוג יישום
                 </label>
                 <div class="sc-me-combo-wrap">
-                    <select id="scMEAppTypeSelect"
-                            class="sc-select sc-edit-select sc-me-combo-select">
-                        ${buildSelectOptions(appTypes)}
-                    </select>
+                    ${this._buildBuiltInFieldHtml({
+                        key: 'appType',
+                        elementId: 'scAddAppType',
+                        currentValue: '',
+                        placeholder: '— בחר סוג —',
+                        fallbackOptions: [],
+                    })}
                     <input type="text" id="scMEAppType"
                            class="sc-edit-input sc-me-combo-input"
                            placeholder="או הקלד ידנית..."/>
@@ -1066,19 +2308,25 @@ class SystemsCatalogDashboard {
                     <i class="fas fa-exclamation-triangle"></i>
                     קריטיות עסקית
                 </label>
-                <select id="scMECriticality"
-                        class="sc-select sc-edit-select">
-                    ${buildSelectOptions(criticalities)}
-                </select>
+                ${this._buildBuiltInFieldHtml({
+                    key: 'businessCriticality',
+                    elementId: 'scAddCriticality',
+                    currentValue: '',
+                    placeholder: '— בחר קריטיות —',
+                    fallbackOptions: [],
+                })}
             </div>
             <div class="sc-edit-field sc-edit-field-wide">
                 <label class="sc-edit-label">
                     <i class="fas fa-clock"></i> דרישת זמינות
                 </label>
-                <select id="scMEAvailability"
-                        class="sc-select sc-edit-select">
-                    ${buildSelectOptions(availabilities)}
-                </select>
+                ${this._buildBuiltInFieldHtml({
+                    key: 'availabilityRequirement',
+                    elementId: 'scAddAvailability',
+                    currentValue: '',
+                    placeholder: '— בחר זמינות —',
+                    fallbackOptions: [],
+                })}
             </div>
         </div>
 
@@ -1089,10 +2337,12 @@ class SystemsCatalogDashboard {
                     <i class="fas fa-building-user"></i> מפרסם
                 </label>
                 <div class="sc-me-combo-wrap">
-                    <select id="scMEPublisherSelect"
-                            class="sc-select sc-edit-select sc-me-combo-select">
-                        ${buildSelectOptions(getUniqueValues('publisher'))}
-                    </select>
+                    ${this._buildBuiltInFieldHtml({
+                        key: 'publisher',
+                        elementId: 'scAddPublisher',
+                        currentValue: '',
+                        placeholder: 'מפרסם...',
+                    })}
                     <input type="text" id="scMEPublisher"
                         class="sc-edit-input sc-me-combo-input"
                         placeholder="או הקלד ידנית..."/>
@@ -1103,10 +2353,12 @@ class SystemsCatalogDashboard {
                     <i class="fas fa-headset"></i> ספק תמיכה
                 </label>
                 <div class="sc-me-combo-wrap">
-                    <select id="scMEVendorSelect"
-                            class="sc-select sc-edit-select sc-me-combo-select">
-                        ${buildSelectOptions(getUniqueValues('supportVendor'))}
-                    </select>
+                   ${this._buildBuiltInFieldHtml({
+                        key: 'supportVendor',
+                        elementId: 'scAddVendor',
+                        currentValue: '',
+                        placeholder: 'ספק תמיכה...',
+                    })}
                     <input type="text" id="scMEVendor"
                         class="sc-edit-input sc-me-combo-input"
                         placeholder="או הקלד ידנית..."/>
@@ -1136,6 +2388,119 @@ class SystemsCatalogDashboard {
                     placeholder="— ללא שינוי —"/>
             </div>
         </div>
+
+        ${(() => {
+            if (!this._serverColumnDefs || this._serverColumnDefs.length === 0) return '';
+            
+            const builtInKeys = new Set([
+                'number','name','nameEn','description','status',
+                'systemManager','departmentManager','environment',
+                'domain','department','team','businessDivision',
+                'appClassification','appType','businessCriticality',
+                'availabilityRequirement','publisher','supportVendor',
+                'createdAt','hasAutomation','automationNote',
+                'requiresValidation','buttons',
+                'lastValidatedAt','lastValidationEmailSentAt'
+            ]);
+            
+            const dynamicCols = this._serverColumnDefs.filter(col => 
+                !builtInKeys.has(col.key)
+            );
+            
+            if (dynamicCols.length === 0) return '';
+            
+            let html = `
+            <div style="margin-top:8px;padding-top:8px;
+                        border-top:1px dashed rgba(99,102,241,0.2)">
+                <div style="font-size:0.72rem;color:#555;margin-bottom:8px;
+                            display:flex;align-items:center;gap:5px">
+                    <i class="fas fa-layer-group" style="color:#6366f1"></i>
+                    שדות נוספים — ריק = ללא שינוי
+                </div>`;
+            
+            for (let i = 0; i < dynamicCols.length; i += 3) {
+                const rowCols = dynamicCols.slice(i, i + 3);
+                html += `<div class="sc-edit-row">`;
+                rowCols.forEach(col => {
+                    const fieldType     = col.fieldType    || 'text';
+                    const allowedValues = col.allowedValues || [];
+                    let inputHtml = '';
+                    
+                    if (fieldType === 'select' && allowedValues.length > 0) {
+                        const options = allowedValues.map(v =>
+                            `<option value="${this.escHtml(v)}">${this.escHtml(v)}</option>`
+                        ).join('');
+                        inputHtml = `
+                            <select id="scMEDynamic_${this.escHtml(col.key)}"
+                                    class="sc-select sc-edit-select"
+                                    data-dynamic-key="${this.escHtml(col.key)}">
+                                <option value="">— ללא שינוי —</option>
+                                ${options}
+                            </select>`;
+                    } else if (fieldType === 'multiselect' && allowedValues.length > 0) {
+                        const meKey = `scMEDynamic_${col.key}`;
+                        
+                        const options = allowedValues.map(v => `
+                            <div class="sc-multiselect-option"
+                                data-value="${this.escHtml(v)}"
+                                onclick="window._scDashboard._toggleMultiSelectOption(
+                                    this, 'ME_${this.escHtml(col.key)}')">
+                                <i class="fas fa-square" 
+                                style="color:#444;font-size:0.75rem"></i>
+                                <span>${this.escHtml(v)}</span>
+                            </div>`).join('');
+                        
+                        inputHtml = `
+                            <div class="sc-multiselect-wrap"
+                                id="scMultiSelectWrap_ME_${this.escHtml(col.key)}"
+                                data-dynamic-key="${this.escHtml(col.key)}"
+                                data-current-value="">
+                                <div class="sc-multiselect-display"
+                                    onclick="window._scDashboard._toggleMultiSelectDropdown(
+                                        'ME_${this.escHtml(col.key)}')">
+                                    <span class="sc-multiselect-display-text"
+                                        id="scMultiSelectDisplay_ME_${this.escHtml(col.key)}">
+                                        <span style="color:#555;font-size:0.78rem">
+                                            — ללא שינוי —
+                                        </span>
+                                    </span>
+                                    <i class="fas fa-chevron-down"
+                                    style="color:#555;font-size:0.65rem;flex-shrink:0"></i>
+                                </div>
+                                <div class="sc-multiselect-dropdown"
+                                    id="scMultiSelectDropdown_ME_${this.escHtml(col.key)}"
+                                    style="display:none">
+                                    ${options}
+                                </div>
+                                <input type="hidden"
+                                    id="scMEDynamic_${this.escHtml(col.key)}"
+                                    data-dynamic-key="${this.escHtml(col.key)}"
+                                    value=""/>
+                            </div>`;
+                        } else {
+                        inputHtml = `
+                            <input type="text"
+                                id="scMEDynamic_${this.escHtml(col.key)}"
+                                class="sc-edit-input"
+                                data-dynamic-key="${this.escHtml(col.key)}"
+                                placeholder="— ללא שינוי —"/>`;
+                    }
+                    
+                    html += `
+                    <div class="sc-edit-field sc-edit-field-wide">
+                        <label class="sc-edit-label">
+                            <i class="fas fa-tag"></i>
+                            ${this.escHtml(col.label || col.key)}
+                        </label>
+                        ${inputHtml}
+                    </div>`;
+                });
+                html += `</div>`;
+            }
+            
+            html += `</div>`;
+            return html;
+        })()}
 
         <!-- שורה 7: נדרש תיקוף -->
         <div class="sc-edit-row">
@@ -1301,6 +2666,38 @@ class SystemsCatalogDashboard {
 
             const vendor = getComboValue('scMEVendor', 'scMEVendorSelect');
             if (vendor) updates.supportVendor = vendor;
+
+            // ─── הוסף שדות דינמיים ───
+            if (this._serverColumnDefs) {
+                const builtInKeys = new Set([
+                    'number','name','nameEn','description','status',
+                    'systemManager','departmentManager','environment',
+                    'domain','department','team','businessDivision',
+                    'appClassification','appType','businessCriticality',
+                    'availabilityRequirement','publisher','supportVendor',
+                    'createdAt','hasAutomation','automationNote',
+                    'requiresValidation','buttons',
+                    'lastValidatedAt','lastValidationEmailSentAt'
+                ]);
+
+                this._serverColumnDefs
+                    .filter(col => !builtInKeys.has(col.key))
+                    // בלולאה שקוראת שדות דינמיים
+                    .forEach(col => {
+                        const input = document.getElementById(`scMEDynamic_${col.key}`);
+                        if (input) {
+                            // ── multiselect ──
+                            if (input.tagName === 'SELECT' && input.multiple) {
+                                const selected = [...input.selectedOptions].map(o => o.value);
+                                if (selected.length > 0) {
+                                    updates[col.key] = selected.join(', ');
+                                }
+                            } else if (input.value?.trim()) {
+                                updates[col.key] = input.value.trim();
+                            }
+                        }
+                    });
+            }
 
             const automationNote = document.getElementById('scMEAutomationNote')?.value?.trim();
             if (automationNote) updates.automationNote = automationNote;
@@ -1641,17 +3038,53 @@ class SystemsCatalogDashboard {
             { key: 'requiresValidation', id: 'scFltRequiresValidation', label: 'נדרש תיקוף', icon: 'fa-circle-check', default: 'הכל' }
         ];
 
-        return groups.map(g => `
+        let html = groups.map(g => `
             <div class="sc-filter-group" data-filter-key="${g.key}">
                 <label class="sc-filter-label">
                     <i class="fas ${g.icon}"
-                       style="color:#6366f1;font-size:0.7rem"></i>
+                    style="color:#6366f1;font-size:0.7rem"></i>
                     ${g.label}
                 </label>
                 <select id="${g.id}" class="sc-select">
                     <option value="all">${g.default}</option>
                 </select>
             </div>`).join('');
+
+        // ─── הוסף עמודות דינמיות ───
+        if (this._serverColumnDefs && this._serverColumnDefs.length > 0) {
+            const builtInFilterKeys = new Set([
+                'number','name','nameEn','status','domain','department',
+                'team','businessDivision','appClassification','appType',
+                'businessCriticality','availabilityRequirement','environment',
+                'publisher','supportVendor','systemManager','departmentManager',
+                'hasAutomation','requiresValidation','lastValidationEmailSentAt',
+                'createdAt','lastValidatedAt','buttons','description',
+                'automationNote'
+            ]);
+
+            this._serverColumnDefs.forEach(col => {
+                if (builtInFilterKeys.has(col.key)) return;
+                
+                const filterId = `scFltDyn_${col.key}`;
+                html += `
+                    <div class="sc-filter-group" data-filter-key="${col.key}">
+                        <label class="sc-filter-label">
+                            <i class="fas fa-tag" style="color:#6366f1;font-size:0.7rem"></i>
+                            ${this.escHtml(col.label || col.key)}
+                        </label>
+                        <select id="${filterId}" class="sc-select">
+                            <option value="all">הכל</option>
+                        </select>
+                    </div>`;
+
+                // אתחל פילטר אם לא קיים
+                if (!(col.key in this.filters)) {
+                    this.filters[col.key] = 'all';
+                }
+            });
+        }
+
+        return html;
     }
 
     renderContent() {
@@ -1678,6 +3111,66 @@ class SystemsCatalogDashboard {
         this._updateLastUpdate();
     }
 
+    // ══════════════════════════════════════════════════════════
+    // בנה מפת כל העמודות האפשריות (קשיחות + דינמיות מהשרת)
+    // ══════════════════════════════════════════════════════════
+    _buildAllColDefs() {
+        // ─── עמודות בסיסיות קשיחות עם רוחב מוגדר ───
+        const base = {
+            number: { label: 'מספר', width: '70px' },
+            name: { label: 'שם', width: '80px' },
+            nameEn: { label: 'שם אנגלית', width: '80px' },
+            description: { label: 'תיאור', width: '150px' },
+            status: { label: 'סטטוס', width: '50px' },
+            systemManager: { label: 'מנהל מערכת', width: '70px' },
+            departmentManager: { label: 'מנהל מחלקה', width: '70px' },
+            team: { label: 'צוות', width: '60px' },
+            department: { label: 'מחלקה', width: '60px' },
+            domain: { label: 'תחום', width: '60px' },
+            businessDivision: { label: 'אגף עסקי', width: '50px' },
+            appClassification: { label: 'סיווג', width: '70px' },
+            appType: { label: 'סוג', width: '70px' },
+            businessCriticality: { label: 'קריטיות', width: '75px' },
+            availabilityRequirement: { label: 'זמינות', width: '58px' },
+            environment: { label: 'סביבה', width: '60px' },
+            publisher: { label: 'מפרסם', width: '50px' },
+            supportVendor: { label: 'ספק', width: '50px' },
+            hasAutomation: { label: 'אוטומציה', width: '75px' },
+            automationNote: { label: 'הערת אוטומציה', width: '80px' },
+            createdAt: { label: 'נוצר', width: '68px' },
+            lastUpdated: { label: 'עודכן לאחרונה', width: '80px' },
+            updatedBy:   { label: 'עודכן ע"י', width: '80px' },
+            lastValidatedAt: { label: 'תיקוף אחרון', width: '68px' },
+            requiresValidation: { label: 'נדרש תיקוף', width: '65px' },
+            lastValidationEmailSentAt: { label: 'נשלח תיקוף', width: '66px' },
+            buttons: { label: '', width: '45px' },
+        };
+
+        // ─── הוסף עמודות דינמיות מהשרת שאינן בבסיס ───
+        if (this._serverColumnDefs && this._serverColumnDefs.length > 0) {
+            this._serverColumnDefs.forEach(col => {
+                if (!base[col.key]) {
+                    base[col.key] = {
+                        label: col.label || col.key,
+                        width: col.width ? `${col.width}px` : '80px',
+                    };
+                } else if (col.label) {
+                    // ─── עדכן label מהשרת אם קיים ───
+                    base[col.key].label = col.label;
+                }
+            });
+        }
+
+        return base;
+    }
+
+    _truncateText(text, maxLength = 10) {
+        if (!text) return '';
+        return text.length > maxLength
+            ? `${text.substring(0, maxLength)}...`
+            : text;
+    }
+
     renderTable() {
         const content = document.getElementById('scContent');
         if (!content) return;
@@ -1695,61 +3188,56 @@ class SystemsCatalogDashboard {
         }
 
         // ── הגדרת כל העמודות האפשריות ──
-        const allColDefs = {
-            number: { label: 'מספר', width: '70px' },
-            name: { label: 'שם', width: '80px' },
-            nameEn: { label: 'שם אנגלית', width: '80px' },
-            description: { label: 'תיאור', width: '200px' },
-            status: { label: 'סטטוס', width: '50px' },
-            systemManager: { label: 'מנהל מערכת', width: '70px' },
-            departmentManager: { label: 'מנהל מחלקה', width: '70px' },
-            team: { label: 'צוות', width: '60px' },
-            department: { label: 'מחלקה', width: '60px' },
-            domain: { label: 'תחום', width: '60px' },
-            businessDivision: { label: 'אגף עסקי', width: '50px' },
-            appClassification: { label: 'סיווג', width: '40px' },
-            appType: { label: 'סוג', width: '50px' },
-            businessCriticality: { label: 'קריטיות', width: '45px' },
-            availabilityRequirement: { label: 'זמינות', width: '48px' },
-            environment: { label: 'סביבה', width: '60px' },
-            publisher: { label: 'מפרסם', width: '50px' },
-            supportVendor: { label: 'ספק', width: '50px' },
-            hasAutomation: { label: 'אוטומציה', width: '55px' },
-            createdAt: { label: 'נוצר', width: '48px' },
-            lastValidatedAt: { label: 'תיקוף אחרון', width: '48px' },
-            requiresValidation: { label: 'נדרש תיקוף', width: '55px' },
-            buttons: { label: '', width: '45px' },
-        };
+        // ── הגדרת עמודות: בסיסיות + דינמיות מהשרת ──
+        const allColDefs = this._buildAllColDefs();
 
         // ── בנה רשימת עמודות לפי הסדר והנראות ──
         const cols = this.columnOrder
             .filter(key => this.visibleColumns[key] && allColDefs[key])
             .map(key => ({ key, ...allColDefs[key] }));
 
-        // ─── הוסף עמודת checkbox בתחילה ───
         // ─── הוסף עמודת checkbox רק לאדמין ───
-        if (this.isAdmin) {
+        if (this.isAdmin || this.canSendValidation) {
             cols.unshift({ key: '_select', label: '', width: '36px' });
         }
 
-        const filterableColumns = {
-            'name': 'name',
-            'nameEn': 'nameEn',
-            'status': 'status',
-            'systemManager': 'systemManager',
-            'departmentManager': 'departmentManager',
-            'team': 'team',
-            'department': 'department',
-            'domain': 'domain',
-            'businessDivision': 'businessDivision',
-            'appClassification': 'appClassification',
-            'appType': 'appType',
-            'businessCriticality': 'businessCriticality',
-            'availabilityRequirement': 'availabilityRequirement',
-            'environment': 'environment',
-            'publisher': 'publisher',
-            'supportVendor': 'supportVendor',
-        };
+       const filterableColumns = {
+        'name': 'name',
+        'nameEn': 'nameEn',
+        'status': 'status',
+        'systemManager': 'systemManager',
+        'departmentManager': 'departmentManager',
+        'team': 'team',
+        'department': 'department',
+        'domain': 'domain',
+        'businessDivision': 'businessDivision',
+        'appClassification': 'appClassification',
+        'appType': 'appType',
+        'businessCriticality': 'businessCriticality',
+        'availabilityRequirement': 'availabilityRequirement',
+        'environment': 'environment',
+        'publisher': 'publisher',
+        'supportVendor': 'supportVendor',
+    };
+
+    // ─── הוסף עמודות דינמיות ───
+    if (this._serverColumnDefs) {
+        const builtInKeys = new Set(Object.keys(filterableColumns));
+        this._serverColumnDefs.forEach(col => {
+            if (!builtInKeys.has(col.key) && 
+                col.key !== 'buttons' && 
+                col.key !== 'number' &&
+                col.key !== 'description' &&
+                col.key !== 'automationNote' &&
+                col.key !== 'createdAt' &&
+                col.key !== 'lastValidatedAt' &&
+                col.key !== 'lastValidationEmailSentAt' &&
+                col.key !== 'requiresValidation' &&
+                col.key !== 'hasAutomation') {
+                filterableColumns[col.key] = col.key;
+            }
+        });
+    }
 
         const headerHtml = cols.map(c => {
             const isFilterable = !!filterableColumns[c.key];
@@ -1758,7 +3246,7 @@ class SystemsCatalogDashboard {
 
             // ─── עמודת checkbox ───
             if (c.key === '_select') {
-                if (!this.isAdmin) return `<th class="srv-th srv-th-select" style="min-width:0px;width:0px"></th>`;
+                if (!this.isAdmin && !this.canSendValidation) return `<th class="srv-th srv-th-select" style="min-width:0px;width:0px"></th>`;
 
                 const allSelected = page.length > 0 &&
                     page.every(s => this.selectedSystems.has(s.id));
@@ -1768,6 +3256,20 @@ class SystemsCatalogDashboard {
         <input type="checkbox" class="sc-cb sc-cb-all"
                ${allSelected ? 'checked' : ''}
                title="בחר הכל">
+    </th>`;
+            }
+            if (c.key === 'number') {
+                return `
+    <th class="sc-th sc-th-sticky-num ${this.sortColumn === 'number' ? 'sorted' : ''}"
+        data-col="number"
+        style="min-width:${c.width};position:sticky;right:0;z-index:25;
+               background:#1a1a2e">
+        <div class="sc-th-content">
+            <span class="sc-th-label">מספר</span>
+            ${this.sortColumn === 'number'
+                        ? `<i class="fas fa-sort-${this.sortDirection === 'asc' ? 'up' : 'down'} sc-th-sort-icon"></i>`
+                        : '<i class="fas fa-sort sc-sort-icon-dim"></i>'}
+        </div>
     </th>`;
             }
 
@@ -1836,33 +3338,33 @@ class SystemsCatalogDashboard {
                     case '_select':
                         return `
     <td class="sc-td sc-td-select">
-        ${this.isAdmin ? `<input type="checkbox" class="sc-cb sc-cb-row"
+        ${this.isAdmin || this.canSendValidation ? `<input type="checkbox" class="sc-cb sc-cb-row"
             data-id="${this.escHtml(s.id)}"
             ${isSelected ? 'checked' : ''}>` : ''}
     </td>`;
 
                     case 'number':
                         return `
-                <td class="sc-td sc-td-center sc-td-number">
-                    <span class="sc-catalog-num-link"
-                        data-id="${this.escHtml(s.id || '')}"
-                        title="${this.isAdmin
+                    <td class="sc-td sc-td-center sc-td-number sc-td-sticky-num">
+                        <span class="sc-catalog-num-link"
+                            data-id="${this.escHtml(s.id || '')}"
+                            title="${this.isAdmin || this.canSendValidation
                                 ? 'לחץ לעריכת מערכת'
                                 : 'לחץ לצפייה בפרטי מערכת'}">
-                        ${this.escHtml(String(s.number || ''))}
-                    </span>
-                </td>`;
+                            ${this.escHtml(String(s.number || ''))}
+                        </span>
+                    </td>`;
 
                     case 'name':
                         return `
-                <td class="sc-td sc-td-name"
+                <td class="sc-td sc-td-truncate sc-td-name"
                     title="${this.escHtml(s.name || '')}">
                     ${this.escHtml(s.name || '')}
                 </td>`;
 
                     case 'nameEn':
                         return `
-                <td class="sc-td sc-td-truncate" dir="ltr"
+                <td class="sc-td sc-td-truncate sc-td-name" dir="ltr"
                     title="${this.escHtml(s.nameEn || '')}">
                     ${this.escHtml(s.nameEn || '')}
                 </td>`;
@@ -1963,9 +3465,9 @@ class SystemsCatalogDashboard {
                     case 'environment':
                         return `
                 <td class="sc-td sc-td-center sc-td-truncate"
-                    style="direction:ltr">
+                    style="direction:ltr" title="${this.escHtml(s.environment || '')}">
                     <span class="sc-badge ${envClass}">
-                        ${this.escHtml(s.environment || '')}
+                        ${this._truncateText(this.escHtml(s.environment || ''), 10)}
                     </span>
                 </td>`;
 
@@ -2027,23 +3529,60 @@ class SystemsCatalogDashboard {
                                     —
                                 </span>`}
                         </td>`;
+                    case 'lastValidationEmailSentAt':
+                        return `
+                        <td class="sc-td sc-td-center sc-td-date"
+                            title="${this._formatDateIL(s.lastValidationEmailSentAt || '')}">
+                            <span class="sc-date-text ${s.lastValidationEmailSentAt
+                                ? 'sc-validated-date' : 'sc-not-validated'}">
+                                ${s.lastValidationEmailSentAt
+                                ? this._formatDateIL(s.lastValidationEmailSentAt)
+                                : '—'}
+                            </span>
+                        </td>`;
+
                     case 'buttons':
                         return `
                 <td class="sc-td sc-td-center sc-td-servers">
+                    ${(this.isAdmin || this.isNoc) ? `
                     <button class="sc-view-servers-btn"
                             data-system-name="${this.escHtml(s.name || '')}"
                             title="צפה בשרתים של: ${this.escHtml(s.name || '')}">
                         <i class="fas fa-server"></i>
-                    </button>
-                    ${(this.isAdmin || this.isAutomationOnly) ? `
+                    </button>` : ''}
+                    ${(this.isAdmin || this.canSendValidation || this.isAutomationOnly) ? `
                     <button class="sc-row-edit-btn"
                             data-id="${this.escHtml(s.id || '')}"
-                            title="${this.isAdmin ? 'ערוך מערכת' : 'ערוך אוטומציה'}">
-                        <i class="fas ${this.isAdmin ? 'fa-edit' : 'fa-robot'}"></i>
+                            title="${this.isAdmin || this.canSendValidation ? 'ערוך מערכת' : 'ערוך אוטומציה'}">
+                        <i class="fas ${this.isAdmin || this.canSendValidation ? 'fa-edit' : 'fa-robot'}"></i>
                     </button>` : ''}
                 </td>`;
-                    default:
-                        return `<td class="sc-td"></td>`;
+                case 'lastUpdated':
+                    return `
+                <td class="sc-td sc-td-center sc-td-date"
+                    title="${this._formatDateIL(s.lastUpdated || '')}">
+                    <span class="sc-date-text ${s.lastUpdated ? 'sc-validated-date' : 'sc-not-validated'}">
+                        ${s.lastUpdated
+                            ? this._formatDateIL(s.lastUpdated)
+                            : '—'}
+                    </span>
+                </td>`;
+
+                case 'updatedBy':
+                    return `
+                <td class="sc-td sc-td-truncate"
+                    title="${this.escHtml(s.updatedBy || '')}">
+                    ${this.escHtml(s.updatedBy || '')}
+                </td>`;
+                    default: {
+                        // ─── חפש ערך בכל המקומות האפשריים ───
+                        const dynVal = this._getDynamicFieldValue(s, c.key);
+                        return `
+                        <td class="sc-td sc-td-truncate"
+                            title="${this.escHtml(String(dynVal))}">
+                            ${this.escHtml(String(dynVal))}
+                        </td>`;
+                    }
                 }
             }).join('');
 
@@ -2055,17 +3594,26 @@ class SystemsCatalogDashboard {
         }).join('');
 
         const colgroupHtml = cols.map(c =>
-            `<col style="width:${c.width};min-width:${c.width}">`
+            `<col class="${c.key === 'number' ? 'sc-col-sticky-num' : ''}" 
+          style="width:${c.width};min-width:${c.width}">`
         ).join('');
 
         content.innerHTML = `
-        <table class="sc-table">
-            <colgroup>${colgroupHtml}</colgroup>
-            <thead><tr>${headerHtml}</tr></thead>
-            <tbody id="scTbody">${rowsHtml}</tbody>
-        </table>`;
+    <table class="sc-table" style="min-width:max-content">
+        <colgroup>${colgroupHtml}</colgroup>
+        <thead><tr>${headerHtml}</tr></thead>
+        <tbody id="scTbody">${rowsHtml}</tbody>
+    </table>`;
 
         this.renderPagination(total, pages);
+
+        // ─── גלול לקצה הימני (עמודת מספר קטלוג) ───
+        requestAnimationFrame(() => {
+            const wrapper = document.querySelector('.sc-scroll-wrapper');
+            if (wrapper) {
+                wrapper.scrollLeft = wrapper.scrollWidth;
+            }
+        });
     }
 
     // ══════════════════════════════════════════════════════════
@@ -2084,15 +3632,27 @@ class SystemsCatalogDashboard {
         const isOpen = popup.style.display !== 'none';
         if (isOpen) {
             popup.style.display = 'none';
+            this._openFilterPopupKey = null;
             return;
         }
 
+        this._openFilterPopupKey = colKey;
         popup.innerHTML = this._buildColumnFilterContent(colKey);
         popup.style.display = 'block';
 
         const searchInput = popup.querySelector('.sc-col-filter-search');
         if (searchInput) {
             setTimeout(() => searchInput.focus(), 50);
+        }
+    }
+
+    _restoreOpenFilterPopup() {
+        if (!this._openFilterPopupKey) return;
+        const colKey = this._openFilterPopupKey;
+        const popup = document.getElementById(`scThFilter_${colKey}`);
+        if (popup) {
+            popup.style.display = 'block';
+            popup.innerHTML = this._buildColumnFilterContent(colKey);
         }
     }
 
@@ -2119,17 +3679,36 @@ class SystemsCatalogDashboard {
         const isSortedHere = this.sortColumn === colKey;
         const sortDir = this.sortDirection;
 
-        const uniqueValues = [...new Set(
-            this.allSystems
-                .map(s => s[colKey])
-                .filter(v => v !== null && v !== undefined && v !== '')
-        )].sort((a, b) => String(a).localeCompare(String(b), 'he'));
+        const colDef = this._serverColumnDefs?.find(c => c.key === colKey);
+        const isMultiSelect = colDef?.fieldType === 'multiselect';
 
-        const emptyCount = this.allSystems.filter(
-            s => s[colKey] === null ||
-                s[colKey] === undefined ||
-                s[colKey] === ''
-        ).length;
+    // ─── שנה: השתמש ב-_getDynamicFieldValue לשדות דינמיים ───
+        const getValue = (s) => {
+            const direct = s[colKey];
+            if (direct !== undefined && direct !== null && direct !== '') {
+                return String(direct);
+            }
+            // ─── נסה גישה דינמית ───
+            return this._getDynamicFieldValue(s, colKey);
+        };
+
+        const uniqueValues = isMultiSelect
+            ? [...new Set(
+                this.allSystems.flatMap(s => {
+                    const raw = getValue(s);
+                    return raw ? raw.split(',').map(v => v.trim()).filter(Boolean) : [];
+                })
+            )].sort((a, b) => String(a).localeCompare(String(b), 'he'))
+            : [...new Set(
+                this.allSystems
+                    .map(s => getValue(s))
+                    .filter(v => v !== null && v !== undefined && v !== '')
+            )].sort((a, b) => String(a).localeCompare(String(b), 'he'));
+
+        const emptyCount = this.allSystems.filter(s => {
+            const v = getValue(s);
+            return !v || v === '';
+        }).length;
 
         const sortIndicator = isSortedHere ? `
     <div class="sc-col-sort-indicator">
@@ -2138,10 +3717,10 @@ class SystemsCatalogDashboard {
         <button class="sc-col-sort-flip-btn"
                 title="הפוך כיוון מיון"
                 onclick="event.stopPropagation();
-                         window._scDashboard._applyColumnSort(
-                             '${colKey}',
-                             '${sortDir === 'asc' ? 'desc' : 'asc'}'
-                         )">
+                        window._scDashboard._applyColumnSort(
+                            '${colKey}',
+                            '${sortDir === 'asc' ? 'desc' : 'asc'}'
+                        )">
             <i class="fas fa-exchange-alt"></i>
         </button>
     </div>
@@ -2150,48 +3729,82 @@ class SystemsCatalogDashboard {
         const isSearchable = uniqueValues.length > 5;
         const searchHtml = isSearchable
             ? `<div class="sc-col-filter-search-wrap">
-           <i class="fas fa-search sc-col-filter-search-icon"></i>
-           <input type="text"
-                  class="sc-col-filter-search"
-                  placeholder="חפש..."
-                  oninput="window._scDashboard
-                               ._filterColumnOptions(this, '${colKey}')"/>
-       </div>`
+        <i class="fas fa-search sc-col-filter-search-icon"></i>
+        <input type="text"
+                class="sc-col-filter-search"
+                placeholder="חפש..."
+                oninput="window._scDashboard
+                            ._filterColumnOptions(this, '${colKey}')"/>
+    </div>`
             : '';
 
-        const buildOption = (value, label, isActive, count) => {
+        const selectedSet = this._getSelectedSet(colKey);
+
+        const buildOption = (value, label, count) => {
+            const isAll = value === 'all';
+
+            const isAllDeselected = this._allDeselectedCols?.[colKey];
+            let checked;
+            if (isAll) {
+                checked = selectedSet.size === 0 && !isAllDeselected;
+            } else {
+                // אם "הכל בוטל" - אף אחד לא מסומן
+                if (isAllDeselected) {
+                    checked = false;
+                } else {
+                    checked = selectedSet.size === 0 || selectedSet.has(value);
+                }
+            }
+
+            const isIndeterminate = isAll && selectedSet.size > 0 &&
+                selectedSet.size < uniqueValues.length;
+
             return `
         <div class="sc-col-filter-option
-                    ${isActive ? 'sc-col-filter-option-active' : ''}"
-             data-value="${this.escHtml(String(value))}"
-             onclick="window._scDashboard
-                          ._applyColumnFilter('${colKey}',
-                              '${this.escHtml(String(value))}')">
-            ${isActive
-                    ? '<i class="fas fa-check sc-col-filter-check"></i>'
-                    : '<i class="fas fa-circle sc-col-filter-dot"></i>'}
+                    ${checked && !isIndeterminate ? 'sc-col-filter-option-active' : ''}
+                    ${isAll ? 'sc-col-filter-option-all' : ''}"
+            data-value="${this.escHtml(String(value))}"
+            onclick="event.stopPropagation();window._scDashboard
+                        ._toggleColumnFilterValue('${colKey}',
+                            '${this.escHtml(String(value))}')">
+            <input type="checkbox"
+                class="sc-col-filter-cb ${isAll ? 'sc-col-filter-cb-all' : ''}"
+                data-col="${colKey}"
+                ${checked ? 'checked' : ''}
+                ${isIndeterminate ? 'data-indeterminate="true"' : ''}
+                onclick="event.stopPropagation()"
+                onchange="event.stopPropagation();window._scDashboard
+                    ._toggleColumnFilterValue('${colKey}',
+                        '${this.escHtml(String(value))}')"
+                style="accent-color:#6366f1;width:13px;height:13px;
+                        cursor:pointer;flex-shrink:0">
             <span class="sc-col-filter-option-label">
                 ${this.escHtml(String(label || value || '— ריק —'))}
             </span>
-            <span class="sc-col-filter-option-count">${count}</span>
+            <span class="sc-col-filter-option-count">
+                ${count}
+            </span>
         </div>`;
         };
 
-        const allOption = buildOption(
-            'all', 'הכל', currentVal === 'all', this.allSystems.length
-        );
+        const multiControlsHtml = uniqueValues.length > 1 ? `
+<div class="sc-col-filter-multi-controls">
+    <span class="sc-col-filter-sel-count">
+        ${selectedSet.size > 0 ? selectedSet.size + ' נבחרו' : ''}
+    </span>
+</div>` : '';
+
+        const allOption = buildOption('all', 'הכל', this.allSystems.length);
 
         const optionsHtml = uniqueValues
             .map(v => buildOption(
                 v, v,
-                currentVal === v,
                 this._countForFilter(colKey, v)
             )).join('');
 
         const emptyOption = emptyCount > 0
             ? buildOption(
                 '__empty__', '— ריק —',
-                currentVal === '__empty__',
                 emptyCount
             )
             : '';
@@ -2199,16 +3812,29 @@ class SystemsCatalogDashboard {
         const clearBtn = currentVal !== 'all'
             ? `<div class="sc-col-filter-clear"
             onclick="window._scDashboard
-                         ._applyColumnFilter('${colKey}', 'all')">
-           <i class="fas fa-times"></i>
-           נקה פילטר
-       </div>`
+                        ._applyColumnFilter('${colKey}', 'all')">
+            <i class="fas fa-times"></i>
+            נקה פילטר
+        </div>`
             : '';
+
+        setTimeout(() => {
+            const allCb = document.querySelector(
+                `#scThFilter_${colKey} .sc-col-filter-cb-all`
+            );
+            if (allCb) {
+                const total = uniqueValues.length;
+                const selCount = selectedSet.size;
+                allCb.indeterminate = selCount > 0 && selCount < total;
+                allCb.checked = selCount === 0;
+            }
+        }, 0);
 
         return `
     <div class="sc-col-filter-inner">
         ${sortIndicator}
         ${searchHtml}
+        ${multiControlsHtml}
         <div class="sc-col-filter-options" id="scColOpts_${colKey}">
             ${allOption}
             ${optionsHtml}
@@ -2224,29 +3850,252 @@ class SystemsCatalogDashboard {
     _countForFilter(colKey, value) {
         if (value === 'all') return this.allSystems.length;
 
+        const colDef = this._serverColumnDefs?.find(c => c.key === colKey);
+        const isMultiSelect = colDef?.fieldType === 'multiselect';
+
+        // ─── עזר ───
+        const getValue = (s) => {
+            const direct = s[colKey];
+            if (direct !== undefined && direct !== null && direct !== '') {
+                return String(direct);
+            }
+            return this._getDynamicFieldValue(s, colKey);
+        };
+
         if (value === '__empty__') {
-            return this.allSystems.filter(s =>
-                !s[colKey] || String(s[colKey]).trim() === ''
-            ).length;
+            return this.allSystems.filter(s => {
+                const v = getValue(s);
+                return !v || v.trim() === '';
+            }).length;
         }
 
-        return this.allSystems.filter(s =>
-            (s[colKey] || '') === value
-        ).length;
+        if (isMultiSelect) {
+            return this.allSystems.filter(s => {
+                const raw = getValue(s);
+                return raw ? raw.split(',').map(v => v.trim()).includes(value) : false;
+            }).length;
+        }
+
+        return this.allSystems.filter(s => getValue(s) === value).length;
     }
 
     // ══════════════════════════════════════════════════════════
     // החל פילטר מהכותרת
     // ══════════════════════════════════════════════════════════
     _applyColumnFilter(colKey, value) {
-        this.filters[colKey] = value;
+        if (value === 'all') {
+            this.filters[colKey] = 'all';
+            if (this._allDeselectedCols) this._allDeselectedCols[colKey] = false;
+        } else {
+            this.filters[colKey] = value;
+        }
         this._savePreferences();
         this.applyFiltersAndSort();
-        this.renderContent();
+
+        // ─── רנדר תמיד (לא רק _updateTableRowsOnly) ───
+        if (document.getElementById('scTbody')) {
+            this._updateTableRowsOnly();
+        } else {
+            this.renderContent();
+        }
+
         this.updateStats();
+        this._updateFilterCounter();
 
         const popup = document.getElementById(`scThFilter_${colKey}`);
-        if (popup) popup.style.display = 'none';
+        if (popup && popup.style.display !== 'none') {
+            popup.innerHTML = this._buildColumnFilterContent(colKey);
+        }
+    }
+
+    // ─── קבל Set של ערכים נבחרים ───────────────────────────────────
+    _getSelectedSet(colKey) {
+        const val = this.filters[colKey];
+        if (!val || val === 'all') return new Set();
+        if (val instanceof Set) return new Set(val); // ← העתק, לא reference
+        // ערך בודד ישן - המר ל-Set
+        return new Set([val]);
+    }
+
+    // ─── Toggle ערך בפילטר עמודה (multi-select) ────────────────────
+    _toggleColumnFilterValue(colKey, value) {
+
+        if (value === 'all') {
+            const selected = this._getSelectedSet(colKey);
+            const isAllDeselected = this._allDeselectedCols?.[colKey];
+
+            if (selected.size === 0 && !isAllDeselected) {
+                // ─── כבר "הכל" - בטל ויזואלית (בחר/בטל הכל) ───
+                const popup = document.getElementById(`scThFilter_${colKey}`);
+                if (popup) {
+                    const checkboxes = popup.querySelectorAll(
+                        '.sc-col-filter-cb:not(.sc-col-filter-cb-all)'
+                    );
+                    const allUnchecked = [...checkboxes].every(cb => !cb.checked);
+
+                    checkboxes.forEach(cb => {
+                        cb.checked = allUnchecked;
+                        cb.closest('.sc-col-filter-option')
+                        ?.classList.toggle('sc-col-filter-option-active', allUnchecked);
+                    });
+
+                    const allCb = popup.querySelector('.sc-col-filter-cb-all');
+                    if (allCb) {
+                        allCb.checked = allUnchecked;
+                        allCb.indeterminate = false;
+                        allCb.closest('.sc-col-filter-option')
+                            ?.classList.toggle('sc-col-filter-option-active', allUnchecked);
+                    }
+
+                    if (!this._allDeselectedCols) this._allDeselectedCols = {};
+                    this._allDeselectedCols[colKey] = !allUnchecked;
+
+                    const selCount = popup.querySelector('.sc-col-filter-sel-count');
+                    if (selCount) selCount.textContent = '';
+                }
+
+                // ─── תמיד סנן גם כשלוחצים על "הכל" ───
+                this.filters[colKey] = 'all';
+                this._savePreferences();
+                this.applyFiltersAndSort();
+                this._updateTableRowsOnly();
+                this.updateStats();
+                this._updateFilterCounter();
+                return;
+            }
+
+            // ─── יש בחירות ספציפיות - נקה ל-all ───
+            this.filters[colKey] = 'all';
+            if (this._allDeselectedCols) this._allDeselectedCols[colKey] = false;
+
+        } else {
+            const selected = this._getSelectedSet(colKey);
+            const isAllDeselected = this._allDeselectedCols?.[colKey];
+
+            if (selected.size === 0 && !isAllDeselected) {
+                // ─── מצב "הכל מסומן" - בטל ערך ספציפי ───
+                const allValues = this._getAllFilterValues(colKey);
+                const newSet = new Set(allValues.filter(v => v !== value));
+                this.filters[colKey] = newSet.size === 0 ? 'all' : newSet;
+
+            } else if (selected.size === 0 && isAllDeselected) {
+                // ─── מצב "הכל בוטל ויזואלית" - בחר רק אותו ───
+                const newSet = new Set([value]);
+                this.filters[colKey] = newSet;
+                if (this._allDeselectedCols) this._allDeselectedCols[colKey] = false;
+
+            } else if (selected.has(value)) {
+                // ─── הערך מסומן - הסר ───
+                const newSet = new Set(selected);
+                newSet.delete(value);
+                this.filters[colKey] = newSet.size === 0 ? 'all' : newSet;
+
+            } else {
+                // ─── הערך לא מסומן - הוסף ───
+                const newSet = new Set(selected);
+                newSet.add(value);
+                const allValues = this._getAllFilterValues(colKey);
+                this.filters[colKey] = newSet.size >= allValues.length ? 'all' : newSet;
+            }
+        }
+
+        // ─── החל פילטר ───
+        this._savePreferences();
+        this.applyFiltersAndSort();
+        this.updateStats();
+        this._updateFilterCounter();
+        this._updateTableRowsOnly();
+
+        // ─── עדכן popup in-place ───
+        const popup = document.getElementById(`scThFilter_${colKey}`);
+        if (popup && popup.style.display !== 'none') {
+            const scrollTop =
+                popup.querySelector('.sc-col-filter-options')?.scrollTop || 0;
+            const searchVal =
+                popup.querySelector('.sc-col-filter-search')?.value || '';
+
+            popup.innerHTML = this._buildColumnFilterContent(colKey);
+
+            const optsList = popup.querySelector('.sc-col-filter-options');
+            if (optsList) optsList.scrollTop = scrollTop;
+
+            const searchInput = popup.querySelector('.sc-col-filter-search');
+            if (searchInput) {
+                searchInput.value = searchVal;
+                if (searchVal) this._filterColumnOptions(searchInput, colKey);
+                searchInput.focus();
+            }
+        }
+    }
+
+    // ─── קבל את כל הערכים האפשריים לפילטר עמודה ───────────────────
+    _getAllFilterValues(colKey) {
+        const colDef = this._serverColumnDefs?.find(c => c.key === colKey);
+        const isMultiSelect = colDef?.fieldType === 'multiselect';
+
+        let values;
+
+        if (isMultiSelect) {
+            // ─── פצל ערכי multiselect לפריטים בודדים ───
+            const allValues = new Set();
+            this.allSystems.forEach(s => {
+                const raw = s[colKey] || '';
+                if (raw) {
+                    raw.split(',').map(v => v.trim()).filter(Boolean)
+                    .forEach(v => allValues.add(v));
+                }
+            });
+            values = [...allValues].sort((a, b) =>
+                String(a).localeCompare(String(b), 'he')
+            );
+        } else {
+            values = [...new Set(
+                this.allSystems
+                    .map(s => s[colKey])
+                    .filter(v => v !== null && v !== undefined && v !== '')
+            )];
+        }
+
+        const hasEmpty = this.allSystems.some(
+            s => s[colKey] === null || s[colKey] === undefined || s[colKey] === ''
+        );
+        if (hasEmpty) values.push('__empty__');
+
+        return values;
+    }
+
+    // ─── בחר הכל בפילטר עמודה ──────────────────────────────────────
+    _selectAllColumnFilter(colKey) {
+        const popup = document.getElementById(`scThFilter_${colKey}`);
+        const scrollTop =
+            popup?.querySelector('.sc-col-filter-options')?.scrollTop || 0;
+
+        this.filters[colKey] = 'all';
+        this._savePreferences();
+        this.applyFiltersAndSort();
+        this.updateStats();
+        this._updateFilterCounter();
+        this._updateTableRowsOnly();
+
+        if (popup && popup.style.display !== 'none') {
+            popup.innerHTML = this._buildColumnFilterContent(colKey);
+            const optsList = popup.querySelector('.sc-col-filter-options');
+            if (optsList) optsList.scrollTop = scrollTop;
+        }
+    }
+
+    // ─── נקה פילטר עמודה ───────────────────────────────────────────
+    _clearColumnFilter(colKey) {
+        this._selectAllColumnFilter(colKey);
+    }
+
+    // ─── המר ערך פילטר למחרוזת תצוגה ──────────────────────────────
+    _filterValToString(val) {
+        if (!val || val === 'all') return '';
+        if (val instanceof Set) {
+            return [...val].join(', ');
+        }
+        return String(val);
     }
 
     // ══════════════════════════════════════════════════════════
@@ -2280,6 +4129,27 @@ class SystemsCatalogDashboard {
         if (!dateStr) return '';
         // חתוך הכל אחרי הרווח הראשון (מסיר שעה)
         return dateStr.split(' ')[0];
+    }
+
+    _formatDateIL(dateStr) {
+        if (!dateStr) return '';
+
+        const str = String(dateStr).trim();
+
+        // פורמט ISO: 2026-09-08 או 2026-09-08 14:30
+        const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:\s+(\d{2}:\d{2}))?/);
+        if (isoMatch) {
+            const [, year, month, day, time] = isoMatch;
+            return `${day}/${month}/${year}`;
+        }
+
+        // פורמט ישראלי כבר: 23/08/2026
+        if (/^\d{2}\/\d{2}\/\d{4}/.test(str)) {
+            return str.split(' ')[0];
+        }
+
+        // fallback - השתמש ב-_stripTime
+        return this._stripTime(str);
     }
 
     renderCards() {
@@ -2381,11 +4251,17 @@ class SystemsCatalogDashboard {
                     <div class="sc-card-automation">
                         ${this._renderAutomationBadge(s.hasAutomation, s.automationNote)}
                     </div>` : ''}
+                    ${(this.isAdmin || this.isNoc) ? `
+                    <button class="sc-view-servers-btn sc-card-servers-btn"
+                            data-system-name="${this.escHtml(s.name || '')}"
+                            title="צפה בשרתים של: ${this.escHtml(s.name || '')}">
+                        <i class="fas fa-server"></i>
+                    </button>` : ''}
                     ${(this.isAdmin || this.isAutomationOnly) ? `
                     <button class="sc-row-edit-btn sc-card-edit-btn"
                             data-id="${this.escHtml(s.id || '')}"
-                            title="${this.isAdmin ? 'ערוך מערכת' : 'ערוך אוטומציה'}">
-                        <i class="fas ${this.isAdmin ? 'fa-edit' : 'fa-robot'}"></i>
+                            title="${this.isAdmin || this.canSendValidation ? 'ערוך מערכת' : 'ערוך אוטומציה'}">
+                        <i class="fas ${this.isAdmin || this.canSendValidation ? 'fa-edit' : 'fa-robot'}"></i>
                     </button>` : ''}
                 </div>
             </div>`;
@@ -2414,8 +4290,14 @@ class SystemsCatalogDashboard {
         const s = this.allSystems;
         const total = s.length;
 
-        const active = s.filter(x => x.status === 'פעילה').length;
-        const inactive = s.filter(x => x.status === 'לא פעילה').length;
+        const active = s.filter(x =>
+            ['פעילה', 'בהקמה', 'פיילוט'].includes(x.status) ||
+            !x.status
+        ).length;
+
+        const inactive = s.filter(x =>
+            ['מבוטלת', 'לא פעילה'].includes(x.status)
+        ).length;
 
         const byStatus = this._groupBy(s, x => x.status || 'לא ידוע');
         const byDomain = this._groupBy(s, x => x.domain || 'לא ידוע');
@@ -2550,15 +4432,50 @@ class SystemsCatalogDashboard {
 
         const s = this.allSystems;
         const total = s.length;
+        const active = s.filter(x =>
+            ['פעילה', 'בהקמה', 'פיילוט'].includes(x.status) ||
+            !x.status
+        ).length;
         const f = this.filters;
+
+        // ─── פונקציה לקבלת ערכים ייחודיים עם תמיכה ב-multiselect ───
+        const getUniqueForPill = (field) => {
+            const colDef = this._serverColumnDefs?.find(c => c.key === field);
+            const isMultiSelect = colDef?.fieldType === 'multiselect';
+
+            if (isMultiSelect) {
+                return [...new Set(
+                    this.allSystems.flatMap(sys => {
+                        const raw = sys[field] || '';
+                        return raw
+                            ? raw.split(',').map(v => v.trim()).filter(Boolean)
+                            : [];
+                    })
+                )].sort((a, b) => String(a).localeCompare(String(b), 'he'));
+            }
+
+            return [...new Set(
+                this.allSystems
+                    .map(sys => sys[field])
+                    .filter(v => v && String(v).trim() !== '')
+            )].sort((a, b) => String(a).localeCompare(String(b), 'he'));
+        };
 
         // ─── פונקציה ליצירת pill עם מחזוריות ערכים ───
         const cyclePill = (filterKey, label, color, icon, values) => {
             const currentValue = f[filterKey] || 'all';
-            const isActive = currentValue !== 'all';
 
-            // ── קבע צבע לפי מצב תצוגה ──
-            const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+            const isSet = currentValue instanceof Set;
+            const isActive = isSet
+                ? currentValue.size > 0
+                : currentValue !== 'all';
+
+            const displayValue = isSet
+                ? `${currentValue.size} נבחרו`
+                : currentValue;
+
+            const isLight = document.documentElement
+                .getAttribute('data-theme') === 'light';
             const lightColorMap = {
                 '#86efac': '#16a34a',
                 '#fca5a5': '#dc2626',
@@ -2567,65 +4484,112 @@ class SystemsCatalogDashboard {
                 '#fcd34d': '#b45309',
                 '#93c5fd': '#1d4ed8',
             };
-            const activeColor = isLight ? (lightColorMap[color] || color) : color;
+            const activeColor = isLight
+                ? (lightColorMap[color] || color)
+                : color;
+
+            if (isSet) {
+                return `
+            <div class="sc-stat-pill sc-stat-pill-clickable sc-stat-pill-active"
+                style="color:${activeColor};border-color:${activeColor}33"
+                title="פילטר פעיל: ${displayValue} — לחץ לניקוי"
+                onclick="
+                    window._scDashboard.filters['${filterKey}'] = 'all';
+                    window._scDashboard._restoreFilterSelects();
+                    window._scDashboard._savePreferences();
+                    window._scDashboard.applyFiltersAndSort();
+                    window._scDashboard.renderContent();
+                    window._scDashboard.updateStats();
+                ">
+                <i class="${icon}"></i>
+                <span>${label}: ${displayValue}</span>
+                <i class="fas fa-times sc-stat-pill-clear"
+                style="pointer-events:none"></i>
+            </div>`;
+            }
 
             const currentIndex = values.indexOf(currentValue);
             const nextIndex = (currentIndex + 1) % values.length;
-            const nextValue = values[nextIndex];
 
-            // ספירה לערך הנוכחי
+            // ─── ספירה עם תמיכה ב-multiselect ───
             let count = 0;
             if (currentValue !== 'all') {
-                count = s.filter(sys => {
+                const colDef = this._serverColumnDefs?.find(
+                    c => c.key === filterKey
+                );
+                const isMultiSelect = colDef?.fieldType === 'multiselect';
+
+                count = this.allSystems.filter(sys => {
                     const val = sys[filterKey] || '';
+                    if (isMultiSelect) {
+                        return val.split(',')
+                            .map(v => v.trim())
+                            .includes(currentValue);
+                    }
                     return val === currentValue;
                 }).length;
             }
 
             return `
-        <div class="sc-stat-pill sc-stat-pill-clickable
-                    ${isActive ? 'sc-stat-pill-active' : ''}"
-            data-filter-key="${filterKey}"
-            data-values='${JSON.stringify(values)}'
-            style="color:${activeColor};border-color:${activeColor}33"
-            title="${label}${isActive ? ': ' + currentValue : ''} (לחץ למחזור)">
-            <i class="${icon}"></i>
-            <span>${label}${isActive ? ': ' + currentValue : ''}</span>
-            ${isActive ? `<span class="sc-stat-pill-count">${count}</span>` : ''}
-            ${isActive ? `<i class="fas fa-times sc-stat-pill-clear"
-                            data-filter-key="${filterKey}"></i>` : ''}
-        </div>`;
+            <div class="sc-stat-pill sc-stat-pill-clickable
+                        ${isActive ? 'sc-stat-pill-active' : ''}"
+                data-filter-key="${filterKey}"
+                data-values='${JSON.stringify(values)}'
+                style="color:${activeColor};border-color:${activeColor}33"
+                title="${isActive
+                    ? `פילטר פעיל: ${displayValue} — לחץ למצב הבא`
+                    : `לחץ לסינון לפי ${label}`}">
+                <i class="${icon}"></i>
+                <span>${label}${isActive ? ': ' + displayValue : ''}</span>
+                ${isActive
+                    ? `<span class="sc-stat-pill-count">${count}</span>`
+                    : ''}
+                ${isActive
+                    ? `<i class="fas fa-times sc-stat-pill-clear"
+                        data-filter-key="${filterKey}"
+                        title="נקה פילטר"></i>`
+                    : ''}
+            </div>`;
         };
 
-        // ─── הגדרת ערכים אפשריים לכל פילטר ───
-        const statusValues = ['all', 'פעילה', 'לא פעילה', 'בהקמה', 'פיילוט', 'מבוטלת'];
-        const criticalityValues = ['all', 'גבוהה', 'בינונית', 'נמוכה'];
-        const availabilityValues = ['all', ...this._getUniqueValues('availabilityRequirement')];
-        const envValues = ['all', ...this._getUniqueValues('environment')];
-        const appClassValues = ['all', ...this._getUniqueValues('appClassification')];
-        const appTypeValues = ['all', ...this._getUniqueValues('appType')];
+        // ─── ערכים אפשריים לכל פילטר ───
+        const statusValues       = ['all', ...getUniqueForPill('status')];
+        const criticalityValues  = ['all', ...getUniqueForPill('businessCriticality')];
+        const availabilityValues = ['all', ...getUniqueForPill('availabilityRequirement')];
+        const envValues          = ['all', ...getUniqueForPill('environment')];
+        const appClassValues     = ['all', ...getUniqueForPill('appClassification')];
+        const appTypeValues      = ['all', ...getUniqueForPill('appType')];
 
         bar.innerHTML = `
-        <div class="sc-stat-pill" style="color:#a5b4fc;border-color:#6366f133">
-            <i class="fas fa-layer-group"></i>
-            <span>סה"כ: ${total}</span>
-        </div>
-        
-        ${cyclePill('status', 'סטטוס', '#86efac', 'fa-circle-dot', statusValues)}
-        
-        ${cyclePill('businessCriticality', 'קריטיות', '#fca5a5', 'fa-exclamation-triangle', criticalityValues)}
-        
-        ${cyclePill('availabilityRequirement', 'זמינות', '#67e8f9', 'fa-clock', availabilityValues)}
-        
-        ${cyclePill('environment', 'סביבה', '#c4b5fd', 'fa-industry', envValues)}
-        
-        ${cyclePill('appClassification', 'סיווג', '#fcd34d', 'fa-tag', appClassValues)}
-        
-        ${cyclePill('appType', 'סוג', '#93c5fd', 'fa-cube', appTypeValues)}
+            <div class="sc-stat-pill" style="color:#a5b4fc;border-color:#6366f133">
+                <i class="fas fa-layer-group"></i>
+                <span>פעילות: ${active}</span>
+            </div>
 
-        ${cyclePill('hasAutomation', 'אוטומציה', '#86efac', 'fa-robot',
-            ['all', 'קיימות', 'לא קיימות', 'לא רלוונטי'])}
-    `;
+            ${cyclePill('status', 'סטטוס', '#86efac', 'fas fa-circle-dot', statusValues)}
+            ${cyclePill('businessCriticality', 'קריטיות', '#fca5a5', 'fas fa-exclamation-triangle', criticalityValues)}
+            ${cyclePill('availabilityRequirement', 'זמינות', '#67e8f9', 'fas fa-clock', availabilityValues)}
+            ${cyclePill('environment', 'סביבה', '#c4b5fd', 'fas fa-industry', envValues)}
+            ${cyclePill('appClassification', 'סיווג', '#fcd34d', 'fas fa-tag', appClassValues)}
+            ${cyclePill('appType', 'סוג', '#93c5fd', 'fas fa-cube', appTypeValues)}
+            ${cyclePill('hasAutomation', 'אוטומציה', '#86efac', 'fas fa-robot',
+                ['all', 'קיימות', 'לא קיימות', 'לא רלוונטי'])}
+
+            <div class="sc-stats-actions">
+                <a href="https://menora-dwp.onbmc.com/dwp/rest/share/OJSXG33VOJRWKVDZOBST2U2CL5IVKRKTKREU6TSOIFEVERJGORSW4YLOOREWIPKBI5DUKUZXGNDESSJQLFIECVCCGNEE2TSUIIZUQTKOJBKFGOBGOJSXG33VOJRWKSLEHU3DAMRGMNXW45DFPB2FI6LQMU6UGQKUIFGE6R27JBHU2RI="
+                    target="_blank"
+                    class="sc-inline-link-btn">
+                    <i class="fas fa-plus-circle"></i>
+                    הוספת מערכת לקטלוג
+                </a>
+                <a href="https://menora-dwp.onbmc.com/dwp/rest/share/OJSXG33VOJRWKVDZOBST2U2CL5IVKRKTKREU6TSOIFEVERJGORSW4YLOOREWIPKBI5DUKUZXGNDESSJQLFIECVCCGNEE2TSUIIZUQTKOJBKFGOBGOJSXG33VOJRWKSLEHUZDKNZGMNXW45DFPB2FI6LQMU6UGQKUIFGE6R27JBHU2RI="
+                    target="_blank"
+                    class="sc-inline-link-btn sc-inline-link-btn-warning">
+                    <i class="fas fa-circle-check"></i>
+                    בקשת תיקוף מערכת
+                </a>
+            </div>
+            `;
 
         this._populateDropdownFilters();
         this._renderActiveFilterTags();
@@ -2638,8 +4602,12 @@ class SystemsCatalogDashboard {
 
         // הסר multi-info קיים
         bar.querySelector('.sc-multi-inline')?.remove();
-
-        if (!this.isAdmin || this.selectedSystems.size === 0) return;
+        const actions = bar.querySelector('.sc-stats-actions');
+        if (actions) {
+            actions.style.marginRight = 'auto';
+            actions.style.marginLeft = '';
+        }
+        if (!this.isAdmin && !this.canSendValidation || this.selectedSystems.size === 0) return;
 
         const count = this.selectedSystems.size;
 
@@ -2698,7 +4666,10 @@ class SystemsCatalogDashboard {
     `;
 
         bar.appendChild(multiEl);
-
+        if (actions) {
+            actions.style.marginRight = '0';
+            actions.style.marginLeft = 'auto';
+        }
         // אירועים
         document.getElementById('scMultiClearInline')?.addEventListener('click', () => {
             this.selectedSystems.clear();
@@ -2719,7 +4690,7 @@ class SystemsCatalogDashboard {
             this._openMultiDeleteModal();
         });
 
-        document.getElementById('scBulkValidateInline')?.addEventListener('click', () => {
+        document.getElementById('scBulkValidateBtn')?.addEventListener('click', () => {
             this._openBulkValidationModal();
         });
     }
@@ -2750,6 +4721,13 @@ class SystemsCatalogDashboard {
             publisher: 'מפרסם',
             supportVendor: 'ספק תמיכה',
         };
+        
+        // ─── הוסף: חפש בעמודות דינמיות ───
+        if (!labels[filterKey] && this._serverColumnDefs) {
+            const col = this._serverColumnDefs.find(c => c.key === filterKey);
+            if (col?.label) return col.label;
+        }
+        
         return labels[filterKey] || filterKey;
     }
 
@@ -2771,7 +4749,7 @@ class SystemsCatalogDashboard {
     // Auto-fill ארגוני לכל המערכות (Bulk)
     // ══════════════════════════════════════════════════════════════
     async _autoFillOrgInfoBulk() {
-        if (!this.isAdmin) {
+        if (!this.isAdmin && !this.canSendValidation) {
             this.showToast('אין הרשאה לביצוע פעולה זו', 'error');
             return;
         }
@@ -2823,7 +4801,6 @@ class SystemsCatalogDashboard {
 
             await new Promise(r => setTimeout(r, 80));
         }
-
 
         // ─── שלב 1.5: אסוף מנהלי מחלקה לפי מחלקה ──────────────────
         const departmentManagerMap = {};
@@ -2881,8 +4858,9 @@ class SystemsCatalogDashboard {
                 let newVal = '';
                 if (field === 'departmentManager') {
                     // ─── מנהל מחלקה: חפש לפי המחלקה של המנהל ───
-                    const dept = orgInfo ? (orgInfo.department || '').trim() :
-                        (sys.department || '').trim();
+                    const dept = orgInfo
+                        ? (orgInfo.department || '').trim()
+                        : (sys.department || '').trim();
                     newVal = dept ? (departmentManagerMap[dept] || '') : '';
                 } else {
                     newVal = orgInfo ? (orgInfo[field] || '').trim() : '';
@@ -4520,10 +6498,6 @@ class SystemsCatalogDashboard {
                 const el = document.getElementById(id);
                 if (!el || !val) return;
 
-                // בדוק אם ריק (עובד גם עבור select וגם input)
-                const isEmpty = !el.value || el.value.trim() === '';
-                if (!isEmpty) return;
-
                 // אם select - בדוק אם הערך קיים ברשימה, אם לא - הוסף אותו
                 if (el.tagName === 'SELECT') {
                     const exists = [...el.options].some(o => o.value === val);
@@ -4547,33 +6521,36 @@ class SystemsCatalogDashboard {
             // ─── מלא מנהל מחלקה אוטומטית ───
             const deptManagerField = fields.find(f => f.fetchDeptManager);
             if (deptManagerField) {
+                // ─── מלא מנהל מחלקה אוטומטית לפי המחלקה שנמצאה ────────
                 const deptEl = document.getElementById(`${prefix}Dept`);
-                const deptManagerEl = document.getElementById(`${prefix}DeptManager`);
+                const deptMgrEl = document.getElementById(`${prefix}DeptManager`);
 
-                if (deptManagerEl && (!deptManagerEl.value || deptManagerEl.value.trim() === '')) {
-                    const dept = deptEl?.value?.trim() || emp.department || '';
+                // ─── קח את המחלקה מהעובד (לא מהשדה) כדי לשמור על הגרשיים המקוריים ───
+                const deptForLookup = emp.department?.trim() || '';
 
-                    if (dept) {
-                        try {
-                            const deptRes = await fetch(
-                                `/PhoneDirectory/GetDepartmentManager?department=${encodeURIComponent(dept)}`,
-                                { credentials: 'include' }
-                            );
-                            const deptData = await deptRes.json();
+                if (deptMgrEl && deptForLookup &&
+                    (!deptMgrEl.value || deptMgrEl.value.trim() === '')) {
+                    try {
+                        const deptRes = await fetch(
+                            `/PhoneDirectory/GetDepartmentManager?department=` +
+                            `${encodeURIComponent(deptForLookup)}`,
+                            { credentials: 'include' }
+                        );
+                        const deptData = await deptRes.json();
 
-                            if (deptData.success && deptData.departmentManager) {
-                                deptManagerEl.value = deptData.departmentManager;
-                                deptManagerEl.classList.add('sc-autofilled');
-                                filled.push('מנהל מחלקה');
-                                setTimeout(() =>
-                                    deptManagerEl.classList.remove('sc-autofilled'), 3000);
-                            }
-                        } catch (err) {
-                            console.warn('GetDepartmentManager error:', err);
+                        if (deptData.success && deptData.departmentManager) {
+                            deptMgrEl.value = deptData.departmentManager;
+                            deptMgrEl.classList.add('srv-autofilled');
+                            filled.push('מנהל מחלקה');
+                            setTimeout(() =>
+                                deptMgrEl.classList.remove('srv-autofilled'), 3000);
                         }
+                    } catch (err) {
+                        console.warn('GetDepartmentManager error:', err);
                     }
                 }
             }
+
 
             if (filled.length > 0) {
                 this.showToast(
@@ -4718,9 +6695,8 @@ class SystemsCatalogDashboard {
     openEditModal(systemId, readOnly = false) {
         // אם עורך אוטומציה בלבד - פתח במצב עריכה חלקית
         const isAutomationEditor = this.isAutomationOnly && !this.isAdmin;
-
         // אם לא אדמין ולא עורך אוטומציה - פתח במצב צפייה בלבד
-        if (!this.isAdmin && !this.isAutomationOnly) readOnly = true;
+        if (!this.isAdmin && !this.canSendValidation && !this.isAutomationOnly) readOnly = true;
 
         const system = this.allSystems.find(s => s.id === systemId);
         if (!system) return;
@@ -4749,6 +6725,192 @@ class SystemsCatalogDashboard {
             : isAutomationEditor
                 ? '#22c55e'
                 : '#f59e0b';
+        // ─── שדות דינמיים מהשרת - סנן לפי showInValidation ───
+        const dynamicFieldsHtml = (() => {
+            if (!this._serverColumnDefs || this._serverColumnDefs.length === 0) {
+                return '';
+            }
+
+            const builtInKeys = new Set([
+                'number', 'name', 'nameEn', 'description', 'status',
+                'systemManager', 'departmentManager', 'environment',
+                'domain', 'department', 'team', 'businessDivision',
+                'appClassification', 'appType', 'businessCriticality',
+                'availabilityRequirement', 'publisher', 'supportVendor',
+                'createdAt', 'lastValidatedAt', 'hasAutomation', 'automationNote',
+                'requiresValidation', 'lastValidationEmailSentAt', 'buttons'
+            ]);
+
+            // ─── filter תחילה, אחר כך בנה HTML ───
+            const dynamicCols = this._serverColumnDefs.filter(col => {
+                if (builtInKeys.has(col.key)) return false;
+                if (readOnly && col.showInValidation === false) return false;
+                return true;
+            });
+
+            if (dynamicCols.length === 0) return '';
+
+            // ─── בנה HTML לכל עמודה דינמית ───
+            const buildFieldHtml = (col) => {
+                const val = system[col.key]
+                    || system.dynamicFields?.[col.key]
+                    || '';
+
+                const fieldType     = col.fieldType    || 'text';
+                const allowedValues = col.allowedValues || [];
+
+                // ─── בנה input לפי סוג שדה ───
+                let inputHtml = '';
+
+                if (fieldType === 'select' && allowedValues.length > 0) {
+                    const options = allowedValues
+                        .map(v => `<option value="${this.escHtml(v)}"
+                                        ${val === v ? 'selected' : ''}>
+                                    ${this.escHtml(v)}
+                                </option>`)
+                        .join('');
+
+                    inputHtml = `
+                        <select id="scEditDynamic_${this.escHtml(col.key)}"
+                                class="sc-select sc-edit-select
+                                    ${readOnly ? 'sc-edit-input-readonly' : ''}"
+                                data-dynamic-key="${this.escHtml(col.key)}"
+                                ${readOnly ? 'disabled' : ''}>
+                            <option value="">— בחר —</option>
+                            ${options}
+                        </select>`;
+                } else if (fieldType === 'multiselect' && allowedValues.length > 0) {
+                    // ── בנה Multi-Select ──
+                    const currentValues = val ? val.split(',').map(v => v.trim()) : [];
+                    
+                    const options = allowedValues.map(v => `
+                        <div class="sc-multiselect-option ${currentValues.includes(v) ? 'sc-multiselect-selected' : ''}"
+                            data-value="${this.escHtml(v)}"
+                            onclick="${!readOnly ? `window._scDashboard._toggleMultiSelectOption(this, '${this.escHtml(col.key)}')` : ''}">
+                            <i class="fas ${currentValues.includes(v) ? 'fa-check-square' : 'fa-square'}" 
+                            style="color:${currentValues.includes(v) ? '#6366f1' : '#444'};font-size:0.75rem"></i>
+                            <span>${this.escHtml(v)}</span>
+                        </div>
+                    `).join('');
+                    
+                    inputHtml = `
+                        <div class="sc-multiselect-wrap ${readOnly ? 'sc-edit-input-readonly' : ''}"
+                            id="scMultiSelectWrap_${this.escHtml(col.key)}"
+                            data-dynamic-key="${this.escHtml(col.key)}"
+                            data-current-value="${this.escHtml(val)}">
+                            <div class="sc-multiselect-display" 
+                                onclick="${!readOnly ? `window._scDashboard._toggleMultiSelectDropdown('${this.escHtml(col.key)}')` : ''}">
+                                <span class="sc-multiselect-display-text" id="scMultiSelectDisplay_${this.escHtml(col.key)}">
+                                    ${currentValues.length > 0 
+                                        ? currentValues.map(v => `<span class="sc-multiselect-tag">${this.escHtml(v)}</span>`).join('') 
+                                        : '<span style="color:#555;font-size:0.78rem">— בחר ערכים —</span>'}
+                                </span>
+                                ${!readOnly ? `<i class="fas fa-chevron-down" style="color:#555;font-size:0.65rem;flex-shrink:0"></i>` : ''}
+                            </div>
+                            <div class="sc-multiselect-dropdown" 
+                                id="scMultiSelectDropdown_${this.escHtml(col.key)}"
+                                style="display:none">
+                                ${options}
+                            </div>
+                            <input type="hidden" 
+                                id="scEditDynamic_${this.escHtml(col.key)}"
+                                value="${this.escHtml(val)}"/>
+                        </div>`;
+                        } else if (fieldType === 'boolean') {
+                                    inputHtml = `
+                                        <select id="scEditDynamic_${this.escHtml(col.key)}"
+                                                class="sc-select sc-edit-select
+                                                    ${readOnly ? 'sc-edit-input-readonly' : ''}"
+                                                data-dynamic-key="${this.escHtml(col.key)}"
+                                                ${readOnly ? 'disabled' : ''}>
+                                            <option value="">— בחר —</option>
+                                            <option value="כן" ${val === 'כן' ? 'selected' : ''}>כן</option>
+                                            <option value="לא" ${val === 'לא' ? 'selected' : ''}>לא</option>
+                                        </select>`;
+
+                } else if (fieldType === 'textarea') {
+                    inputHtml = `
+                        <textarea id="scEditDynamic_${this.escHtml(col.key)}"
+                                class="sc-form-textarea
+                                        ${readOnly ? 'sc-edit-input-readonly' : ''}"
+                                data-dynamic-key="${this.escHtml(col.key)}"
+                                rows="2"
+                                ${readOnly ? 'disabled' : ''}
+                        >${this.escHtml(val)}</textarea>`;
+
+                } else if (fieldType === 'number') {
+                    inputHtml = `
+                        <input type="number"
+                            id="scEditDynamic_${this.escHtml(col.key)}"
+                            class="sc-edit-input
+                                    ${readOnly ? 'sc-edit-input-readonly' : ''}"
+                            data-dynamic-key="${this.escHtml(col.key)}"
+                            value="${this.escHtml(val)}"
+                            ${readOnly ? 'disabled' : ''}/>`;
+
+                } else if (fieldType === 'date') {
+                    inputHtml = `
+                        <input type="text"
+                            id="scEditDynamic_${this.escHtml(col.key)}"
+                            class="sc-edit-input
+                                    ${readOnly ? 'sc-edit-input-readonly' : ''}"
+                            data-dynamic-key="${this.escHtml(col.key)}"
+                            value="${this.escHtml(val)}"
+                            placeholder="DD/MM/YYYY"
+                            ${readOnly ? 'disabled' : ''}/>`;
+
+                } else {
+                    // ─── text (ברירת מחדל) ───
+                    inputHtml = `
+                        <input type="text"
+                            id="scEditDynamic_${this.escHtml(col.key)}"
+                            class="sc-edit-input
+                                    ${readOnly ? 'sc-edit-input-readonly' : ''}"
+                            data-dynamic-key="${this.escHtml(col.key)}"
+                            value="${this.escHtml(val)}"
+                            placeholder="${this.escHtml(col.label || col.key)}..."
+                            ${readOnly ? 'disabled' : ''}/>`;
+                }
+
+                return `
+                <div class="sc-edit-field sc-edit-field-wide">
+                    <label class="sc-edit-label">
+                        <i class="fas fa-tag"></i>
+                        ${this.escHtml(col.label || col.key)}
+                    </label>
+                    ${inputHtml}
+                </div>`;
+            };
+
+            // ─── בנה את ה-HTML הסופי עם שורות של 3 ───
+            let html = `
+            <div style="
+                margin-top:8px;
+                padding-top:8px;
+                border-top:1px dashed rgba(99,102,241,0.2)">
+                <div style="
+                    font-size:0.72rem;
+                    color:#555;
+                    margin-bottom:8px;
+                    display:flex;
+                    align-items:center;
+                    gap:5px">
+                    <i class="fas fa-layer-group" style="color:#6366f1"></i>
+                    שדות נוספים
+                </div>`;
+
+            for (let i = 0; i < dynamicCols.length; i += 3) {
+                const rowCols = dynamicCols.slice(i, i + 3);
+                html += `<div class="sc-edit-row">`;
+                rowCols.forEach(col => {
+                    html += buildFieldHtml(col);
+                });
+                html += `</div>`;
+            }
+
+            html += `</div>`;
+            return html;
+        })();
 
         modal.innerHTML = `
         <div class="sc-modal sc-edit-modal">
@@ -4834,18 +6996,22 @@ class SystemsCatalogDashboard {
                         <label class="sc-edit-label">
                             <i class="fas fa-circle-dot"></i> סטטוס
                         </label>
-                        <select id="scEditStatus"
-                                class="sc-select sc-edit-select"
-                                ${readOnly ? 'disabled' : ''}>
-                            ${['', 'פעיל', 'פעילה', 'לא פעיל', 'לא פעילה',
-                'בפיתוח', 'בהקמה', 'פיילוט', 'בהקפאה',
-                'מיועד לסגירה', 'מבוטלת']
-                .map(v => `<option value="${v}"
-                                    ${system.status === v ? 'selected' : ''}>
-                                    ${v || '— לא הוגדר —'}
-                                </option>`)
-                .join('')}
-                        </select>
+                        
+                        ${(() => {
+                            const fieldType = this._getFieldType('status');
+                            const serverValues = this._getAllowedValues('status');
+                            const values = serverValues || ['', 'פעילה', 'לא פעילה', 'בהקמה', 'פיילוט', 'מבוטלת'];
+                            
+                            if (fieldType === 'text') {
+                                return `<input type="text" id="scEditStatus" 
+                                            class="sc-edit-input ${readOnly ? 'sc-edit-input-readonly' : ''}"
+                                            value="${this.escHtml(system.status || '')}"
+                                            ${readOnly ? 'disabled' : ''}/>`;
+                            }
+                            return `<select id="scEditStatus" class="sc-select sc-edit-select" ${readOnly ? 'disabled' : ''}>
+                                ${values.map(v => `<option value="${v}" ${system.status === v ? 'selected' : ''}>${v || '— לא הוגדר —'}</option>`).join('')}
+                            </select>`;
+                        })()}
                     </div>
                     <div class="sc-edit-field sc-edit-field-wide">
                         <label class="sc-edit-label">
@@ -4877,16 +7043,14 @@ class SystemsCatalogDashboard {
                         <label class="sc-edit-label">
                             <i class="fas fa-industry"></i> סביבה
                         </label>
-                        ${readOnly
-                ? `<input type="text" id="scEditEnv"
-                                   class="sc-edit-input sc-edit-input-readonly"
-                                   value="${this.escHtml(system.environment || '')}"
-                                   disabled/>`
-                : `<select id="scEditEnv"
-                                      class="sc-select sc-edit-select">
-                                   <option value="">— בחר סביבה —</option>
-                                   ${this._buildDynamicOptions('environment', system.environment)}
-                               </select>`}
+                        ${this._buildBuiltInFieldHtml({
+                            key: 'environment',
+                            elementId: 'scEditEnv',
+                            currentValue: system.environment,
+                            placeholder: '— בחר סביבה —',
+                            fallbackOptions: [],   // יקח מ-_buildDynamicOptions אוטומטית
+                            readOnly,
+                        })}
                     </div>
                 </div>
 
@@ -4958,31 +7122,27 @@ class SystemsCatalogDashboard {
                         <label class="sc-edit-label">
                             <i class="fas fa-tag"></i> סיווג יישום
                         </label>
-                        ${readOnly
-                ? `<input type="text" id="scEditAppClass"
-                                   class="sc-edit-input sc-edit-input-readonly"
-                                   value="${this.escHtml(system.appClassification || '')}"
-                                   disabled/>`
-                : `<select id="scEditAppClass"
-                                      class="sc-select sc-edit-select">
-                                   <option value="">— בחר סיווג —</option>
-                                   ${this._buildDynamicOptions('appClassification', system.appClassification)}
-                               </select>`}
+                        ${this._buildBuiltInFieldHtml({
+                            key: 'appClassification',
+                            elementId: 'scEditAppClass',
+                            currentValue: system.appClassification,
+                            placeholder: '— בחר סיווג —',
+                            fallbackOptions: [],
+                            readOnly,
+                        })}
                     </div>
                     <div class="sc-edit-field sc-edit-field-wide">
                         <label class="sc-edit-label">
                             <i class="fas fa-cube"></i> סוג יישום
                         </label>
-                        ${readOnly
-                ? `<input type="text" id="scEditAppType"
-                                   class="sc-edit-input sc-edit-input-readonly"
-                                   value="${this.escHtml(system.appType || '')}"
-                                   disabled/>`
-                : `<select id="scEditAppType"
-                                      class="sc-select sc-edit-select">
-                                   <option value="">— בחר סוג —</option>
-                                   ${this._buildDynamicOptions('appType', system.appType)}
-                               </select>`}
+                       ${this._buildBuiltInFieldHtml({
+                            key: 'appType',
+                            elementId: 'scEditAppType',
+                            currentValue: system.appType,
+                            placeholder: '— בחר סוג —',
+                            fallbackOptions: [],
+                            readOnly,
+                        })}
                     </div>
                 </div>
 
@@ -4991,31 +7151,27 @@ class SystemsCatalogDashboard {
                         <label class="sc-edit-label">
                             <i class="fas fa-exclamation-triangle"></i> קריטיות עסקית
                         </label>
-                        ${readOnly
-                ? `<input type="text" id="scEditCriticality"
-                                   class="sc-edit-input sc-edit-input-readonly"
-                                   value="${this.escHtml(system.businessCriticality || '')}"
-                                   disabled/>`
-                : `<select id="scEditCriticality"
-                                      class="sc-select sc-edit-select">
-                                   <option value="">— בחר קריטיות —</option>
-                                   ${this._buildDynamicOptions('businessCriticality', system.businessCriticality)}
-                               </select>`}
+                        ${this._buildBuiltInFieldHtml({
+                            key: 'businessCriticality',
+                            elementId: 'scEditCriticality',
+                            currentValue: system.businessCriticality,
+                            placeholder: '— בחר קריטיות —',
+                            fallbackOptions: [],
+                            readOnly,
+                        })}
                     </div>
                     <div class="sc-edit-field sc-edit-field-wide">
                         <label class="sc-edit-label">
                             <i class="fas fa-clock"></i> דרישת זמינות
                         </label>
-                        ${readOnly
-                ? `<input type="text" id="scEditAvailability"
-                                   class="sc-edit-input sc-edit-input-readonly"
-                                   value="${this.escHtml(system.availabilityRequirement || '')}"
-                                   disabled/>`
-                : `<select id="scEditAvailability"
-                                      class="sc-select sc-edit-select">
-                                   <option value="">— בחר זמינות —</option>
-                                   ${this._buildDynamicOptions('availabilityRequirement', system.availabilityRequirement)}
-                               </select>`}
+                        ${this._buildBuiltInFieldHtml({
+                            key: 'availabilityRequirement',
+                            elementId: 'scEditAvailability',
+                            currentValue: system.availabilityRequirement,
+                            placeholder: '— בחר זמינות —',
+                            fallbackOptions: [],
+                            readOnly,
+                        })}
                     </div>
                 </div>
 
@@ -5024,19 +7180,25 @@ class SystemsCatalogDashboard {
                         <label class="sc-edit-label">
                             <i class="fas fa-building-user"></i> מפרסם
                         </label>
-                        <input type="text" id="scEditPublisher"
-                            class="sc-edit-input ${readOnly ? 'sc-edit-input-readonly' : ''}"
-                            value="${this.escHtml(system.publisher || '')}"
-                            ${readOnly ? 'disabled' : ''}/>
+                        ${this._buildBuiltInFieldHtml({
+                            key: 'publisher',
+                            elementId: 'scEditPublisher',
+                            currentValue: system.publisher,
+                            placeholder: 'מפרסם...',
+                            readOnly,
+                        })}
                     </div>
                     <div class="sc-edit-field sc-edit-field-wide">
                         <label class="sc-edit-label">
                             <i class="fas fa-headset"></i> ספק תמיכה
                         </label>
-                        <input type="text" id="scEditVendor"
-                            class="sc-edit-input ${readOnly ? 'sc-edit-input-readonly' : ''}"
-                            value="${this.escHtml(system.supportVendor || '')}"
-                            ${readOnly ? 'disabled' : ''}/>
+                        ${this._buildBuiltInFieldHtml({
+                            key: 'supportVendor',
+                            elementId: 'scEditVendor',
+                            currentValue: system.supportVendor,
+                            placeholder: 'ספק תמיכה...',
+                            readOnly,
+                        })}
                     </div>
                     <div class="sc-edit-field">
                         <label class="sc-edit-label">
@@ -5057,7 +7219,7 @@ class SystemsCatalogDashboard {
                             disabled/>
                     </div>
                 </div>
-
+                ${dynamicFieldsHtml}
                 <div class="sc-edit-row sc-edit-row-automation">
                     <div class="sc-edit-field">
                         <label class="sc-edit-label">
@@ -5082,9 +7244,7 @@ class SystemsCatalogDashboard {
                         </select>
                     </div>
                     <div class="sc-edit-field sc-edit-field-wide"
-                        id="scEditAutomationNoteWrap"
-                        style="${system.hasAutomation && system.hasAutomation !== 'לא קיימות'
-                ? '' : 'opacity:0.4;pointer-events:none'}">
+                        id="scEditAutomationNoteWrap">
                         <label class="sc-edit-label">
                             <i class="fas fa-sticky-note"></i> הערת אוטומציה
                         </label>
@@ -5097,6 +7257,7 @@ class SystemsCatalogDashboard {
                     </div>
                 </div>
 
+                ${(this.isAdmin || this.isNoc) ? `
                 <div class="sc-edit-servers-section" id="scEditServersSection">
                     <div class="sc-edit-servers-header">
                         <i class="fas fa-server" style="color:#6366f1"></i>
@@ -5112,7 +7273,7 @@ class SystemsCatalogDashboard {
                             <span style="font-size:0.8rem">טוען שרתים...</span>
                         </div>
                     </div>
-                </div>
+                </div>` : ''}
             </div>
             <div class="sc-modal-footer">
                 <button class="sc-modal-cancel-btn" id="scEditCancel">
@@ -5129,15 +7290,38 @@ class SystemsCatalogDashboard {
         document.body.appendChild(modal);
         // ─── אם עורך אוטומציה בלבד - Disable כל השדות חוץ מאוטומציה ───
         if (isAutomationEditor) {
-            const allInputs = modal.querySelectorAll(
-                'input, select, textarea'
-            );
+            const allInputs = modal.querySelectorAll('input, select, textarea');
             allInputs.forEach(el => {
                 // השאר פעיל רק שדות אוטומציה
                 if (el.id !== 'scEditHasAutomation' &&
                     el.id !== 'scEditAutomationNote') {
                     el.disabled = true;
                     el.classList.add('sc-edit-input-readonly');
+                }
+            });
+
+            // ─── נעל גם שדות multiselect (div עם onclick) ───
+            modal.querySelectorAll('.sc-multiselect-wrap').forEach(wrap => {
+                const hiddenInput = wrap.querySelector('input[type="hidden"]');
+                const isAutomationField =
+                    hiddenInput?.id === 'scEditHasAutomation' ||
+                    hiddenInput?.id === 'scEditAutomationNote';
+
+                if (!isAutomationField) {
+                    // הסר onclick מה-display
+                    const display = wrap.querySelector('.sc-multiselect-display');
+                    if (display) {
+                        display.onclick = null;
+                        display.style.cursor = 'not-allowed';
+                    }
+                    // הסר onclick מכל האפשרויות
+                    wrap.querySelectorAll('.sc-multiselect-option').forEach(opt => {
+                        opt.onclick = null;
+                        opt.style.cursor = 'not-allowed';
+                        opt.style.pointerEvents = 'none';
+                    });
+                    // הוסף class visual
+                    wrap.classList.add('sc-edit-input-readonly');
                 }
             });
 
@@ -5148,13 +7332,14 @@ class SystemsCatalogDashboard {
             // ─── הסתר כפתור תיקוף ───
             const validateBtn = document.getElementById('scCopyValidateLink');
             if (validateBtn) validateBtn.style.display = 'none';
-
         }
 
         // ─── סגירה ───
         const closeModal = () => modal.remove();
 
-        this._loadServersForEditModal(systemId, system.number);
+        if (this.isAdmin || this.canSendValidation || this.isNoc) {
+            this._loadServersForEditModal(systemId, system.number);
+        }
         document.getElementById('scEditClose')
             .addEventListener('click', closeModal);
         document.getElementById('scEditCancel')
@@ -5305,6 +7490,227 @@ class SystemsCatalogDashboard {
         }
     }
 
+    // ══════════════════════════════════════════════════════════════
+    // קבל סוג שדה - מהשרת או fallback ל-hardcoded
+    // ══════════════════════════════════════════════════════════════
+    _getFieldType(key) {
+        if (this._serverColumnDefs) {
+            const serverDef = this._serverColumnDefs.find(c => c.key === key);
+            if (serverDef?.fieldType) return serverDef.fieldType;
+        }
+        // fallback לסוגים קשיחים
+        const defaults = {
+            status:                  'select',
+            environment:             'select',
+            domain:                  'select',
+            department:              'select',
+            team:                    'select',
+            businessDivision:        'select',
+            appClassification:       'select',
+            appType:                 'select',
+            businessCriticality:     'select',
+            availabilityRequirement: 'select',
+            hasAutomation:           'select',
+            description:             'textarea',
+            automationNote:          'text',
+            publisher:               'text',
+            supportVendor:           'text',
+        };
+        return defaults[key] || 'text';
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // קבל ערכים מותרים לשדה - מהשרת או fallback ל-hardcoded
+    // ══════════════════════════════════════════════════════════════
+    _getAllowedValues(key) {
+        if (this._serverColumnDefs) {
+            const serverDef = this._serverColumnDefs.find(c => c.key === key);
+            if (serverDef?.allowedValues?.length > 0) {
+                return serverDef.allowedValues;
+            }
+        }
+        return null; // יחזיר null = השתמש ב-hardcoded
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // בנה input/select/textarea לשדה built-in לפי הגדרות השרת
+    // ══════════════════════════════════════════════════════════════
+    _buildBuiltInFieldHtml({
+        key,
+        elementId,
+        currentValue,
+        placeholder,
+        fallbackOptions,   // מערך של { value, label } לselectים קשיחים
+        readOnly = false,
+        disabled = false,
+        dir = 'rtl',
+        extraClass = '',
+        extraAttrs = '',
+    }) {
+        const fieldType     = this._getFieldType(key);
+        const serverValues  = this._getAllowedValues(key);
+        const isDisabled    = readOnly || disabled;
+        const disabledAttr  = isDisabled ? 'disabled' : '';
+        const readOnlyClass = isDisabled ? 'sc-edit-input-readonly' : '';
+        const baseClass     = `sc-edit-input ${readOnlyClass} ${extraClass}`.trim();
+        const selectClass   = `sc-select sc-edit-select ${extraClass}`.trim();
+
+        // ── text / number / date ────────────────────────────────
+        if (fieldType === 'text' || fieldType === 'number' || fieldType === 'date') {
+            return `
+            <input type="${fieldType === 'number' ? 'number' : 'text'}"
+                id="${elementId}"
+                class="${baseClass}"
+                value="${this.escHtml(currentValue || '')}"
+                placeholder="${this.escHtml(placeholder || '')}"
+                dir="${dir}"
+                ${disabledAttr}
+                ${extraAttrs}/>`;
+        }
+
+        // ── textarea ────────────────────────────────────────────
+        if (fieldType === 'textarea') {
+            return `
+            <textarea id="${elementId}"
+                    class="sc-form-textarea ${readOnlyClass} ${extraClass}".trim()
+                    rows="2"
+                    placeholder="${this.escHtml(placeholder || '')}"
+                    ${disabledAttr}
+                    ${extraAttrs}
+            >${this.escHtml(currentValue || '')}</textarea>`;
+        }
+
+        // ── boolean ─────────────────────────────────────────────
+        if (fieldType === 'boolean') {
+            const boolOptions = serverValues || [
+                { value: 'כן', label: 'כן' },
+                { value: 'לא', label: 'לא' },
+            ];
+            const optionsHtml = boolOptions.map(opt => {
+                const v = typeof opt === 'string' ? opt : opt.value;
+                const l = typeof opt === 'string' ? opt : opt.label;
+                return `<option value="${this.escHtml(v)}"
+                            ${currentValue === v ? 'selected' : ''}>
+                            ${this.escHtml(l)}
+                        </option>`;
+            }).join('');
+            return `
+            <select id="${elementId}"
+                    class="${selectClass}"
+                    ${disabledAttr}
+                    ${extraAttrs}>
+                <option value="">— בחר —</option>
+                ${optionsHtml}
+            </select>`;
+        }
+
+        // ── select ──────────────────────────────────────────────
+        if (fieldType === 'select' || fieldType === 'multiselect') {
+
+            // ── multiselect ──
+            if (fieldType === 'multiselect') {
+                const values  = serverValues || [];
+                const current = (currentValue || '').split(',').map(v => v.trim()).filter(Boolean);
+
+                const optionsHtml = values.map(v => `
+                    <div class="sc-multiselect-option ${current.includes(v) ? 'sc-multiselect-selected' : ''}"
+                        data-value="${this.escHtml(v)}"
+                        onclick="window._scDashboard._toggleMultiSelectOption(
+                            this, '${this.escHtml(key)}')">
+                        <i class="fas ${current.includes(v) ? 'fa-check-square' : 'fa-square'}"
+                        style="color:${current.includes(v) ? '#6366f1' : '#444'};
+                                font-size:0.75rem"></i>
+                        <span>${this.escHtml(v)}</span>
+                    </div>`).join('');
+
+                return `
+                <div class="sc-multiselect-wrap ${isDisabled ? 'sc-edit-input-readonly' : ''}"
+                    id="scMultiSelectWrap_${this.escHtml(key)}"
+                    data-dynamic-key="${this.escHtml(key)}"
+                    data-current-value="${this.escHtml(currentValue || '')}">
+                    <div class="sc-multiselect-display"
+                        onclick="${!isDisabled
+                            ? `window._scDashboard._toggleMultiSelectDropdown('${this.escHtml(key)}')`
+                            : ''}">
+                        <span class="sc-multiselect-display-text"
+                            id="scMultiSelectDisplay_${this.escHtml(key)}">
+                            ${current.length > 0
+                                ? current.map(v =>
+                                    `<span class="sc-multiselect-tag">${this.escHtml(v)}</span>`
+                                ).join('')
+                                : `<span style="color:#555;font-size:0.78rem">— בחר ערכים —</span>`}
+                        </span>
+                        ${!isDisabled
+                            ? `<i class="fas fa-chevron-down"
+                                style="color:#555;font-size:0.65rem;flex-shrink:0"></i>`
+                            : ''}
+                    </div>
+                    <div class="sc-multiselect-dropdown"
+                        id="scMultiSelectDropdown_${this.escHtml(key)}"
+                        style="display:none">
+                        ${optionsHtml}
+                    </div>
+                    <input type="hidden"
+                        id="${elementId}"
+                        value="${this.escHtml(currentValue || '')}"/>
+                </div>`;
+            }
+
+            // ── select רגיל ──
+            // בנה options: מהשרת קודם, fallback ל-hardcoded
+            let optionsArr = [];
+
+            if (serverValues?.length > 0) {
+                optionsArr = serverValues.map(v => ({
+                    value: v,
+                    label: v,
+                }));
+            } else if (fallbackOptions?.length > 0) {
+                optionsArr = fallbackOptions.map(opt =>
+                    typeof opt === 'string'
+                        ? { value: opt, label: opt || '— לא הוגדר —' }
+                        : opt
+                );
+            } else {
+                // אין ערכים - רנדר כ-input טקסט עם ערכים מה-allSystems
+                return `
+                <select id="${elementId}"
+                        class="${selectClass}"
+                        ${disabledAttr}
+                        ${extraAttrs}>
+                    <option value="">— בחר —</option>
+                    ${this._buildDynamicOptions(key, currentValue)}
+                </select>`;
+            }
+
+            const optionsHtml = optionsArr.map(opt => `
+                <option value="${this.escHtml(opt.value)}"
+                        ${currentValue === opt.value ? 'selected' : ''}>
+                    ${this.escHtml(opt.label || opt.value || '— לא הוגדר —')}
+                </option>`).join('');
+
+            return `
+            <select id="${elementId}"
+                    class="${selectClass}"
+                    ${disabledAttr}
+                    ${extraAttrs}>
+                <option value="">— בחר —</option>
+                ${optionsHtml}
+            </select>`;
+        }
+
+        // ── fallback: text ──────────────────────────────────────
+        return `
+        <input type="text"
+            id="${elementId}"
+            class="${baseClass}"
+            value="${this.escHtml(currentValue || '')}"
+            placeholder="${this.escHtml(placeholder || '')}"
+            dir="${dir}"
+            ${disabledAttr}
+            ${extraAttrs}/>`;
+    }
+
     // ══════════════════════════════════════════════════════════
     // מודל הוספת מערכת חדשה
     // ══════════════════════════════════════════════════════════
@@ -5313,7 +7719,8 @@ class SystemsCatalogDashboard {
             this.showToast('אין הרשאה להוספת מערכת', 'error');
             return;
         }
-
+        
+        const readOnly = false;
         const existing = document.getElementById('scAddModal');
         if (existing) existing.remove();
 
@@ -5386,17 +7793,25 @@ class SystemsCatalogDashboard {
                     <label class="sc-edit-label">
                         <i class="fas fa-circle-dot"></i> סטטוס
                     </label>
-                    <select id="scAddStatus" 
-                            class="sc-select sc-edit-select">
-                        ${['', 'פעיל', 'פעילה', 'לא פעיל',
-                'לא פעילה', 'בפיתוח', 'בהקמה',
-                'פיילוט', 'בהקפאה', 'מיועד לסגירה',
-                'מבוטלת']
-                .map(v => `<option value="${v}">
-                                ${v || '— לא הוגדר —'}
-                               </option>`)
-                .join('')}
-                    </select>
+                    ${this._buildBuiltInFieldHtml({
+                        key: 'status',
+                        elementId: 'scAddStatus',
+                        currentValue: '',
+                        placeholder: '— לא הוגדר —',
+                        fallbackOptions: [
+                            { value: '',                  label: '— לא הוגדר —'    },
+                            { value: 'פעיל',              label: 'פעיל'             },
+                            { value: 'פעילה',             label: 'פעילה'            },
+                            { value: 'לא פעיל',           label: 'לא פעיל'          },
+                            { value: 'לא פעילה',          label: 'לא פעילה'         },
+                            { value: 'בפיתוח',            label: 'בפיתוח'           },
+                            { value: 'בהקמה',             label: 'בהקמה'            },
+                            { value: 'פיילוט',            label: 'פיילוט'           },
+                            { value: 'בהקפאה',            label: 'בהקפאה'           },
+                            { value: 'מיועד לסגירה',      label: 'מיועד לסגירה'     },
+                            { value: 'מבוטלת',            label: 'מבוטלת'           },
+                        ],
+                    })}
                 </div>
                 <div class="sc-edit-field sc-edit-field-wide">
                     <label class="sc-edit-label">
@@ -5424,10 +7839,13 @@ class SystemsCatalogDashboard {
                     <label class="sc-edit-label">
                         <i class="fas fa-industry"></i> סביבה
                     </label>
-                    <select id="scAddEnv" class="sc-select sc-edit-select">
-                        <option value="">— בחר סביבה —</option>
-                        ${this._buildDynamicOptions('environment', '')}
-                    </select>
+                    ${this._buildBuiltInFieldHtml({
+                        key: 'environment',
+                        elementId: 'scAddEnv',
+                        currentValue: '',
+                        placeholder: '— בחר סביבה —',
+                        fallbackOptions: [],
+                    })}
                 </div>
             </div>
 
@@ -5475,19 +7893,25 @@ class SystemsCatalogDashboard {
                     <label class="sc-edit-label">
                         <i class="fas fa-tag"></i> סיווג יישום
                     </label>
-                    <select id="scAddAppClass" class="sc-select sc-edit-select">
-                        <option value="">— בחר סיווג —</option>
-                        ${this._buildDynamicOptions('appClassification', '')}
-                    </select>
+                    ${this._buildBuiltInFieldHtml({
+                        key: 'appClassification',
+                        elementId: 'scAddAppClass',
+                        currentValue: '',
+                        placeholder: '— בחר סיווג —',
+                        fallbackOptions: [],
+                    })}
                 </div>
                 <div class="sc-edit-field sc-edit-field-wide">
                     <label class="sc-edit-label">
                         <i class="fas fa-cube"></i> סוג יישום
                     </label>
-                    <select id="scAddAppType" class="sc-select sc-edit-select">
-                        <option value="">— בחר סוג —</option>
-                        ${this._buildDynamicOptions('appType', '')}
-                    </select>
+                    ${this._buildBuiltInFieldHtml({
+                        key: 'appType',
+                        elementId: 'scAddAppType',
+                        currentValue: '',
+                        placeholder: '— בחר סוג —',
+                        fallbackOptions: [],
+                    })}
                 </div>
             </div>
 
@@ -5497,19 +7921,25 @@ class SystemsCatalogDashboard {
                         <i class="fas fa-exclamation-triangle"></i>
                         קריטיות עסקית
                     </label>
-                    <select id="scAddCriticality" class="sc-select sc-edit-select">
-                        <option value="">— בחר קריטיות —</option>
-                        ${this._buildDynamicOptions('businessCriticality', '')}
-                    </select>
+                    ${this._buildBuiltInFieldHtml({
+                        key: 'businessCriticality',
+                        elementId: 'scAddCriticality',
+                        currentValue: '',
+                        placeholder: '— בחר קריטיות —',
+                        fallbackOptions: [],
+                    })}
                 </div>
                 <div class="sc-edit-field sc-edit-field-wide">
                     <label class="sc-edit-label">
                         <i class="fas fa-clock"></i> דרישת זמינות
                     </label>
-                    <select id="scAddAvailability" class="sc-select sc-edit-select">
-                        <option value="">— בחר זמינות —</option>
-                        ${this._buildDynamicOptions('availabilityRequirement', '')}
-                    </select>
+                    ${this._buildBuiltInFieldHtml({
+                        key: 'availabilityRequirement',
+                        elementId: 'scAddAvailability',
+                        currentValue: '',
+                        placeholder: '— בחר זמינות —',
+                        fallbackOptions: [],
+                    })}
                 </div>
             </div>
 
@@ -5518,17 +7948,23 @@ class SystemsCatalogDashboard {
                     <label class="sc-edit-label">
                         <i class="fas fa-building-user"></i> מפרסם
                     </label>
-                    <input type="text" id="scAddPublisher"
-                           class="sc-edit-input"
-                           placeholder="מפרסם..."/>
+                    ${this._buildBuiltInFieldHtml({
+                        key: 'publisher',
+                        elementId: 'scAddPublisher',
+                        currentValue: '',
+                        placeholder: 'מפרסם...',
+                    })}
                 </div>
                 <div class="sc-edit-field sc-edit-field-wide">
                     <label class="sc-edit-label">
                         <i class="fas fa-headset"></i> ספק תמיכה
                     </label>
-                    <input type="text" id="scAddVendor"
-                           class="sc-edit-input"
-                           placeholder="ספק תמיכה..."/>
+                    ${this._buildBuiltInFieldHtml({
+                        key: 'supportVendor',
+                        elementId: 'scAddVendor',
+                        currentValue: '',
+                        placeholder: 'ספק תמיכה...',
+                    })}
                 </div>
                 <div class="sc-edit-field">
                     <label class="sc-edit-label">
@@ -5552,8 +7988,7 @@ class SystemsCatalogDashboard {
                     </select>
                 </div>
                 <div class="sc-edit-field sc-edit-field-wide"
-                    id="scAddAutomationNoteWrap"
-                    style="opacity:0.4;pointer-events:none">
+                    id="scAddAutomationNoteWrap">
                     <label class="sc-edit-label">
                         <i class="fas fa-sticky-note"></i> הערת אוטומציה
                     </label>
@@ -5563,6 +7998,109 @@ class SystemsCatalogDashboard {
                         placeholder="פרטים על הבדיקות האוטומטיות..."/>
                 </div>
             </div>
+            
+            ${(() => {
+                if (!this._serverColumnDefs || this._serverColumnDefs.length === 0) return '';
+                
+                const builtInKeys = new Set([
+                    'number','name','nameEn','description','status',
+                    'systemManager','departmentManager','environment',
+                    'domain','department','team','businessDivision',
+                    'appClassification','appType','businessCriticality',
+                    'availabilityRequirement','publisher','supportVendor',
+                    'createdAt','hasAutomation','automationNote',
+                    'requiresValidation','buttons'
+                ]);
+                
+                const dynamicCols = this._serverColumnDefs.filter(col =>
+                    !builtInKeys.has(col.key)
+                );
+                
+                if (dynamicCols.length === 0) return '';
+                
+                let html = `
+                <div style="margin-top:8px;padding-top:8px;
+                            border-top:1px dashed rgba(99,102,241,0.2)">
+                    <div style="font-size:0.72rem;color:#555;margin-bottom:8px;
+                                display:flex;align-items:center;gap:5px">
+                        <i class="fas fa-layer-group" style="color:#6366f1"></i>
+                        שדות נוספים
+                    </div>`;
+                
+                for (let i = 0; i < dynamicCols.length; i += 3) {
+                    const rowCols = dynamicCols.slice(i, i + 3);
+                    html += `<div class="sc-edit-row">`;
+                    rowCols.forEach(col => {
+                        const fieldType     = col.fieldType    || 'text';
+                        const allowedValues = col.allowedValues || [];
+                        let inputHtml = '';
+                        
+                        if (fieldType === 'select' && allowedValues.length > 0) {
+                            const options = allowedValues.map(v =>
+                                `<option value="${this.escHtml(v)}">${this.escHtml(v)}</option>`
+                            ).join('');
+                            inputHtml = `
+                                <select id="scAddDynamic_${this.escHtml(col.key)}"
+                                        class="sc-select sc-edit-select"
+                                        data-dynamic-key="${this.escHtml(col.key)}">
+                                    <option value="">— בחר —</option>
+                                    ${options}
+                                </select>`;
+                        } else if (fieldType === 'multiselect' && allowedValues.length > 0) {
+                            const options = allowedValues.map(v => `
+                                <div class="sc-multiselect-option"
+                                    data-value="${this.escHtml(v)}"
+                                    onclick="${!readOnly ? `window._scDashboard._toggleMultiSelectOption(this, '${this.escHtml(col.key)}')` : ''}">
+                                    <i class="fas fa-square" style="color:#444;font-size:0.75rem"></i>
+                                    <span>${this.escHtml(v)}</span>
+                                </div>
+                            `).join('');
+                            
+                            inputHtml = `
+                                <div class="sc-multiselect-wrap"
+                                    id="scMultiSelectWrap_${this.escHtml(col.key)}"
+                                    data-dynamic-key="${this.escHtml(col.key)}"
+                                    data-current-value="">
+                                    <div class="sc-multiselect-display" 
+                                        onclick="window._scDashboard._toggleMultiSelectDropdown('${this.escHtml(col.key)}')">
+                                        <span class="sc-multiselect-display-text" 
+                                            id="scMultiSelectDisplay_${this.escHtml(col.key)}">
+                                            <span style="color:#555;font-size:0.78rem">— בחר ערכים —</span>
+                                        </span>
+                                        <i class="fas fa-chevron-down" style="color:#555;font-size:0.65rem;flex-shrink:0"></i>
+                                    </div>
+                                    <div class="sc-multiselect-dropdown" 
+                                        id="scMultiSelectDropdown_${this.escHtml(col.key)}"
+                                        style="display:none">
+                                        ${options}
+                                    </div>
+                                    <input type="hidden" 
+                                        id="scAddDynamic_${this.escHtml(col.key)}"
+                                        value=""/>
+                                </div>`;
+                            } else {
+                            inputHtml = `
+                                <input type="text"
+                                    id="scAddDynamic_${this.escHtml(col.key)}"
+                                    class="sc-edit-input"
+                                    data-dynamic-key="${this.escHtml(col.key)}"
+                                    placeholder="${this.escHtml(col.label || col.key)}..."/>`;
+                        }
+                        
+                        html += `
+                        <div class="sc-edit-field sc-edit-field-wide">
+                            <label class="sc-edit-label">
+                                <i class="fas fa-tag"></i>
+                                ${this.escHtml(col.label || col.key)}
+                            </label>
+                            ${inputHtml}
+                        </div>`;
+                    });
+                    html += `</div>`;
+                }
+                html += `</div>`;
+                return html;
+            })()}
 
         </div>
 
@@ -5624,67 +8162,28 @@ class SystemsCatalogDashboard {
         }
 
         try {
-            // ─── אסוף את כל המספרים הקיימים ───
-            const existingNumbers = this.allSystems
-                .map(s => String(s.number || '').trim().toUpperCase())
-                .filter(n => /^APM\d+$/.test(n));
-
-            // ─── מצא את המספר הגבוה ביותר ───
-            let maxNum = 0;
-            existingNumbers.forEach(n => {
-                const num = parseInt(n.replace('APM', ''), 10);
-                if (!isNaN(num) && num > maxNum) maxNum = num;
+            const res = await fetch('/SystemsCatalog/GetNextCatalogNumber', {
+                credentials: 'include'
             });
+            const data = await res.json();
 
-            // ─── מצא מספר פנוי (לא בשימוש) ───
-            // ← קודם נסה את הבא אחרי המקסימום
-            let nextNum = maxNum + 1;
-            const existingSet = new Set(existingNumbers);
-            const MIN_CATALOG_NUMBER = 5; // Start catalog number auto-generation from 5
-            2
-            // ← חפש חורים ברצף (מספרים שדולגו)
-            for (let i = MIN_CATALOG_NUMBER; i < nextNum; i++) {
-                const candidate = 'APM' + String(i).padStart(7, '0');
-                if (!existingSet.has(candidate)) {
-                    nextNum = i;
-                    break;
-                }
+            if (!data.success) throw new Error(data.error);
+
+            const newNumber = data.number;
+
+            if (input) {
+                input.value = newNumber;
+                input.classList.add('sc-autofilled');
+                setTimeout(() => input.classList.remove('sc-autofilled'), 2000);
             }
-
-            const newNumber = 'APM' + String(nextNum).padStart(7, '0');
-
-            // ─── בדוק שהמספר אכן פנוי ───
-            const isDuplicate = existingSet.has(newNumber);
-
-            if (isDuplicate) {
-                // ← אם יש כפילות (לא אמור לקרות) - קח את הבא
-                const fallback = 'APM' + String(maxNum + 1).padStart(7, '0');
-                if (input) input.value = fallback;
-                if (statusEl) {
-                    statusEl.textContent = '✓ פנוי';
-                    statusEl.className = 'sc-add-number-status sc-number-ok';
-                }
-                this.showToast(`מספר קטלוגי: ${fallback}`, 'success');
-            } else {
-                if (input) {
-                    input.value = newNumber;
-                    input.classList.add('sc-autofilled');
-                    setTimeout(() =>
-                        input.classList.remove('sc-autofilled'), 2000
-                    );
-                }
-                if (statusEl) {
-                    statusEl.textContent = '✓ פנוי';
-                    statusEl.className =
-                        'sc-add-number-status sc-number-ok';
-                    setTimeout(() => {
-                        if (statusEl) statusEl.textContent = '';
-                    }, 3000);
-                }
-                this.showToast(
-                    `✅ מספר קטלוגי פנוי: ${newNumber}`, 'success'
-                );
+            if (statusEl) {
+                statusEl.textContent = '✓ פנוי';
+                statusEl.className = 'sc-add-number-status sc-number-ok';
+                setTimeout(() => {
+                    if (statusEl) statusEl.textContent = '';
+                }, 3000);
             }
+            this.showToast(`✅ מספר קטלוגי פנוי: ${newNumber}`, 'success');
 
         } catch (err) {
             console.error('_generateNextCatalogNumber error:', err);
@@ -5841,6 +8340,33 @@ class SystemsCatalogDashboard {
                     ?.value?.trim() || '',
             };
 
+            // ─── הוסף שדות דינמיים ───
+            if (this._serverColumnDefs) {
+                const builtInKeys = new Set([
+                    'number','name','nameEn','description','status',
+                    'systemManager','departmentManager','environment',
+                    'domain','department','team','businessDivision',
+                    'appClassification','appType','businessCriticality',
+                    'availabilityRequirement','publisher','supportVendor',
+                    'createdAt','hasAutomation','automationNote',
+                    'requiresValidation','buttons'
+                ]);
+                
+                this._serverColumnDefs
+                    .filter(col => !builtInKeys.has(col.key))
+                    .forEach(col => {
+                        const input = document.getElementById(`scAddDynamic_${col.key}`);
+                        if (input) {
+                            if (input.tagName === 'SELECT' && input.multiple) {
+                                const selected = [...input.selectedOptions].map(o => o.value);
+                                payload[col.key] = selected.length > 0 ? selected.join(', ') : null;
+                            } else {
+                                payload[col.key] = input.value?.trim() || null;
+                            }
+                        }
+                    });
+            }
+
             if (!payload.number) {
                 this.showToast('מספר קטלוגי הוא שדה חובה', 'error');
                 if (saveBtn) {
@@ -5851,12 +8377,12 @@ class SystemsCatalogDashboard {
                 return;
             }
             // ולידציה למספר קטלוגי
-            // פורמט מלא: APM0000033
-            const catalogNumberRegex = /^APM0000\d+$/;
+            // פורמט מלא: APM000033
+            const catalogNumberRegex = /^APM000\d+$/;
 
             if (!catalogNumberRegex.test(payload.number)) {
                 this.showToast(
-                    'המספר הקטלוגי חייב להתחיל ב-APM0000 (לדוגמה: APM0000033)',
+                    'המספר הקטלוגי חייב להתחיל ב-APM000 (לדוגמה: APM0000033)',
                     'error'
                 );
                 if (saveBtn) {
@@ -5954,6 +8480,81 @@ class SystemsCatalogDashboard {
                 saveBtn.disabled = false;
                 saveBtn.innerHTML =
                     '<i class="fas fa-plus-circle"></i> הוסף מערכת';
+            }
+        }
+    }
+
+    _toggleMultiSelectDropdown(key) {
+        const dropdown = document.getElementById(`scMultiSelectDropdown_${key}`);
+        if (!dropdown) return;
+        
+        // סגור כל שאר הדרופדאונים
+        document.querySelectorAll('.sc-multiselect-dropdown').forEach(d => {
+            if (d.id !== `scMultiSelectDropdown_${key}`) {
+                d.style.display = 'none';
+            }
+        });
+        
+        const isOpen = dropdown.style.display !== 'none';
+        dropdown.style.display = isOpen ? 'none' : 'block';
+    }
+
+   _toggleMultiSelectOption(optionEl, key) {
+        if (!optionEl) return;
+        
+        const value = optionEl.dataset.value;
+        const wrap = document.getElementById(`scMultiSelectWrap_${key}`);
+        
+        // ── חפש hidden input בתוך ה-wrap ──
+        const hiddenInput = wrap
+            ? wrap.querySelector('input[type="hidden"]')
+            : (
+                document.getElementById(`scEditDynamic_${key}`) ||
+                document.getElementById(`scAddDynamic_${key}`) ||
+                // תמיכה ב-ME_ prefix
+                document.getElementById(
+                    `scMEDynamic_${key.replace(/^ME_/, '')}`
+                )
+            );
+        
+        const displayEl = document.getElementById(
+            `scMultiSelectDisplay_${key}`
+        );
+        
+        if (!wrap || !hiddenInput) return;
+        
+        const isSelected = optionEl.classList
+            .contains('sc-multiselect-selected');
+        optionEl.classList.toggle('sc-multiselect-selected', !isSelected);
+        
+        const icon = optionEl.querySelector('i');
+        if (icon) {
+            icon.className = `fas ${!isSelected 
+                ? 'fa-check-square' 
+                : 'fa-square'}`;
+            icon.style.color = !isSelected ? '#6366f1' : '#444';
+        }
+        
+        const allSelected = [
+            ...wrap.querySelectorAll('.sc-multiselect-selected')
+        ].map(el => el.dataset.value);
+        
+        hiddenInput.value = allSelected.join(', ');
+        wrap.dataset.currentValue = hiddenInput.value;
+        
+        if (displayEl) {
+            if (allSelected.length > 0) {
+                displayEl.innerHTML = allSelected
+                    .map(v => `
+                        <span class="sc-multiselect-tag">
+                            ${this.escHtml(v)}
+                        </span>`)
+                    .join('');
+            } else {
+                displayEl.innerHTML = `
+                    <span style="color:#555;font-size:0.78rem">
+                        — ללא שינוי —
+                    </span>`;
             }
         }
     }
@@ -6455,6 +9056,91 @@ class SystemsCatalogDashboard {
                 automationNote: document.getElementById('scEditAutomationNote')?.value?.trim() || null,
             };
 
+            // ─── הוסף שדות דינמיים ───
+            if (this._serverColumnDefs) {
+                const builtInKeys = new Set([
+                    'number', 'name', 'nameEn', 'description', 'status',
+                    'systemManager', 'departmentManager', 'environment',
+                    'domain', 'department', 'team', 'businessDivision',
+                    'appClassification', 'appType', 'businessCriticality',
+                    'availabilityRequirement', 'publisher', 'supportVendor',
+                    'createdAt', 'lastValidatedAt', 'hasAutomation', 'automationNote',
+                    'requiresValidation', 'lastValidationEmailSentAt', 'buttons'
+                ]);
+
+                this._serverColumnDefs
+                    .filter(col => !builtInKeys.has(col.key))
+                    .forEach(col => {
+                        // ── multiselect: קרא מ-hidden input ──
+                        const hiddenInput = modal.querySelector(
+                            `input[type="hidden"][id="scEditDynamic_${col.key}"]`
+                        );
+                        if (hiddenInput !== null) {
+                            payload[col.key] = hiddenInput.value || null;
+                            return;
+                        }
+
+                        const input = modal.querySelector(
+                            `[data-dynamic-key="${col.key}"]`
+                        );
+                        if (input) {
+                            // ── multiselect select[multiple] ──
+                            if (input.tagName === 'SELECT' && input.multiple) {
+                                const selected = [...input.selectedOptions]
+                                    .map(o => o.value);
+                                payload[col.key] = selected.length > 0
+                                    ? selected.join(', ')
+                                    : null;
+                            } else {
+                                payload[col.key] = input.value?.trim() || null;
+                            }
+                        }
+                    });
+
+            }
+            
+             // ─── ולידציה על מספר קטלוגי ───
+            if (payload.number) {
+
+                // ─── בדיקה 1: פורמט ───
+                const catalogNumberRegex = /^APM000\d+$/;
+                if (!catalogNumberRegex.test(payload.number)) {
+                    this._highlightEditField('scEditNumber',
+                        'המספר הקטלוגי חייב להתחיל ב-APM000 (לדוגמה: APM0000033)'
+                    );
+                    if (saveBtn) {
+                        saveBtn.disabled = false;
+                        saveBtn.innerHTML = '<i class="fas fa-save"></i> שמור שינויים';
+                    }
+                    return;
+                }
+
+                // ─── בדיקה 2: כפילות ───
+                // בדוק רק אם המספר השתנה מהמקורי
+                const originalSystem = this.allSystems.find(s => s.id === systemId);
+                const originalNumber = String(originalSystem?.number || '').trim();
+                const newNumber      = String(payload.number).trim();
+
+                if (newNumber !== originalNumber) {
+                    // ─── חפש במערכות הקיימות ───
+                    const duplicate = this.allSystems.find(s =>
+                        s.id !== systemId &&
+                        String(s.number || '').trim() === newNumber
+                    );
+
+                    if (duplicate) {
+                        this._highlightEditField('scEditNumber',
+                            `המספר ${newNumber} כבר קיים במערכת "${duplicate.name}"`
+                        );
+                        if (saveBtn) {
+                            saveBtn.disabled = false;
+                            saveBtn.innerHTML = '<i class="fas fa-save"></i> שמור שינויים';
+                        }
+                        return;
+                    }
+                }
+            }
+
             const res = await fetch('/SystemsCatalog/UpdateSystem', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -6485,6 +9171,60 @@ class SystemsCatalogDashboard {
                 saveBtn.innerHTML = '<i class="fas fa-save"></i> שמור שינויים';
             }
         }
+    }
+
+    _highlightEditField(inputId, errorMessage) {
+        // ─── הסר הודעה קיימת ───
+        const existingMsg = document.getElementById(`scEditErr_${inputId}`);
+        if (existingMsg) existingMsg.remove();
+
+        const input = document.getElementById(inputId);
+        if (!input) {
+            this.showToast(errorMessage, 'error');
+            return;
+        }
+
+        // ─── הדגש שדה ───
+        input.style.borderColor = '#ef4444';
+        input.style.boxShadow   = '0 0 0 3px rgba(239,68,68,0.25)';
+        input.style.background  = 'rgba(239,68,68,0.06)';
+
+        // ─── הוסף הודעת שגיאה מתחת לשדה ───
+        const msg = document.createElement('div');
+        msg.id = `scEditErr_${inputId}`;
+        msg.style.cssText = `
+            font-size: 0.72rem;
+            color: #fca5a5;
+            margin-top: 5px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            animation: scFadeIn 0.2s ease;
+        `;
+        msg.innerHTML = `
+            <i class="fas fa-exclamation-circle" style="color:#ef4444;flex-shrink:0"></i>
+            <span>${this.escHtml(errorMessage)}</span>
+        `;
+
+        // ─── הוסף אחרי השדה ───
+        input.parentNode.insertBefore(msg, input.nextSibling);
+
+        // ─── גלול לשדה ───
+        input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        input.focus();
+
+        // ─── נקה בשינוי ───
+        const clearError = () => {
+            input.style.borderColor = '';
+            input.style.boxShadow   = '';
+            input.style.background  = '';
+            document.getElementById(`scEditErr_${inputId}`)?.remove();
+            input.removeEventListener('input', clearError);
+        };
+        input.addEventListener('input', clearError);
+
+        // ─── Toast גם ───
+        this.showToast(errorMessage, 'error');
     }
 
     // ══════════════════════════════════════════════════════════
@@ -7215,7 +9955,7 @@ class SystemsCatalogDashboard {
                         return;
                     }
 
-                    // ─── מיפוי עמודות ───
+                    // ─── מיפוי עמודות קשיחות ───
                     const colMap = {
                         number: ['מספר', 'number', 'Number', '#'],
                         name: ['שם', 'שם מערכת', 'name', 'Name'],
@@ -7243,13 +9983,69 @@ class SystemsCatalogDashboard {
                         automationNote: [
                             'הערת אוטומציה', 'automation note', 'AutomationNote'
                         ],
+                        // ─── שדות נוספים קבועים שקיימים ב-SystemRecord ───
+                        isMonitored: ['isMonitored', 'מנוטר', 'Is Monitored'],
+                        isCritical: ['isCritical', 'קריטי', 'Is Critical'],
+                        workNotes: ['workNotes', 'הערות עבודה', 'Work Notes'],
+                        skipSync: ['skipSync', 'דלג סנכרון'],
+                        baNumber: ['baNumber', 'BA Number', 'מספר BA'],
+                        serviceOffering: ['serviceOffering', 'Service Offering'],
+                        shadowIT: ['shadowIT', 'Shadow IT'],
+                        tags: ['tags', 'תגיות', 'Tags'],
+                        owner: ['owner', 'בעלים', 'Owner'],
+                        canPrint: ['canPrint', 'ניתן להדפסה'],
+                        rto: ['rto', 'RTO'],
+                        rpo: ['rpo', 'RPO'],
+                        userCount: ['userCount', 'ספירת משתמשים', 'User Count', 'מספר משתמשים'],
+                        appUrl: ['appUrl', 'App URL', 'כתובת אפליקציה'],
+                        jiraId: ['jiraId', 'Jira ID', 'מזהה Jira'],
+                        requiresAuth: ['requiresAuth', 'דורש אימות'],
+                        as400Partition: ['as400Partition', 'AS400 Partition'],
+                        systemRequestNumber: ['systemRequestNumber', 'System Request Number', 'מספר בקשה'],
+                        clusterNumber: ['clusterNumber', 'Cluster Number', 'מספר קלאסטר'],
+                        alternativeSite: ['alternativeSite', 'Alternative Site', 'אתר חלופי'],
+                        coreSystem: ['coreSystem', 'Core System', 'מערכת ליבה'],
+                        permissionManagement: ['permissionManagement', 'Permission Management', 'ניהול הרשאות'],
+                        domainPath: ['domainPath', 'Domain Path', 'נתיב דומיין'],
+                        systemDeptPath: ['systemDeptPath', 'System Dept Path'],
+                        installationType: ['installationType', 'Installation Type', 'סוג התקנה'],
+                        clientType: ['clientType', 'Client Type', 'סוג לקוח'],
+                        mainDbType: ['mainDbType', 'Main DB Type', 'סוג DB ראשי'],
+                        authStatus: ['authStatus', 'Auth Status', 'סטטוס אימות'],
+                        operationalStatus: ['operationalStatus', 'Operational Status', 'סטטוס תפעולי'],
+                        failureCount: ['failureCount', 'Failure Count', 'ספירת כשלים', 'כשלים'],
+                        updates: ['updates', 'עדכונים', 'Updates'],
+                        group: ['group', 'קבוצה', 'Group'],
+                        budgetCategory: ['budgetCategory', 'Budget Category', 'קטגוריית תקציב'],
+                        riskLevel: ['riskLevel', 'Risk Level', 'רמת סיכון'],
+                        mainSystemAssociation: ['mainSystemAssociation', 'Main System Association', 'מערכת ראשית'],
+                        mainSchemaName: ['mainSchemaName', 'Main Schema Name', 'שם סכמה ראשי'],
+                        itDomain: ['itDomain', 'IT Domain', 'תחום IT'],
+                        businessSurvey: ['businessSurvey', 'Business Survey', 'סקר עסקי'],
+                        techSurvey: ['techSurvey', 'Tech Survey', 'סקר טכני'],
+                        approved: ['approved', 'מאושר', 'Approved'],
+                        active: ['active', 'פעיל', 'Active'],
+                        monitor: ['monitor', 'מוניטור', 'Monitor'],
+                        lastTechSurveyScore: ['lastTechSurveyScore', 'ציון סקר טכני אחרון'],
+                        lastBusinessSurveyScore: ['lastBusinessSurveyScore', 'ציון סקר עסקי אחרון'],
                     };
+
+                    // ─── הוסף עמודות דינמיות מהשרת למיפוי ───
+                    if (this._serverColumnDefs && this._serverColumnDefs.length > 0) {
+                        this._serverColumnDefs.forEach(col => {
+                            if (!colMap[col.key]) {
+                                colMap[col.key] = [
+                                    col.label,
+                                    col.key,
+                                    col.label?.replace(/\s+/g, ''),
+                                ].filter(Boolean);
+                            }
+                        });
+                    }
 
                     const getVal = (row, keys) => {
                         for (const key of keys) {
                             if (row[key] !== undefined && row[key] !== null) {
-
-                                // ─── אם זה Date object ────────────────────────────
                                 if (row[key] instanceof Date) {
                                     const d = row[key];
                                     const day = d.getDate().toString().padStart(2, '0');
@@ -7257,13 +10053,11 @@ class SystemsCatalogDashboard {
                                     const year = d.getFullYear();
                                     const hours = d.getHours().toString().padStart(2, '0');
                                     const minutes = d.getMinutes().toString().padStart(2, '0');
-
                                     if (hours !== '00' || minutes !== '00') {
                                         return `${day}/${month}/${year} ${hours}:${minutes}`;
                                     }
                                     return `${day}/${month}/${year}`;
                                 }
-
                                 const v = String(row[key]).trim();
                                 if (v && v !== '#N/A' && v !== 'N/A') return v;
                             }
@@ -7271,33 +10065,96 @@ class SystemsCatalogDashboard {
                         return '';
                     };
 
+                    // ─── השג את כל כותרות הקובץ ───
+                    const allColumns = jsonData.length > 0 ? Object.keys(jsonData[0]) : [];
+
+                    // ─── בנה מיפוי הפוך: כותרת עמודה → fieldKey ───
+                    // זה מאפשר זיהוי אוטומטי של כל עמודה בקובץ
+                    const columnHeaderToField = {};
+                    Object.entries(colMap).forEach(([fieldKey, possibleHeaders]) => {
+                        possibleHeaders.forEach(header => {
+                            if (header) {
+                                columnHeaderToField[header.toLowerCase()] = fieldKey;
+                            }
+                        });
+                    });
+
+                    const builtInKeys = new Set([
+                        'number', 'name', 'nameEn', 'description', 'status',
+                        'systemManager', 'departmentManager', 'environment',
+                        'domain', 'department', 'team', 'businessDivision',
+                        'appClassification', 'appType', 'businessCriticality',
+                        'availabilityRequirement', 'publisher', 'supportVendor',
+                        'createdAt', 'hasAutomation', 'automationNote',
+                        'requiresValidation', 'buttons',
+                        'isMonitored', 'isCritical', 'workNotes', 'skipSync',
+                        'baNumber', 'serviceOffering', 'shadowIT', 'tags', 'owner',
+                        'canPrint', 'rto', 'rpo', 'userCount', 'appUrl', 'jiraId',
+                        'requiresAuth', 'as400Partition', 'systemRequestNumber',
+                        'clusterNumber', 'alternativeSite', 'coreSystem',
+                        'permissionManagement', 'domainPath', 'systemDeptPath',
+                        'installationType', 'clientType', 'mainDbType', 'authStatus',
+                        'operationalStatus', 'failureCount', 'updates', 'group',
+                        'budgetCategory', 'riskLevel', 'mainSystemAssociation',
+                        'mainSchemaName', 'itDomain', 'businessSurvey', 'techSurvey',
+                        'approved', 'active', 'monitor', 'lastTechSurveyScore',
+                        'lastBusinessSurveyScore',
+                    ]);
+
                     const systems = jsonData
                         .map(row => {
                             const name = getVal(row, colMap.name);
                             if (!name) return null;
 
-                            return {
+                            // ─── בנה record בסיסי ───
+                            const record = {
                                 id: `sys_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                                number: getVal(row, colMap.number),
-                                name,
-                                nameEn: getVal(row, colMap.nameEn),
-                                description: getVal(row, colMap.description),
-                                status: getVal(row, colMap.status),
-                                systemManager: getVal(row, colMap.systemManager),
-                                departmentManager: getVal(row, colMap.departmentManager),
-                                domain: getVal(row, colMap.domain),
-                                department: getVal(row, colMap.department),
-                                team: getVal(row, colMap.team),
-                                businessDivision: getVal(row, colMap.businessDivision),
-                                appClassification: getVal(row, colMap.appClassification),
-                                appType: getVal(row, colMap.appType),
-                                businessCriticality: getVal(row, colMap.businessCriticality),
-                                availabilityRequirement: getVal(row, colMap.availabilityRequirement),
-                                environment: getVal(row, colMap.environment),
-                                publisher: getVal(row, colMap.publisher),
-                                supportVendor: getVal(row, colMap.supportVendor),
-                                createdAt: this._formatExcelDate(getVal(row, colMap.createdAt)),
                             };
+
+                            // ─── מלא את כל השדות המוגדרים ב-colMap ───
+                            Object.keys(colMap).forEach(fieldKey => {
+                                const val = getVal(row, colMap[fieldKey]);
+                                record[fieldKey] = val !== '' ? val : '';
+                            });
+
+                            // ─── טיפול מיוחד בתאריך ───
+                            if (record.createdAt) {
+                                record.createdAt = this._formatExcelDate(record.createdAt);
+                            }
+
+                            // ─── ─── חדש: סרוק את כל עמודות הקובץ ───
+                            // לכד עמודות שלא מוגדרות ב-colMap (שדות דינמיים לא ידועים)
+                            const dynamicFields = {};
+
+                            allColumns.forEach(colHeader => {
+                                const val = String(row[colHeader] || '').trim();
+                                if (!val || val === '#N/A' || val === 'N/A') return;
+
+                                // ─── בדוק אם כבר מטופל ───
+                                const lowerHeader = colHeader.toLowerCase();
+                                const mappedField = columnHeaderToField[lowerHeader];
+
+                                if (mappedField) {
+                                    // כבר מטופל ע"י colMap - דלג
+                                    return;
+                                }
+
+                                // ─── עמודה לא מזוהה - שמור כ-dynamic field ───
+                                // נסה לנחש שם שדה camelCase מהכותרת
+                                const fieldKey = this._headerToFieldKey(colHeader);
+                                if (fieldKey && !builtInKeys.has(fieldKey)) {
+                                    dynamicFields[fieldKey] = val;
+                                    // גם שמור ישירות על record
+                                    record[fieldKey] = val;
+                                }
+                            });
+
+                            // ─── הגדר DynamicFields אם יש ───
+                            if (Object.keys(dynamicFields).length > 0) {
+                                record.dynamicFields = dynamicFields;
+                            }
+
+                            return record;
                         })
                         .filter(Boolean);
 
@@ -7310,6 +10167,38 @@ class SystemsCatalogDashboard {
             reader.onerror = () => reject(new Error('שגיאה בקריאת הקובץ'));
             reader.readAsArrayBuffer(file);
         });
+    }
+
+    // ─── המרת כותרת עמודה לשם שדה camelCase ───────────────────
+    _headerToFieldKey(header) {
+        if (!header) return '';
+        
+        // ─── אם כבר camelCase/PascalCase - החזר כמות שהוא (lowercase ראשון) ───
+        if (/^[a-zA-Z][a-zA-Z0-9]*$/.test(header)) {
+            return header.charAt(0).toLowerCase() + header.slice(1);
+        }
+        
+        // ─── המר רווחים ומקפים ל-camelCase ───
+        const cleaned = header
+            .trim()
+            .replace(/[^\w\s\u0590-\u05FF]/g, '') // הסר תווים מיוחדים (השאר עברית)
+            .trim();
+        
+        // ─── אם יש עברית - השתמש כ-key ישירות (sanitized) ───
+        if (/[\u0590-\u05FF]/.test(cleaned)) {
+            // עברית - צור key בסיסי
+            return cleaned.replace(/\s+/g, '_').toLowerCase();
+        }
+        
+        // ─── אנגלית - המר ל-camelCase ───
+        const words = cleaned.split(/[\s_\-]+/);
+        return words
+            .filter(w => w.length > 0)
+            .map((w, i) => i === 0 
+                ? w.toLowerCase() 
+                : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
+            )
+            .join('');
     }
 
     // ─── המרת תאריך Excel למחרוזת קריאה ─────────────────────────
@@ -7410,16 +10299,51 @@ class SystemsCatalogDashboard {
             const existing = document.getElementById('scImportModal');
             if (existing) existing.remove();
 
-            // ─── זהה חדשים מול קיימים ───
+            // ─── קוד חדש: השווה לפי מספר קטלוג תחילה ───
+            const existingNumbers = new Set(
+                this.allSystems
+                    .map(s => (s.number || '').trim().toLowerCase())
+                    .filter(n => n.length > 0)
+            );
             const existingNames = new Set(
-                this.allSystems.map(s => (s.name || '').toLowerCase())
+                this.allSystems.map(s => (s.name || '').trim().toLowerCase())
             );
 
-            const added = parsed.filter(s => !existingNames.has((s.name || '').toLowerCase()));
-            const updated = parsed.filter(s => existingNames.has((s.name || '').toLowerCase()));
+            // בדוק כפילויות שמות בנתונים הקיימים (לוג בלבד)
+            const nameCount = {};
+            this.allSystems.forEach(s => {
+                const n = (s.name || '').trim().toLowerCase();
+                if (n) nameCount[n] = (nameCount[n] || 0) + 1;
+            });
+            Object.entries(nameCount).forEach(([name, count]) => {
+                if (count > 1)
+                    console.warn(`[Import] כפילות שם קיים: "${name}" (${count} פעמים)`);
+            });
+
+            // בדוק מערכות ללא מנהל
+            this.allSystems.forEach(s => {
+                if (!s.systemManager || s.systemManager.trim() === '')
+                    console.warn(
+                        `[Import] מערכת ללא מנהל: "${s.name}" (מספר: ${s.number})`
+                    );
+            });
+
+            // ─── סיווג: קיים = נמצא לפי מספר קטלוג, חדש = לא נמצא ───
+            const isExisting = (s) => {
+                const num = (s.number || '').trim().toLowerCase();
+                if (num && existingNumbers.has(num)) return true;
+                // fallback לפי שם רק אם אין מספר
+                if (!num) {
+                    return existingNames.has((s.name || '').trim().toLowerCase());
+                }
+                return false;
+            };
+
+            const added = parsed.filter(s => !isExisting(s));
+            const updated = parsed.filter(s => isExisting(s));
 
             const rowsHtml = parsed.map((s, i) => {
-                const isNew = !existingNames.has((s.name || '').toLowerCase());
+                const isNew = !isExisting(s);
                 return `
                 <tr class="sc-import-row ${isNew ? 'sc-import-row-added' : 'sc-import-row-changed'}">
                     <td class="sc-import-td sc-import-td-icon">
@@ -7627,18 +10551,121 @@ class SystemsCatalogDashboard {
 
     async _executeImport(systems, overwrite) {
         try {
+            const validSystems = systems.filter(s =>
+                s && (s.name || s.Name) &&
+                String(s.name || s.Name).trim() !== ''
+            );
+
+            if (validSystems.length === 0) {
+                this.showToast('לא נמצאו מערכות תקינות לייבוא', 'error');
+                return;
+            }
+
+            // ─── נרמל שמות שדות ל-camelCase ───
+            const normalizedSystems = validSystems.map(s => {
+                // ─── שדות בסיסיים ───
+                const normalized = {
+                    id: s.id || s.Id || '',
+                    number: s.number || s.Number || '',
+                    name: s.name || s.Name || '',
+                    nameEn: s.nameEn || s.NameEn || '',
+                    description: s.description || s.Description || '',
+                    status: s.status || s.Status || '',
+                    systemManager: s.systemManager || s.SystemManager || '',
+                    departmentManager: s.departmentManager || s.DepartmentManager || '',
+                    domain: s.domain || s.Domain || '',
+                    department: s.department || s.Department || '',
+                    team: s.team || s.Team || '',
+                    businessDivision: s.businessDivision || s.BusinessDivision || '',
+                    appClassification: s.appClassification || s.AppClassification || '',
+                    appType: s.appType || s.AppType || '',
+                    businessCriticality: s.businessCriticality || s.BusinessCriticality || '',
+                    availabilityRequirement: s.availabilityRequirement || s.AvailabilityRequirement || '',
+                    environment: s.environment || s.Environment || '',
+                    publisher: s.publisher || s.Publisher || '',
+                    supportVendor: s.supportVendor || s.SupportVendor || '',
+                    createdAt: s.createdAt || s.CreatedAt || '',
+                    hasAutomation: s.hasAutomation || s.HasAutomation || 'לא קיימות',
+                    automationNote: s.automationNote || s.AutomationNote || '',
+                };
+
+                // ─── שדות נוספים - העבר הכל (גם ריקים!) ───
+                const extraFields = [
+                    'isMonitored', 'isCritical', 'workNotes', 'skipSync',
+                    'baNumber', 'serviceOffering', 'shadowIT', 'tags', 'owner',
+                    'canPrint', 'rto', 'rpo', 'userCount', 'appUrl', 'jiraId',
+                    'requiresAuth', 'as400Partition', 'systemRequestNumber',
+                    'clusterNumber', 'alternativeSite', 'coreSystem',
+                    'permissionManagement', 'domainPath', 'systemDeptPath',
+                    'installationType', 'clientType', 'mainDbType', 'authStatus',
+                    'operationalStatus', 'failureCount', 'updates', 'group',
+                    'budgetCategory', 'riskLevel', 'mainSystemAssociation',
+                    'mainSchemaName', 'itDomain', 'businessSurvey', 'techSurvey',
+                    'approved', 'active', 'monitor', 'lastTechSurveyScore',
+                    'lastBusinessSurveyScore',
+                ];
+
+                extraFields.forEach(field => {
+                    if (s[field] !== undefined) {
+                        normalized[field] = s[field];
+                    }
+                });
+
+                // ─── ─── חדש: העבר שדות דינמיים לא ידועים ───
+                if (s.dynamicFields) {
+                    normalized.dynamicFields = s.dynamicFields;
+                }
+
+                // ─── ─── חדש: סרוק את כל מפתחות הrecord ───
+                // ולכד שדות שלא ב-builtInKeys ולא ב-extraFields
+                const allBuiltIn = new Set([
+                    'id', 'number', 'name', 'nameEn', 'description', 'status',
+                    'systemManager', 'departmentManager', 'environment',
+                    'domain', 'department', 'team', 'businessDivision',
+                    'appClassification', 'appType', 'businessCriticality',
+                    'availabilityRequirement', 'publisher', 'supportVendor',
+                    'createdAt', 'hasAutomation', 'automationNote',
+                    'requiresValidation', 'lastUpdated', 'updatedBy',
+                    'lastValidatedAt', 'lastValidationEmailSentAt',
+                    'validationReminderCount', 'importedAt',
+                    'dynamicFields',
+                    ...extraFields,
+                ]);
+
+                Object.keys(s).forEach(key => {
+                    if (!allBuiltIn.has(key) && s[key] !== undefined && s[key] !== null) {
+                        normalized[key] = s[key];
+                        // ─── הוסף גם ל-dynamicFields ───
+                        if (!normalized.dynamicFields) normalized.dynamicFields = {};
+                        normalized.dynamicFields[key] = String(s[key]);
+                    }
+                });
+
+                extraFields.forEach(field => {
+                    // ← תיקון: העבר גם ערכים ריקים (הסר את הבדיקה s[field] !== '')
+                    if (s[field] !== undefined) {
+                        normalized[field] = s[field];
+                    }
+                });
+
+                return normalized;
+            });
+
             const res = await fetch('/SystemsCatalog/ImportSystems', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
-                body: JSON.stringify({ systems, overwrite })
+                body: JSON.stringify({
+                    systems: normalizedSystems,
+                    overwrite
+                })
             });
+
             const data = await res.json();
 
             if (!data.success)
                 throw new Error(data.error || 'שגיאה בייבוא');
 
-            // ─── רענן נתונים ───
             await this.loadData();
 
             this.showToast(
@@ -7657,7 +10684,7 @@ class SystemsCatalogDashboard {
     // ייבוא אוטומציה מאקסל
     // ══════════════════════════════════════════════════════════
     openImportAutomationDialog() {
-        if (!this.isAdmin) {
+        if (!(this.isAdmin || this.isAutomationOnly)) {
             this.showToast('אין הרשאה לייבוא', 'error');
             return;
         }
@@ -8499,11 +11526,27 @@ class SystemsCatalogDashboard {
                 { header: 'מפרסם', key: 'publisher', width: 20, colKey: 'publisher' },
                 { header: 'ספק תמיכה', key: 'supportVendor', width: 20, colKey: 'supportVendor' },
                 { header: 'בדיקות אוטומטיות', key: 'hasAutomation', width: 18, colKey: 'hasAutomation' },
-                { header: 'הערת אוטומציה', key: 'automationNote', width: 30, colKey: 'hasAutomation' }, // תמיד עם hasAutomation
+                { header: 'הערת אוטומציה', key: 'automationNote', width: 30, colKey: 'automationNote' },
                 { header: 'נדרש תיקוף', key: 'requiresValidation', width: 14, colKey: 'requiresValidation' },
                 { header: 'תיקוף אחרון', key: 'lastValidatedAt', width: 16, colKey: 'lastValidatedAt' },
+                { header: 'נשלח תיקוף', key: 'lastValidationEmailSentAt', width: 18, colKey: 'lastValidationEmailSentAt' },
                 { header: 'נוצר', key: 'createdAt', width: 14, colKey: 'createdAt' },
             ];
+            // ─── הוסף עמודות דינמיות מהשרת ───
+            if (this._serverColumnDefs && this._serverColumnDefs.length > 0) {
+                const builtInKeys = new Set(allColumnDefs.map(c => c.key));
+
+                this._serverColumnDefs
+                    .filter(col => !builtInKeys.has(col.key))
+                    .forEach(col => {
+                        allColumnDefs.push({
+                            header: col.label || col.key,
+                            key: col.key,
+                            width: col.width ? Math.ceil(col.width / 7) : 20,
+                            colKey: col.key
+                        });
+                    });
+            }
 
             // ─── סנן עמודות לפי בחירת המשתמש ───
             let columnsToExport;
@@ -8537,40 +11580,118 @@ class SystemsCatalogDashboard {
             });
 
             // ─── נתונים ───
-            this.filteredSystems.forEach((s, idx) => {
+            const systemsToExport =
+                exportChoice === 'selected' && this.selectedSystems.size > 0
+                    ? this.filteredSystems.filter(s => this.selectedSystems.has(s.id))
+                    : this.filteredSystems;
+
+            systemsToExport.forEach((s, idx) => {
                 // ─── תאריך ללא שעה ───
                 const stripTime = (dateStr) => {
                     if (!dateStr) return '';
-                    return dateStr.split(' ')[0]; // קח רק DD/MM/YYYY
+                    return dateStr.split(' ')[0];
+                };
+
+                // ─── המרת תאריך לפורמט ישראלי DD/MM/YYYY ───
+                const formatDateIL = (dateStr) => {
+                    if (!dateStr) return '';
+                    const str = String(dateStr).trim();
+                    // פורמט ISO: 2026-09-08
+                    const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                    if (isoMatch) {
+                        const [, year, month, day] = isoMatch;
+                        return `${day}/${month}/${year}`;
+                    }
+                    // פורמט ישראלי כבר: 23/08/2026
+                    if (/^\d{2}\/\d{2}\/\d{4}/.test(str)) {
+                        return str.split(' ')[0];
+                    }
+                    return stripTime(str);
                 };
 
                 // ─── בנה שורה דינמית לפי עמודות שנבחרו ───
                 const rowData = {};
                 columnsToExport.forEach(col => {
                     switch (col.key) {
-                        case 'number': rowData.number = s.number || ''; break;
-                        case 'name': rowData.name = s.name || ''; break;
-                        case 'nameEn': rowData.nameEn = s.nameEn || ''; break;
-                        case 'description': rowData.description = s.description || ''; break;
-                        case 'status': rowData.status = s.status || ''; break;
-                        case 'systemManager': rowData.systemManager = s.systemManager || ''; break;
-                        case 'departmentManager': rowData.departmentManager = s.departmentManager || ''; break;
-                        case 'domain': rowData.domain = s.domain || ''; break;
-                        case 'department': rowData.department = s.department || ''; break;
-                        case 'team': rowData.team = s.team || ''; break;
-                        case 'businessDivision': rowData.businessDivision = s.businessDivision || ''; break;
-                        case 'appClassification': rowData.appClassification = s.appClassification || ''; break;
-                        case 'appType': rowData.appType = s.appType || ''; break;
-                        case 'businessCriticality': rowData.businessCriticality = s.businessCriticality || ''; break;
-                        case 'availabilityRequirement': rowData.availabilityRequirement = s.availabilityRequirement || ''; break;
-                        case 'environment': rowData.environment = s.environment || ''; break;
-                        case 'publisher': rowData.publisher = s.publisher || ''; break;
-                        case 'supportVendor': rowData.supportVendor = s.supportVendor || ''; break;
-                        case 'hasAutomation': rowData.hasAutomation = s.hasAutomation || 'לא קיימות'; break;
-                        case 'automationNote': rowData.automationNote = s.automationNote || ''; break;
-                        case 'createdAt': rowData.createdAt = stripTime(s.createdAt); break;
-                        case 'requiresValidation': rowData.requiresValidation = s.requiresValidation ? 'נדרש תיקוף' : ''; break;
-                        case 'lastValidatedAt': rowData.lastValidatedAt = stripTime(s.lastValidatedAt); break;
+                        case 'number':
+                            rowData.number = s.number || '';
+                            break;
+                        case 'name':
+                            rowData.name = s.name || '';
+                            break;
+                        case 'nameEn':
+                            rowData.nameEn = s.nameEn || '';
+                            break;
+                        case 'description':
+                            rowData.description = s.description || '';
+                            break;
+                        case 'status':
+                            rowData.status = s.status || '';
+                            break;
+                        case 'systemManager':
+                            rowData.systemManager = s.systemManager || '';
+                            break;
+                        case 'departmentManager':
+                            rowData.departmentManager = s.departmentManager || '';
+                            break;
+                        case 'domain':
+                            rowData.domain = s.domain || '';
+                            break;
+                        case 'department':
+                            rowData.department = s.department || '';
+                            break;
+                        case 'team':
+                            rowData.team = s.team || '';
+                            break;
+                        case 'businessDivision':
+                            rowData.businessDivision = s.businessDivision || '';
+                            break;
+                        case 'appClassification':
+                            rowData.appClassification = s.appClassification || '';
+                            break;
+                        case 'appType':
+                            rowData.appType = s.appType || '';
+                            break;
+                        case 'businessCriticality':
+                            rowData.businessCriticality = s.businessCriticality || '';
+                            break;
+                        case 'availabilityRequirement':
+                            rowData.availabilityRequirement = s.availabilityRequirement || '';
+                            break;
+                        case 'environment':
+                            rowData.environment = s.environment || '';
+                            break;
+                        case 'publisher':
+                            rowData.publisher = s.publisher || '';
+                            break;
+                        case 'supportVendor':
+                            rowData.supportVendor = s.supportVendor || '';
+                            break;
+                        case 'hasAutomation':
+                            rowData.hasAutomation = s.hasAutomation || 'לא קיימות';
+                            break;
+                        case 'automationNote':
+                            rowData.automationNote = s.automationNote || '';
+                            break;
+                        case 'createdAt':
+                            rowData.createdAt = formatDateIL(s.createdAt);
+                            break;
+                        case 'requiresValidation':
+                            rowData.requiresValidation = s.requiresValidation
+                                ? 'נדרש תיקוף'
+                                : '';
+                            break;
+                        case 'lastValidatedAt':
+                            rowData.lastValidatedAt = formatDateIL(s.lastValidatedAt);
+                            break;
+                        case 'lastValidationEmailSentAt':
+                            rowData.lastValidationEmailSentAt =
+                                formatDateIL(s.lastValidationEmailSentAt);
+                            break;
+                        default:
+                            // ─── עמודה דינמית ───
+                            rowData[col.key] = String(s[col.key] || s.dynamicFields?.[col.key] || '');
+                            break;
                     }
                 });
 
@@ -8580,13 +11701,26 @@ class SystemsCatalogDashboard {
 
                 row.eachCell((cell, colNum) => {
                     cell.font = { name: 'Arial', size: 10 };
-                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
-                    cell.alignment = { horizontal: 'center', vertical: 'middle', readingOrder: 2 };
-                    cell.border = { bottom: { style: 'thin', color: { argb: 'FFe2e8f0' } } };
+                    cell.fill = {
+                        type: 'pattern', pattern: 'solid',
+                        fgColor: { argb: rowBg }
+                    };
+                    cell.alignment = {
+                        horizontal: 'center',
+                        vertical: 'middle',
+                        readingOrder: 2
+                    };
+                    cell.border = {
+                        bottom: {
+                            style: 'thin',
+                            color: { argb: 'FFe2e8f0' }
+                        }
+                    };
 
                     // ─── עיצוב מיוחד לעמודת "נדרש תיקוף" ───
                     const colDef = columnsToExport[colNum - 1];
-                    if (colDef?.key === 'requiresValidation' && cell.value === 'נדרש תיקוף') {
+                    if (colDef?.key === 'requiresValidation' &&
+                        cell.value === 'נדרש תיקוף') {
                         cell.font = {
                             name: 'Arial', size: 10,
                             bold: true,
@@ -8605,6 +11739,44 @@ class SystemsCatalogDashboard {
                             color: { argb: 'FF166534' }
                         };
                     }
+
+                    // ─── עיצוב מיוחד לעמודת "נשלח תיקוף" ───
+                    if (colDef?.key === 'lastValidationEmailSentAt' &&
+                        cell.value) {
+                        cell.font = {
+                            name: 'Arial', size: 10,
+                            color: { argb: 'FF1d4ed8' }
+                        };
+                    }
+
+                    // ─── עיצוב מיוחד לעמודת "אוטומציה" ───
+                    if (colDef?.key === 'hasAutomation') {
+                        if (cell.value === 'קיימות') {
+                            cell.font = {
+                                name: 'Arial', size: 10,
+                                bold: true,
+                                color: { argb: 'FF166534' }
+                            };
+                            cell.fill = {
+                                type: 'pattern', pattern: 'solid',
+                                fgColor: { argb: 'FFdcfce7' }
+                            };
+                        } else if (cell.value === 'לא קיימות') {
+                            cell.font = {
+                                name: 'Arial', size: 10,
+                                color: { argb: 'FF6b7280' }
+                            };
+                        } else if (cell.value === 'לא רלוונטי') {
+                            cell.font = {
+                                name: 'Arial', size: 10,
+                                color: { argb: 'FF92400e' }
+                            };
+                            cell.fill = {
+                                type: 'pattern', pattern: 'solid',
+                                fgColor: { argb: 'FFfef3c7' }
+                            };
+                        }
+                    }
                 });
             });
 
@@ -8616,7 +11788,7 @@ class SystemsCatalogDashboard {
             saveAs(blob, `systems_catalog_${date}.xlsx`);
 
             this.showToast(
-                `📊 יוצאו ${this.filteredSystems.length} מערכות (${columnsToExport.length} עמודות)`,
+                `📊 יוצאו ${systemsToExport.length} מערכות (${columnsToExport.length} עמודות)`,
                 'success'
             );
 
@@ -8651,12 +11823,9 @@ class SystemsCatalogDashboard {
             modal.style.zIndex = '999999';
 
             modal.innerHTML = `
-<div class="sc-modal" style="max-width:420px;width:95%">
+<div class="sc-modal sc-export-modal">
 
-    <div class="sc-modal-header" style="
-        border-bottom:2px solid rgba(34,197,94,0.35);
-        background:linear-gradient(135deg,
-            rgba(34,197,94,0.08),rgba(16,185,129,0.05))">
+    <div class="sc-modal-header sc-export-modal-header">
         <h3 class="sc-modal-title">
             <i class="fas fa-file-excel" style="color:#22c55e"></i>
             ייצוא לאקסל
@@ -8665,19 +11834,14 @@ class SystemsCatalogDashboard {
                 id="scExportOptClose">&times;</button>
     </div>
 
-    <div class="sc-modal-body" style="gap:14px">
+    <div class="sc-modal-body sc-export-modal-body">
 
         <!-- מידע -->
-        <div style="
-            display:flex;align-items:center;gap:8px;
-            padding:10px 14px;
-            background:rgba(34,197,94,0.06);
-            border:1px solid rgba(34,197,94,0.2);
-            border-radius:8px;font-size:0.82rem;color:#888">
-            <i class="fas fa-info-circle" style="color:#22c55e"></i>
+        <div class="sc-export-info-box">
+            <i class="fas fa-info-circle"></i>
             <span>
                 יוצאו
-                <strong style="color:#86efac">
+                <strong class="sc-export-info-count">
                     ${this.filteredSystems.length}
                 </strong>
                 מערכות (לפי הפילטרים הנוכחיים)
@@ -8685,42 +11849,29 @@ class SystemsCatalogDashboard {
         </div>
 
         <!-- בחירת עמודות -->
-        <div style="display:flex;flex-direction:column;gap:8px">
-            <div style="font-size:0.78rem;font-weight:600;
-                        color:#777;margin-bottom:4px">
-                <i class="fas fa-columns"
-                   style="color:#6366f1"></i>
+        <div class="sc-export-cols-section">
+            <div class="sc-export-cols-title">
+                <i class="fas fa-columns"></i>
                 בחר עמודות לייצוא:
             </div>
 
             <!-- אפשרות 1: כל העמודות -->
-            <label style="
-                display:flex;align-items:flex-start;gap:12px;
-                padding:12px 14px;
-                background:rgba(255,255,255,0.03);
-                border:2px solid rgba(255,255,255,0.08);
-                border-radius:8px;cursor:pointer;
-                transition:all 0.15s;user-select:none"
+            <label class="sc-export-option-label"
                 id="scExportOptAllLabel">
                 <input type="radio"
                        name="scExportCols"
                        value="all"
                        id="scExportOptAll"
-                       checked
-                       style="accent-color:#6366f1;
-                              width:16px;height:16px;
-                              margin-top:1px;flex-shrink:0;
-                              cursor:pointer">
-                <div>
-                    <div style="font-size:0.88rem;font-weight:700;
-                                color:#e0e0e0;margin-bottom:3px">
-                        <i class="fas fa-table"
-                           style="color:#6366f1;font-size:0.8rem"></i>
+                       class="sc-export-radio"
+                       checked>
+                <div class="sc-export-option-content">
+                    <div class="sc-export-option-title">
+                        <i class="fas fa-table sc-export-icon-purple"></i>
                         כל העמודות
                     </div>
-                    <div style="font-size:0.75rem;color:#666">
+                    <div class="sc-export-option-desc">
                         ייצא את כל
-                        <strong style="color:#a5b4fc">${totalCols}</strong>
+                        <strong class="sc-export-count-purple">${totalCols}</strong>
                         העמודות הזמינות
                         (כולל תיקוף, אוטומציה וכו')
                     </div>
@@ -8728,36 +11879,46 @@ class SystemsCatalogDashboard {
             </label>
 
             <!-- אפשרות 2: עמודות גלויות בלבד -->
-            <label style="
-                display:flex;align-items:flex-start;gap:12px;
-                padding:12px 14px;
-                background:rgba(255,255,255,0.03);
-                border:2px solid rgba(255,255,255,0.08);
-                border-radius:8px;cursor:pointer;
-                transition:all 0.15s;user-select:none"
+            <label class="sc-export-option-label"
                 id="scExportOptVisibleLabel">
                 <input type="radio"
                        name="scExportCols"
                        value="visible"
                        id="scExportOptVisible"
-                       style="accent-color:#6366f1;
-                              width:16px;height:16px;
-                              margin-top:1px;flex-shrink:0;
-                              cursor:pointer">
-                <div>
-                    <div style="font-size:0.88rem;font-weight:700;
-                                color:#e0e0e0;margin-bottom:3px">
-                        <i class="fas fa-eye"
-                           style="color:#22c55e;font-size:0.8rem"></i>
+                       class="sc-export-radio">
+                <div class="sc-export-option-content">
+                    <div class="sc-export-option-title">
+                        <i class="fas fa-eye sc-export-icon-green"></i>
                         עמודות גלויות בלבד
                     </div>
-                    <div style="font-size:0.75rem;color:#666">
+                    <div class="sc-export-option-desc">
                         ייצא רק את
-                        <strong style="color:#86efac">${visibleCount}</strong>
+                        <strong class="sc-export-count-green">${visibleCount}</strong>
                         העמודות המוצגות כרגע במסך
                     </div>
                 </div>
             </label>
+
+            ${this.selectedSystems.size > 0 ? `
+            <label class="sc-export-option-label"
+                id="scExportOptSelectedLabel">
+                <input type="radio"
+                    name="scExportCols"
+                    value="selected"
+                    id="scExportOptSelected"
+                    class="sc-export-radio">
+                <div class="sc-export-option-content">
+                    <div class="sc-export-option-title">
+                        <i class="fas fa-check-square sc-export-icon-amber"></i>
+                        שורות נבחרות בלבד
+                    </div>
+                    <div class="sc-export-option-desc">
+                        ייצא רק את
+                        <strong class="sc-export-count-amber">${this.selectedSystems.size}</strong>
+                        השורות שסומנו
+                    </div>
+                </div>
+            </label>` : ''}
         </div>
 
     </div>
@@ -8768,18 +11929,7 @@ class SystemsCatalogDashboard {
             <i class="fas fa-times"></i> ביטול
         </button>
         <button id="scExportOptConfirm"
-                style="
-                    padding:8px 20px;
-                    background:linear-gradient(
-                        135deg,
-                        rgba(34,197,94,0.8),
-                        rgba(22,163,74,0.9));
-                    border:1px solid rgba(34,197,94,0.6);
-                    border-radius:6px;color:#052e16;
-                    font-size:0.85rem;font-weight:700;
-                    cursor:pointer;display:flex;
-                    align-items:center;gap:6px;
-                    transition:all 0.2s;font-family:inherit">
+                class="sc-export-confirm-btn">
             <i class="fas fa-file-excel"></i>
             ייצא לאקסל
         </button>
@@ -8794,20 +11944,43 @@ class SystemsCatalogDashboard {
                 const allLabel = document.getElementById('scExportOptAllLabel');
                 const visLabel = document.getElementById('scExportOptVisibleLabel');
                 const allRadio = document.getElementById('scExportOptAll');
+                const visibleRadio = document.getElementById('scExportOptVisible');
+                const selectedRadio = document.getElementById('scExportOptSelected');
 
-                if (allLabel && visLabel) {
-                    if (allRadio?.checked) {
-                        allLabel.style.borderColor = 'rgba(99,102,241,0.5)';
-                        allLabel.style.background = 'rgba(99,102,241,0.08)';
-                        visLabel.style.borderColor = 'rgba(255,255,255,0.08)';
-                        visLabel.style.background = 'rgba(255,255,255,0.03)';
-                    } else {
-                        visLabel.style.borderColor = 'rgba(34,197,94,0.5)';
-                        visLabel.style.background = 'rgba(34,197,94,0.06)';
-                        allLabel.style.borderColor = 'rgba(255,255,255,0.08)';
-                        allLabel.style.background = 'rgba(255,255,255,0.03)';
+                function updateRadioHighlights() {
+                    const activeStyle = {
+                        borderColor: '#6366f1',
+                        background: 'rgba(99,102,241,0.12)'
+                    };
+
+                    const normalStyle = {
+                        borderColor: 'rgba(255,255,255,0.08)',
+                        background: 'rgba(255,255,255,0.03)'
+                    };
+
+                    Object.assign(
+                        document.getElementById('scExportOptAllLabel').style,
+                        allRadio?.checked ? activeStyle : normalStyle
+                    );
+
+                    Object.assign(
+                        document.getElementById('scExportOptVisibleLabel').style,
+                        visibleRadio?.checked ? activeStyle : normalStyle
+                    );
+
+                    if (selectedRadio) {
+                        Object.assign(
+                            document.getElementById('scExportOptSelectedLabel').style,
+                            selectedRadio.checked ? activeStyle : normalStyle
+                        );
                     }
                 }
+
+                allRadio?.addEventListener('change', updateRadioHighlights);
+                visibleRadio?.addEventListener('change', updateRadioHighlights);
+                selectedRadio?.addEventListener('change', updateRadioHighlights);
+
+                updateRadioHighlights();
             };
 
             // ─── אתחל הדגשה ───
@@ -8955,6 +12128,16 @@ class SystemsCatalogDashboard {
                 this.updateStats();
             }
 
+            // ─── פילטרים דינמיים ───
+            if (e.target.id?.startsWith('scFltDyn_')) {
+                const colKey = e.target.id.replace('scFltDyn_', '');
+                this.filters[colKey] = e.target.value;
+                this._savePreferences();
+                this.applyFiltersAndSort();
+                this.renderContent();
+                this.updateStats();
+            }
+
             if (e.target.id === 'scPageSize') {
                 this.pageSize = parseInt(e.target.value);
                 this._savePreferences();
@@ -8965,6 +12148,11 @@ class SystemsCatalogDashboard {
 
         // ─── לחיצות ───
         document.addEventListener('click', e => {
+            if (!e.target.closest('.sc-multiselect-wrap')) {
+                document.querySelectorAll('.sc-multiselect-dropdown').forEach(d => {
+                    d.style.display = 'none';
+                });
+            }
             if (e.target.closest('#scAutoFillBulkBtn')) {
                 if (!this.isAdmin) {
                     this.showToast('אין הרשאה', 'error');
@@ -9066,7 +12254,7 @@ class SystemsCatalogDashboard {
 
             // ─── Multi Toolbar - שלח תיקוף נבחרים ───
             if (e.target.closest('#scBulkValidateBtn')) {
-                if (!this.isAdmin) {
+                if (!this.isAdmin && !this.canSendValidation) {
                     this.showToast('אין הרשאה לשליחת תיקוף נבחרים', 'error');
                     return;
                 }
@@ -9076,7 +12264,7 @@ class SystemsCatalogDashboard {
 
             // ─── Multi Toolbar - ערוך נבחרים ───
             if (e.target.closest('#scMultiEditBtn')) {
-                if (!this.isAdmin) {
+                if (!this.isAdmin && !this.canSendValidation) {
                     this.showToast('אין הרשאה לעריכה', 'error');
                     return;
                 }
@@ -9123,14 +12311,17 @@ class SystemsCatalogDashboard {
                 this.openImportDialog();
             }
             if (e.target.closest('#scImportAutoBtn')) {
-                if (!this.isAdmin) {
+                if (!(this.isAdmin || this.isAutomationOnly)) {
                     this.showToast('אין הרשאה לייבוא', 'error');
                     return;
                 }
                 this.openImportAutomationDialog();
                 return;
             }
-
+            if (e.target.closest('#scPrepareAutoEmailBtn')) {
+                this._prepareAutomationEmail();
+                return;
+            }
             // ניהול עמודות
             if (e.target.closest('#scColManagerBtn')) {
                 this.openColumnManagerModal();
@@ -9156,6 +12347,16 @@ class SystemsCatalogDashboard {
                 this.viewMode = 'stats';
                 this._savePreferences();
                 this.renderContent();
+            }
+
+            // ─── ניהול הרשאות ───
+            if (e.target.closest('#scPermissionsBtn')) {
+                if (!this.isAdmin) {
+                    this.showToast('אין הרשאה לניהול הרשאות', 'error');
+                    return;
+                }
+                this._openPermissionsModal();
+                return;
             }
 
             // מיון עמודה
@@ -9196,6 +12397,7 @@ class SystemsCatalogDashboard {
             const viewServersBtn = e.target.closest('.sc-view-servers-btn');
             if (viewServersBtn) {
                 e.stopPropagation();
+                if (!this.isAdmin && !this.isNoc) return; // ← הגנה נוספת
                 const systemName = viewServersBtn.dataset.systemName;
                 if (systemName) {
                     this.openSystemServersModal(systemName);
@@ -9276,7 +12478,7 @@ class SystemsCatalogDashboard {
 
             if (toggle && popup) {
                 const isOpen = popup.style.display !== 'none';
-                popup.style.display = isOpen ? 'none' : 'block';
+                popup.style.display = isOpen ? 'none' : 'flex';
                 const chevron = document.getElementById('scFiltersChevron');
                 if (chevron) chevron.style.transform =
                     isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
@@ -9303,7 +12505,7 @@ class SystemsCatalogDashboard {
                 e.stopPropagation();
                 const systemId = catalogNumLink.dataset.id;
                 if (systemId) {
-                    const readOnly = !this.isAdmin && !this.isAutomationOnly;
+                    const readOnly = !this.isAdmin && !this.canSendValidation && !this.isAutomationOnly;
                     this.openEditModal(systemId, readOnly);
                 }
                 return;
@@ -9331,7 +12533,7 @@ class SystemsCatalogDashboard {
             const systemId = row.dataset.id;
             if (systemId) {
                 // אדמין או עורך אוטומציה - פתח עריכה, אחרים - צפייה בלבד
-                const readOnly = !this.isAdmin && !this.isAutomationOnly;
+                const readOnly = !this.isAdmin && !this.canSendValidation && !this.isAutomationOnly;
                 this.openEditModal(systemId, readOnly);
             }
         });
@@ -9872,6 +13074,10 @@ class SystemsCatalogDashboard {
     // ══════════════════════════════════════════════════════════
     async openSystemServersModal(systemName) {
 
+        if (!this.isAdmin && !this.canSendValidation && !this.isNoc) {
+            this.showToast('אין הרשאה לצפייה בשרתים', 'error');
+            return;
+        }
         // ─── הסר מודל קיים ───
         const existing = document.getElementById('scSystemServersModal');
         if (existing) existing.remove();
@@ -9891,7 +13097,9 @@ class SystemsCatalogDashboard {
             this.currentUser.trim() !== '' &&
             this.currentUser.trim() !== 'מערכת';
 
-        const showGotoBtn = isLoggedIn && (this.isAdmin || this.isAutomationOnly);
+        const canAssign = this.isAdmin || this.isNoc;
+        const showGotoBtn = isLoggedIn && canAssign;
+
         const displayLabel = `פתח בדשבורד שרתים`;
 
         // ─── הצג loading ───
@@ -9965,8 +13173,7 @@ class SystemsCatalogDashboard {
             ${(this.isAdmin || showGotoBtn) ? `
             <div class="sc-servers-modal-footer">
 
-                ${this.isAdmin ? `
-                <button class="sc-servers-assign-btn"
+                ${canAssign ? `<button class="sc-servers-assign-btn"
                         id="scAssignServersBtn"
                         data-system-name="${this.escHtml(systemName)}"
                         data-catalog-number="${this.escHtml(catalogNumber || '')}"
@@ -10282,9 +13489,23 @@ class SystemsCatalogDashboard {
                     : '');
         };
 
-        const getUnique = field => [...new Set(
-            this.allSystems.map(s => s[field]).filter(Boolean)
-        )].sort((a, b) => String(a).localeCompare(String(b), 'he'));
+        const getUnique = field => {
+            const colDef = this._serverColumnDefs?.find(c => c.key === field);
+            const isMultiSelect = colDef?.fieldType === 'multiselect';
+
+            if (isMultiSelect) {
+                return [...new Set(
+                    this.allSystems.flatMap(s => {
+                        const raw = s[field] || '';
+                        return raw ? raw.split(',').map(v => v.trim()).filter(Boolean) : [];
+                    })
+                )].sort((a, b) => String(a).localeCompare(String(b), 'he'));
+            }
+
+            return [...new Set(
+                this.allSystems.map(s => s[field]).filter(Boolean)
+            )].sort((a, b) => String(a).localeCompare(String(b), 'he'));
+        };
 
         const selectors = [
             { id: 'scFltStatus', field: 'status', label: 'כל הסטטוסים' },
@@ -10340,6 +13561,56 @@ class SystemsCatalogDashboard {
 `;
         }
 
+        // ─── מלא פילטרים דינמיים ───
+        if (this._serverColumnDefs && this._serverColumnDefs.length > 0) {
+            const builtInFilterKeys = new Set([
+                'number','name','nameEn','status','domain','department',
+                'team','businessDivision','appClassification','appType',
+                'businessCriticality','availabilityRequirement','environment',
+                'publisher','supportVendor','systemManager','departmentManager',
+                'hasAutomation','requiresValidation','lastValidationEmailSentAt',
+                'createdAt','lastValidatedAt','buttons','description','automationNote'
+            ]);
+
+            this._serverColumnDefs.forEach(col => {
+                if (builtInFilterKeys.has(col.key)) return;
+
+                const el = document.getElementById(`scFltDyn_${col.key}`);
+                if (!el) return;
+
+                const colDef = this._serverColumnDefs.find(c => c.key === col.key);
+                const isMultiSelect = colDef?.fieldType === 'multiselect';
+
+                // ─── אסוף ערכים ייחודיים ───
+                let uniqueValues;
+                if (isMultiSelect) {
+                    uniqueValues = [...new Set(
+                        this.allSystems.flatMap(s => {
+                            const raw = this._getDynamicFieldValue(s, col.key);
+                            return raw ? raw.split(',').map(v => v.trim()).filter(Boolean) : [];
+                        })
+                    )].sort((a, b) => String(a).localeCompare(String(b), 'he'));
+                } else {
+                    uniqueValues = [...new Set(
+                        this.allSystems
+                            .map(s => this._getDynamicFieldValue(s, col.key))
+                            .filter(v => v && v.trim() !== '')
+                    )].sort((a, b) => String(a).localeCompare(String(b), 'he'));
+                }
+
+                const curVal = this.filters[col.key] || 'all';
+
+                el.innerHTML =
+                    `<option value="all">הכל</option>` +
+                    uniqueValues.map(v =>
+                        `<option value="${this.escHtml(v)}"
+                                ${curVal === v ? 'selected' : ''}>
+                            ${this.escHtml(v)}
+                        </option>`
+                    ).join('');
+            });
+        }
+
         this._renderActiveFilterTags();
     }
 
@@ -10369,12 +13640,18 @@ class SystemsCatalogDashboard {
         const displayMap = { '__empty__': '— ריק —' };
 
         const activeTags = Object.entries(this.filters)
-            .filter(([, val]) => val !== 'all')
-            .map(([key, val]) => ({
-                key,
-                label: labelMap[key] || key,
-                display: displayMap[val] || val,
-            }));
+            .filter(([, val]) => val !== 'all' && !(val instanceof Set && val.size === 0))
+            .map(([key, val]) => {
+                let display;
+                if (val instanceof Set) {
+                    display = [...val]
+                        .map(v => displayMap[v] || v)
+                        .join(', ');
+                } else {
+                    display = displayMap[String(val)] || String(val || '');
+                }
+                return { key, label: labelMap[key] || key, display };
+            });
 
         if (activeTags.length === 0) {
             container.innerHTML = '';
@@ -10420,8 +13697,28 @@ class SystemsCatalogDashboard {
 
         Object.entries(map).forEach(([id, val]) => {
             const el = document.getElementById(id);
-            if (el) el.value = val;
+            if (!el) return;
+            // אם val הוא Set - אל תנסה לשים אותו ב-select (single value)
+            if (val instanceof Set) {
+                el.value = 'all'; // fallback
+            } else {
+                el.value = val;
+            }
         });
+
+        // ─── שחזר פילטרים דינמיים ───
+        if (this._serverColumnDefs) {
+            this._serverColumnDefs.forEach(col => {
+                const el = document.getElementById(`scFltDyn_${col.key}`);
+                if (!el) return;
+                const val = this.filters[col.key];
+                if (val && !(val instanceof Set)) {
+                    el.value = val;
+                } else {
+                    el.value = 'all';
+                }
+            });
+        }
     }
 
     _updateFilterCounter() {
@@ -10435,7 +13732,7 @@ class SystemsCatalogDashboard {
             : `${total} מערכות`;
 
         const activeCount = Object.values(this.filters)
-            .filter(v => v !== 'all').length;
+            .filter(v => v !== 'all' && !(v instanceof Set && v.size === 0)).length;
 
         const badge = document.getElementById('scFiltersBadge');
         if (badge) {
@@ -10539,47 +13836,56 @@ class SystemsCatalogDashboard {
 
     _savePreferences() {
         try {
-            localStorage.setItem(this.LS_FILTERS,
-                JSON.stringify(this.filters));
-            localStorage.setItem(this.LS_SORT,
+            // המר Sets למערכים לפני שמירה
+            const filtersToSave = {};
+            Object.entries(this.filters).forEach(([k, v]) => {
+                filtersToSave[k] = v instanceof Set ? [...v] : v;
+            });
+            userSettings.setItem(this.LS_FILTERS, JSON.stringify(filtersToSave));
+            userSettings.setItem(this.LS_SORT,
                 JSON.stringify({
                     col: this.sortColumn,
                     dir: this.sortDirection
                 }));
-            localStorage.setItem(this.LS_VIEW, this.viewMode);
-            localStorage.setItem(this.LS_PAGE_SIZE, String(this.pageSize));
+            userSettings.setItem(this.LS_VIEW, this.viewMode);
+            userSettings.setItem(this.LS_PAGE_SIZE, String(this.pageSize));
 
-            // ── חדש: עמודות ──
-            localStorage.setItem(this.LS_COL_ORDER,
+            userSettings.setItem(this.LS_COL_ORDER,
                 JSON.stringify(this.columnOrder));
-            localStorage.setItem(this.LS_COL_VISIBLE,
+            userSettings.setItem(this.LS_COL_VISIBLE,
                 JSON.stringify(this.visibleColumns));
         } catch (e) { /* ignore */ }
     }
 
     _loadPreferences() {
         try {
-            const f = localStorage.getItem(this.LS_FILTERS);
-            if (f) this.filters = { ...this.filters, ...JSON.parse(f) };
+            const f = userSettings.getItem(this.LS_FILTERS);
+            if (f) {
+                const parsed = JSON.parse(f);
+                // המר מערכים חזרה ל-Sets
+                Object.entries(parsed).forEach(([k, v]) => {
+                    this.filters[k] = Array.isArray(v) ? new Set(v) : v;
+                });
+            }
 
-            const s = localStorage.getItem(this.LS_SORT);
+            const s = userSettings.getItem(this.LS_SORT);
             if (s) {
                 const { col, dir } = JSON.parse(s);
                 this.sortColumn = col || 'number';
                 this.sortDirection = dir || 'asc';
             }
 
-            const v = localStorage.getItem(this.LS_VIEW);
+            const v = userSettings.getItem(this.LS_VIEW);
             if (v) this.viewMode = v;
 
-            const ps = localStorage.getItem(this.LS_PAGE_SIZE);
+            const ps = userSettings.getItem(this.LS_PAGE_SIZE);
             if (ps) this.pageSize = parseInt(ps) || 50;
 
             // ── חדש: עמודות ──
-            const co = localStorage.getItem(this.LS_COL_ORDER);
+            const co = userSettings.getItem(this.LS_COL_ORDER);
             if (co) this.columnOrder = JSON.parse(co);
 
-            const cv = localStorage.getItem(this.LS_COL_VISIBLE);
+            const cv = userSettings.getItem(this.LS_COL_VISIBLE);
             if (cv) this.visibleColumns = {
                 ...this.visibleColumns,
                 ...JSON.parse(cv)
@@ -10587,19 +13893,539 @@ class SystemsCatalogDashboard {
         } catch (e) { /* ignore */ }
     }
 
+    async _openPermissionsModal() {
+        const existing = document.getElementById('scPermissionsModal');
+        if (existing) existing.remove();
+
+        // ─── הצג loading ───
+        const modal = document.createElement('div');
+        modal.id = 'scPermissionsModal';
+        modal.className = 'sc-modal-overlay';
+        modal.innerHTML = `
+        <div class="sc-modal" style="max-width:1400px;width:96%">
+            <div class="sc-modal-header" style="
+                background:linear-gradient(135deg,#1e1b4b,#312e81);
+                border-bottom:2px solid rgba(99,102,241,0.4)">
+                <h3 class="sc-modal-title">
+                    <i class="fas fa-user-shield" style="color:#a5b4fc"></i>
+                    ניהול הרשאות קטלוג מערכות
+                    <span style="
+                        padding:2px 10px;
+                        background:rgba(239,68,68,0.15);
+                        border:1px solid rgba(239,68,68,0.35);
+                        border-radius:8px;color:#fca5a5;
+                        font-size:0.72rem;font-weight:700">
+                        Admin Only
+                    </span>
+                </h3>
+                <button class="sc-modal-close"
+                        id="scPermClose">&times;</button>
+            </div>
+            <div style="display:flex;align-items:center;
+                        justify-content:center;padding:40px;
+                        gap:12px;color:#666">
+                <i class="fas fa-spinner fa-spin"
+                   style="color:#6366f1;font-size:1.2rem"></i>
+                <span>טוען הרשאות...</span>
+            </div>
+        </div>`;
+
+        document.body.appendChild(modal);
+
+        document.getElementById('scPermClose')
+            ?.addEventListener('click', () => modal.remove());
+
+        try {
+            // ─── טען הרשאות ומשתמשים במקביל ───
+            const [permsRes, usersRes] = await Promise.all([
+                fetch('/SystemsCatalog/GetPermissions', { credentials: 'include' }),
+                fetch('/SystemsCatalog/GetAllUsers', { credentials: 'include' })
+            ]);
+
+            const permsData = await permsRes.json();
+            const usersData = await usersRes.json();
+
+            if (!permsData.success)
+                throw new Error(permsData.error || 'שגיאה בטעינת הרשאות');
+
+            this._renderPermissionsModal(
+                modal,
+                permsData.permissions,
+                usersData.success ? usersData.users : []
+            );
+
+        } catch (err) {
+            const modalEl = modal.querySelector('.sc-modal');
+            if (modalEl) {
+                modalEl.innerHTML += `
+                <div style="padding:20px;color:#f87171;text-align:center">
+                    שגיאה: ${err.message}
+                </div>`;
+            }
+        }
+    }
+
+    _renderPermissionsModal(modalEl, perms, allUsers) {
+        const roleGroups = [
+            {
+                key: 'admins',
+                label: 'אדמינים',
+                desc: 'גישה מלאה: עריכה, מחיקה, ייבוא, ניהול עמודות, ניהול הרשאות',
+                icon: 'fa-crown',
+                color: '#ef4444',
+                users: perms.admins || []
+            },
+            {
+                key: 'validationSenders',
+                label: 'עורכי מערכות ושולחי תיקוף',
+                desc: 'יכולים לערוך מערכות ולשלוח מיילי תיקוף למנהלי מערכות',
+                icon: 'fa-envelope',
+                color: '#f59e0b',
+                users: perms.validationSenders || []
+            },
+            {
+                key: 'automationEditors',
+                label: 'עורכי אוטומציה',
+                desc: 'יכולים לערוך רק שדות אוטומציה',
+                icon: 'fa-robot',
+                color: '#22c55e',
+                users: perms.automationEditors || []
+            },
+            {
+                key: 'nocUsers',
+                label: 'משתמשי NOC',
+                desc: 'יכולים לצפות בשרתים משויכים',
+                icon: 'fa-server',
+                color: '#6366f1',
+                users: perms.nocUsers || []
+            }
+        ];
+
+        const buildUserSelect = (groupKey, currentUsers) => {
+            const available = allUsers.filter(u =>
+                !currentUsers.includes(u.username)
+            );
+
+            return `
+        <div class="sc-perm-add-wrap">
+            <select class="sc-select sc-perm-add-select"
+                    id="scPermAdd_${groupKey}"
+                    style="flex:1;font-size:0.8rem">
+                <option value="">— בחר משתמש להוספה —</option>
+                ${available.map(u => `
+                    <option value="${this.escHtml(u.username)}">
+                        ${this.escHtml(u.displayName || u.username)}
+                        ${u.username !== u.displayName
+                    ? `(${this.escHtml(u.username)})`
+                    : ''}
+                    </option>`).join('')}
+            </select>
+            <button class="sc-perm-add-btn"
+                    data-group="${groupKey}"
+                    onclick="window._scDashboard
+                        ._addPermissionUser('${groupKey}')">
+                <i class="fas fa-plus"></i>
+            </button>
+        </div>`;
+        };
+
+        const buildUserTags = (groupKey, users) => {
+            if (users.length === 0) {
+                return `<div class="sc-perm-empty">
+                <i class="fas fa-user-slash"></i>
+                אין משתמשים בקבוצה זו
+            </div>`;
+            }
+
+            return users.map(username => {
+                const user = allUsers.find(u =>
+                    u.username.toLowerCase() === username.toLowerCase()
+                );
+                const displayName = user?.displayName || username;
+                const isCurrentUser = username.toLowerCase() ===
+                    this.currentUser.toLowerCase();
+
+                return `
+            <div class="sc-perm-user-tag"
+                 data-username="${this.escHtml(username)}"
+                 data-group="${groupKey}">
+                <i class="fas fa-user"
+                   style="font-size:0.65rem;opacity:0.6"></i>
+                <span class="sc-perm-user-name">
+                    ${this.escHtml(displayName)}
+                    ${username !== displayName
+                        ? `<span style="opacity:0.5;font-size:0.7rem">
+                               (${this.escHtml(username)})
+                           </span>`
+                        : ''}
+                </span>
+                ${isCurrentUser
+                        ? `<span style="font-size:0.65rem;color:#fcd34d;
+                                   margin-right:4px"
+                             title="זה אתה - לא ניתן להסיר">
+                           <i class="fas fa-lock"></i>
+                       </span>`
+                        : `<button class="sc-perm-remove-btn"
+                               data-username="${this.escHtml(username)}"
+                               data-group="${groupKey}"
+                               title="הסר מהקבוצה"
+                               onclick="window._scDashboard
+                                   ._removePermissionUser(
+                                       '${groupKey}',
+                                       '${this.escHtml(username)}'
+                                   )">
+                           <i class="fas fa-times"></i>
+                       </button>`}
+            </div>`;
+            }).join('');
+        };
+
+        const groupsHtml = roleGroups.map(group => `
+        <div class="sc-perm-group"
+             data-group="${group.key}"
+             style="border-right:3px solid ${group.color}22;
+                    border:1px solid ${group.color}22">
+            <div class="sc-perm-group-header"
+                 style="border-bottom:1px solid ${group.color}22">
+                <div class="sc-perm-group-icon"
+                     style="background:${group.color}18;
+                            border:1px solid ${group.color}33;
+                            color:${group.color}">
+                    <i class="fas ${group.icon}"></i>
+                </div>
+                <div class="sc-perm-group-info">
+                    <div class="sc-perm-group-title"
+                         style="color:${group.color}">
+                        ${group.label}
+                        <span class="sc-perm-group-count"
+                              id="scPermCount_${group.key}"
+                              style="background:${group.color}18;
+                                     border:1px solid ${group.color}33;
+                                     color:${group.color}">
+                            ${group.users.length}
+                        </span>
+                    </div>
+                    <div class="sc-perm-group-desc">
+                        ${group.desc}
+                    </div>
+                </div>
+            </div>
+            <div class="sc-perm-users-wrap"
+                 id="scPermUsers_${group.key}">
+                ${buildUserTags(group.key, group.users)}
+            </div>
+            ${buildUserSelect(group.key, group.users)}
+        </div>`).join('');
+
+        const modal = modalEl.querySelector('.sc-modal');
+        modal.innerHTML = `
+    <div class="sc-modal-header" style="
+        border-bottom:2px solid rgba(99,102,241,0.4)">
+        <h3 class="sc-modal-title">
+            <i class="fas fa-user-shield" style="color:#a5b4fc"></i>
+            ניהול הרשאות קטלוג מערכות
+            <span style="
+                padding:2px 10px;
+                background:rgba(239,68,68,0.15);
+                border:1px solid rgba(239,68,68,0.35);
+                border-radius:8px;color:#fca5a5;
+                font-size:0.72rem;font-weight:700">
+                Admin Only
+            </span>
+        </h3>
+        <button class="sc-modal-close"
+                id="scPermClose">&times;</button>
+    </div>
+
+    <!-- ── מידע ── -->
+    <div style="
+        display:flex;align-items:center;gap:10px;
+        padding:8px 20px;
+        background:rgba(99,102,241,0.06);
+        border-bottom:1px solid rgba(99,102,241,0.15);
+        font-size:0.78rem;color:#888">
+        <i class="fas fa-info-circle" style="color:#6366f1"></i>
+        <span>
+            עדכון אחרון:
+            <strong style="color:#a5b4fc">
+                ${perms.lastUpdated || '—'}
+            </strong>
+            על ידי
+            <strong style="color:#a5b4fc">
+                ${perms.updatedBy || '—'}
+            </strong>
+        </span>
+    </div>
+
+    <!-- ── קבוצות הרשאות ── -->
+    <div class="sc-modal-body" style="
+        max-height:65vh;overflow-y:auto;
+        gap:14px;padding:16px 20px">
+        <div class="sc-perm-groups-grid">
+            ${groupsHtml}
+        </div>
+    </div>
+
+    <!-- ── Footer ── -->
+    <div class="sc-modal-footer" style="
+        justify-content:space-between;
+        border-top:1px solid #2a2a4e">
+        <div style="font-size:0.75rem;color:#555;
+                    display:flex;align-items:center;gap:6px">
+            <i class="fas fa-exclamation-triangle"
+               style="color:#f59e0b"></i>
+            שינויים נכנסים לתוקף מיד לאחר השמירה
+        </div>
+        <div style="display:flex;gap:8px">
+            <button class="sc-modal-cancel-btn"
+                    id="scPermCancel">
+                <i class="fas fa-times"></i> ביטול
+            </button>
+            <button id="scPermSave"
+                    style="padding:8px 20px;
+                           background:linear-gradient(135deg,#4f46e5,#7c3aed);
+                           border:none;border-radius:6px;color:white;
+                           font-size:0.85rem;font-weight:700;cursor:pointer;
+                           display:flex;align-items:center;gap:6px;
+                           font-family:inherit;transition:all 0.2s">
+                <i class="fas fa-save"></i>
+                שמור הרשאות
+            </button>
+        </div>
+    </div>`;
+
+        // ─── שמור state מקומי ───
+        this._permissionsState = {
+            admins: [...(perms.admins || [])],
+            validationSenders: [...(perms.validationSenders || [])],
+            automationEditors: [...(perms.automationEditors || [])],
+            nocUsers: [...(perms.nocUsers || [])]
+        };
+
+        this._allUsersCache = allUsers;
+
+        // ─── אירועים ───
+        document.getElementById('scPermClose')
+            ?.addEventListener('click', () => modalEl.remove());
+        document.getElementById('scPermCancel')
+            ?.addEventListener('click', () => modalEl.remove());
+        document.getElementById('scPermSave')
+            ?.addEventListener('click', () => this._savePermissions(modalEl));
+    }
+
+    // ─── הוסף משתמש לקבוצה ──────────────────────────────────────
+    _addPermissionUser(groupKey) {
+        const select = document.getElementById(`scPermAdd_${groupKey}`);
+        const username = select?.value?.trim();
+
+        if (!username) {
+            this.showToast('בחר משתמש להוספה', 'error');
+            return;
+        }
+
+        // ─── בדוק כפילות ───
+        const group = this._permissionsState[groupKey];
+        if (!group) return;
+
+        if (group.some(u => u.toLowerCase() === username.toLowerCase())) {
+            this.showToast('המשתמש כבר קיים בקבוצה', 'error');
+            return;
+        }
+
+        // ─── הוסף ל-state ───
+        group.push(username);
+
+        // ─── עדכן UI ───
+        this._refreshPermissionGroup(groupKey);
+        this.showToast(`✅ ${username} נוסף לקבוצה`, 'success');
+    }
+
+    // ─── הסר משתמש מקבוצה ───────────────────────────────────────
+    _removePermissionUser(groupKey, username) {
+        // ─── מנע הסרת עצמך מאדמינים ───
+        if (groupKey === 'admins' &&
+            username.toLowerCase() === this.currentUser.toLowerCase()) {
+            this.showToast('לא ניתן להסיר את עצמך מרשימת האדמינים', 'error');
+            return;
+        }
+
+        const group = this._permissionsState[groupKey];
+        if (!group) return;
+
+        const idx = group.findIndex(
+            u => u.toLowerCase() === username.toLowerCase()
+        );
+        if (idx === -1) return;
+
+        group.splice(idx, 1);
+
+        // ─── עדכן UI ───
+        this._refreshPermissionGroup(groupKey);
+        this.showToast(`🗑️ ${username} הוסר מהקבוצה`, 'info');
+    }
+
+    // ─── רענן תצוגת קבוצה ───────────────────────────────────────
+    _refreshPermissionGroup(groupKey) {
+        const allUsers = this._allUsersCache || [];
+        const groupUsers = this._permissionsState[groupKey] || [];
+
+        // ─── עדכן תגיות משתמשים ───
+        const usersWrap = document.getElementById(`scPermUsers_${groupKey}`);
+        if (usersWrap) {
+            if (groupUsers.length === 0) {
+                usersWrap.innerHTML = `
+                <div class="sc-perm-empty">
+                    <i class="fas fa-user-slash"></i>
+                    אין משתמשים בקבוצה זו
+                </div>`;
+            } else {
+                usersWrap.innerHTML = groupUsers.map(username => {
+                    const user = allUsers.find(
+                        u => u.username.toLowerCase() === username.toLowerCase()
+                    );
+                    const displayName = user?.displayName || username;
+                    const isCurrentUser = username.toLowerCase() ===
+                        this.currentUser.toLowerCase();
+
+                    return `
+                <div class="sc-perm-user-tag"
+                     data-username="${this.escHtml(username)}"
+                     data-group="${groupKey}">
+                    <i class="fas fa-user"
+                       style="font-size:0.65rem;opacity:0.6"></i>
+                    <span class="sc-perm-user-name">
+                        ${this.escHtml(displayName)}
+                        ${username !== displayName
+                            ? `<span style="opacity:0.5;font-size:0.7rem">
+                                   (${this.escHtml(username)})
+                               </span>`
+                            : ''}
+                    </span>
+                    ${isCurrentUser
+                            ? `<span style="font-size:0.65rem;color:#fcd34d;
+                                       margin-right:4px"
+                                 title="זה אתה - לא ניתן להסיר">
+                               <i class="fas fa-lock"></i>
+                           </span>`
+                            : `<button class="sc-perm-remove-btn"
+                                   data-username="${this.escHtml(username)}"
+                                   data-group="${groupKey}"
+                                   title="הסר מהקבוצה"
+                                   onclick="window._scDashboard
+                                       ._removePermissionUser(
+                                           '${groupKey}',
+                                           '${this.escHtml(username)}'
+                                       )">
+                               <i class="fas fa-times"></i>
+                           </button>`}
+                </div>`;
+                }).join('');
+            }
+        }
+
+        // ─── עדכן מונה ───
+        const countEl = document.getElementById(`scPermCount_${groupKey}`);
+        if (countEl) countEl.textContent = groupUsers.length;
+
+        // ─── עדכן select - הסר משתמשים שכבר בקבוצה ───
+        const select = document.getElementById(`scPermAdd_${groupKey}`);
+        if (select) {
+            const currentVal = select.value;
+            const available = allUsers.filter(u =>
+                !groupUsers.some(
+                    g => g.toLowerCase() === u.username.toLowerCase()
+                )
+            );
+
+            select.innerHTML = `
+            <option value="">— בחר משתמש להוספה —</option>
+            ${available.map(u => `
+                <option value="${this.escHtml(u.username)}"
+                        ${u.username === currentVal ? 'selected' : ''}>
+                    ${this.escHtml(u.displayName || u.username)}
+                    ${u.username !== u.displayName
+                    ? `(${this.escHtml(u.username)})`
+                    : ''}
+                </option>`).join('')}`;
+        }
+    }
+
+    // ─── שמור הרשאות לשרת ───────────────────────────────────────
+    async _savePermissions(modalEl) {
+        const saveBtn = document.getElementById('scPermSave');
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.innerHTML =
+                '<i class="fas fa-spinner fa-spin"></i> שומר...';
+        }
+
+        try {
+            const payload = {
+                admins: this._permissionsState.admins,
+                validationSenders: this._permissionsState.validationSenders,
+                automationEditors: this._permissionsState.automationEditors,
+                nocUsers: this._permissionsState.nocUsers
+            };
+
+            const res = await fetch('/SystemsCatalog/SavePermissions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+            if (!data.success)
+                throw new Error(data.error || 'שגיאה בשמירה');
+
+            modalEl.remove();
+
+            this.showToast('✅ הרשאות נשמרו בהצלחה', 'success', 4000);
+
+            // ─── רענן הרשאות המשתמש הנוכחי ───
+            await this._loadCurrentUser();
+
+        } catch (err) {
+            console.error('_savePermissions error:', err);
+            this.showToast('שגיאה: ' + err.message, 'error');
+
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML =
+                    '<i class="fas fa-save"></i> שמור הרשאות';
+            }
+        }
+    }
+
     getColumnDefinitions() {
+        // ─── אם יש הגדרות מהשרת - השתמש בהן ───
+        if (this._serverColumnDefs && this._serverColumnDefs.length > 0) {
+            return Object.fromEntries(
+                this._serverColumnDefs.map(col => [
+                    col.key,
+                    {
+                        label: col.label || col.key,
+                        alwaysVisible: col.alwaysVisible || false,
+                        canReorder: col.canReorder ?? true,
+                        category: col.category || 'כללי',
+                    }
+                ])
+            );
+        }
+
+        // ─── fallback: הגדרות קשיחות ───
         return {
-            number: { label: 'מספר', alwaysVisible: true, canReorder: true },
+            number: { label: 'מספר', alwaysVisible: true, canReorder: false },
             name: { label: 'שם', alwaysVisible: false, canReorder: true },
-            nameEn: { label: 'שם אנגלית', alwaysVisible: false, canReorder: true },
+            nameEn: { label: 'שם מערכת - אנגלית', alwaysVisible: false, canReorder: true },
             description: { label: 'תיאור', alwaysVisible: false, canReorder: true },
             status: { label: 'סטטוס', alwaysVisible: false, canReorder: true },
             systemManager: { label: 'מנהל מערכת', alwaysVisible: false, canReorder: true },
             departmentManager: { label: 'מנהל מחלקה', alwaysVisible: false, canReorder: true },
-            team: { label: 'צוות', alwaysVisible: false, canReorder: true },
-            department: { label: 'מחלקה', alwaysVisible: false, canReorder: true },
             domain: { label: 'תחום', alwaysVisible: false, canReorder: true },
-            businessDivision: { label: 'אגף עסקי', alwaysVisible: false, canReorder: true },
+            department: { label: 'מחלקה', alwaysVisible: false, canReorder: true },
+            team: { label: 'צוות', alwaysVisible: false, canReorder: true },
+            businessDivision: { label: 'אגף עסקי - ראשי', alwaysVisible: false, canReorder: true },
             appClassification: { label: 'סיווג יישום', alwaysVisible: false, canReorder: true },
             appType: { label: 'סוג יישום', alwaysVisible: false, canReorder: true },
             businessCriticality: { label: 'קריטיות עסקית', alwaysVisible: false, canReorder: true },
@@ -10607,127 +14433,442 @@ class SystemsCatalogDashboard {
             environment: { label: 'סביבה', alwaysVisible: false, canReorder: true },
             publisher: { label: 'מפרסם', alwaysVisible: false, canReorder: true },
             supportVendor: { label: 'ספק תמיכה', alwaysVisible: false, canReorder: true },
-            hasAutomation: { label: 'אוטומציה', alwaysVisible: false, canReorder: true },
+            hasAutomation: { label: 'בדיקות אוטומטיות', alwaysVisible: false, canReorder: true },
             createdAt: { label: 'נוצר', alwaysVisible: false, canReorder: true },
-            lastValidatedAt: { label: 'תיקוף אחרון', alwaysVisible: false, canReorder: true },
+            lastValidatedAt: { label: 'בוצע תיקוף', alwaysVisible: false, canReorder: true },
             requiresValidation: { label: 'נדרש תיקוף', alwaysVisible: false, canReorder: true },
-            buttons: { label: '', alwaysVisible: true, canReorder: false }
+            lastValidationEmailSentAt: { label: 'נשלח תיקוף', alwaysVisible: false, canReorder: true },
+            buttons: { label: '', alwaysVisible: true, canReorder: false },
         };
     }
 
     openColumnManagerModal() {
+        // ─── אדמין - הצג אפשרות לפתוח ניהול גלובלי ───
+        if (this.isAdmin) {
+            this._showColumnManagerChoice();
+            return;
+        }
+
+        // ─── משתמש רגיל - פתח ניהול אישי בלבד ───
+        this._openUserColumnManager();
+    }
+
+    // ─── תפריט בחירה לאדמין ─────────────────────────────────────
+    _showColumnManagerChoice() {
+        const existing = document.getElementById('scColChoiceModal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'scColChoiceModal';
+        modal.className = 'sc-modal-overlay';
+        modal.style.zIndex = '99999';
+
+        modal.innerHTML = `
+    <div class="sc-modal" style="max-width:420px;width:95%">
+
+        <div class="sc-modal-header" style="
+            background:linear-gradient(135deg,#1e1b4b,#312e81);
+            border-bottom:2px solid rgba(99,102,241,0.4)">
+            <h3 class="sc-modal-title">
+                <i class="fas fa-columns" style="color:#a5b4fc"></i>
+                ניהול עמודות
+            </h3>
+            <button class="sc-modal-close"
+                    id="scColChoiceClose">&times;</button>
+        </div>
+
+        <div class="sc-modal-body" style="gap:12px;padding:20px">
+
+            <!-- ── ניהול אישי ── -->
+            <button id="scColChoicePersonal"
+                    class="sc-col-choice-btn">
+                <div class="sc-col-choice-icon"
+                     style="background:rgba(99,102,241,0.15);
+                            border:1px solid rgba(99,102,241,0.35)">
+                    <i class="fas fa-user"
+                       style="color:#a5b4fc"></i>
+                </div>
+                <div class="sc-col-choice-text">
+                    <div class="sc-col-choice-title">
+                        הגדרות אישיות
+                    </div>
+                    <div class="sc-col-choice-desc">
+                        שנה אילו עמודות מוצגות עבורך בלבד.
+                        לא משפיע על משתמשים אחרים.
+                    </div>
+                </div>
+                <i class="fas fa-chevron-left"
+                   style="color:#555;font-size:0.75rem;
+                          flex-shrink:0"></i>
+            </button>
+
+            <!-- ── ניהול גלובלי ── -->
+            <button id="scColChoiceGlobal"
+                    class="sc-col-choice-btn sc-col-choice-btn-admin">
+                <div class="sc-col-choice-icon"
+                     style="background:rgba(239,68,68,0.12);
+                            border:1px solid rgba(239,68,68,0.3)">
+                    <i class="fas fa-globe"
+                       style="color:#fca5a5"></i>
+                </div>
+                <div class="sc-col-choice-text">
+                    <div class="sc-col-choice-title">
+                        ניהול גלובלי
+                        <span style="
+                            padding:1px 7px;
+                            background:rgba(239,68,68,0.15);
+                            border:1px solid rgba(239,68,68,0.3);
+                            border-radius:6px;
+                            color:#fca5a5;
+                            font-size:0.65rem;
+                            font-weight:700;
+                            margin-right:6px">
+                            Admin
+                        </span>
+                    </div>
+                    <div class="sc-col-choice-desc">
+                        הגדר אילו עמודות זמינות לכל המשתמשים,
+                        ברירות מחדל, ועמודות חובה.
+                    </div>
+                </div>
+                <i class="fas fa-chevron-left"
+                   style="color:#555;font-size:0.75rem;
+                          flex-shrink:0"></i>
+            </button>
+
+        </div>
+
+        <div class="sc-modal-footer"
+             style="justify-content:center;
+                    padding:12px 20px">
+            <button class="sc-modal-cancel-btn"
+                    id="scColChoiceCancel">
+                <i class="fas fa-times"></i> ביטול
+            </button>
+        </div>
+
+    </div>`;
+
+        document.body.appendChild(modal);
+
+        // ─── סגנונות ───
+        if (!document.getElementById('scColChoiceStyles')) {
+            const style = document.createElement('style');
+            style.id = 'scColChoiceStyles';
+            style.textContent = `
+        .sc-col-choice-btn {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            width: 100%;
+            padding: 14px 16px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: right;
+            font-family: inherit;
+            direction: rtl;
+        }
+        .sc-col-choice-btn:hover {
+            background: rgba(99,102,241,0.08);
+            border-color: rgba(99,102,241,0.3);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+        }
+        .sc-col-choice-btn-admin:hover {
+            background: rgba(239,68,68,0.06);
+            border-color: rgba(239,68,68,0.25);
+        }
+        .sc-col-choice-icon {
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            flex-shrink: 0;
+        }
+        .sc-col-choice-text { flex: 1; min-width: 0; }
+        .sc-col-choice-title {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: #e0e0e0;
+            margin-bottom: 3px;
+            display: flex;
+            align-items: center;
+        }
+        .sc-col-choice-desc {
+            font-size: 0.75rem;
+            color: #666;
+            line-height: 1.4;
+        }
+        [data-theme="light"] .sc-col-choice-btn {
+            background: #fff;
+            border: 1px solid #e0e0f0;
+        }
+        [data-theme="light"] .sc-col-choice-btn:hover {
+            background: rgba(99,102,241,0.04);
+            border-color: rgba(99,102,241,0.2);
+        }
+        [data-theme="light"] .sc-col-choice-title { color: #1a1a2e; }
+        [data-theme="light"] .sc-col-choice-desc  { color: #888; }
+        `;
+            document.head.appendChild(style);
+        }
+
+        // ─── אירועים ───
+        const closeModal = () => modal.remove();
+
+        document.getElementById('scColChoiceClose')
+            ?.addEventListener('click', closeModal);
+        document.getElementById('scColChoiceCancel')
+            ?.addEventListener('click', closeModal);
+
+        document.getElementById('scColChoicePersonal')
+            ?.addEventListener('click', () => {
+                modal.remove();
+                this._openUserColumnManager();
+            });
+
+        document.getElementById('scColChoiceGlobal')
+            ?.addEventListener('click', () => {
+                modal.remove();
+                this._adminColMgr.openModal();
+            });
+    }
+
+    // ─── ניהול עמודות אישי ───────────────────────
+    _openUserColumnManager() {
         const existing = document.getElementById('scCatalogColModal');
         if (existing) existing.remove();
 
         const defs = this.getColumnDefinitions();
 
-        // רק עמודות שניתן לסדר מחדש, בסדר הנוכחי - ללא היפוך
-        const reorderableCols = this.columnOrder
-            .filter(col => defs[col] && defs[col].canReorder);
+        // ← שנה: כלול את number ו-buttons בתצוגה (אבל לא ניתנים לגרירה/הסתרה)
+        const allColsForDisplay = this.columnOrder
+            .filter(col => defs[col]); // ← הצג הכל, כולל number ו-buttons
 
-        const itemsHTML = reorderableCols.map(col => {          // ← הוסר .reverse()
-            const isAlwaysVisible = defs[col].alwaysVisible;    // ← חדש
+        const itemsHTML = allColsForDisplay.map(col => {
+            const isAlwaysVisible = defs[col]?.alwaysVisible || false;
+            const isFixed = defs[col]?.canReorder === false;
+
             return `
-        <div class="sc-col-mgr-item"
-             data-col="${col}"
-             draggable="${!isAlwaysVisible}">
-            <i class="fas fa-grip-vertical sc-col-mgr-grip"
-               style="${isAlwaysVisible ? 'opacity:0.3;cursor:default' : ''}"></i>
+        <div class="sc-col-mgr-item ${isFixed ? 'sc-col-mgr-item-fixed' : ''}"
+            data-col="${col}"
+            draggable="${(!isAlwaysVisible && !isFixed) ? 'true' : 'false'}">
+            <i class="fas ${isFixed ? 'fa-lock' : 'fa-grip-vertical'} sc-col-mgr-grip"
+               style="${isFixed ? 'opacity:0.4;cursor:default;color:#6366f1' : ''}"></i>
             <input type="checkbox"
-                   id="scCatalogCol-${col}"
-                   ${this.visibleColumns[col] ? 'checked' : ''}
-                   ${isAlwaysVisible ? 'disabled' : ''}
-                   onchange="window._scDashboard
-                       .toggleCatalogColumnVisibility(
-                           '${col}', this.checked)">
+                id="scCatalogCol-${col}"
+                ${this.visibleColumns[col] ? 'checked' : ''}
+                ${isAlwaysVisible ? 'disabled' : ''}
+                onchange="window._scDashboard
+                    .toggleCatalogColumnVisibility(
+                        '${col}', this.checked)">
             <label for="scCatalogCol-${col}"
-                   style="${isAlwaysVisible
+                style="${isAlwaysVisible
                     ? 'color:#6366f1;font-weight:700'
-                    : ''}">
-                ${defs[col].label}
+                    : isFixed ? 'color:#888' : ''}">
+                ${defs[col]?.label || col}
                 ${isAlwaysVisible
                     ? '<span style="font-size:0.65rem;color:#555;margin-right:4px">(חובה)</span>'
-                    : ''}
+                    : isFixed
+                        ? '<span style="font-size:0.65rem;color:#444;margin-right:4px">(קבוע)</span>'
+                        : ''}
             </label>
-        </div>`
+        </div>`;
         }).join('');
+
+
 
         const modal = document.createElement('div');
         modal.id = 'scCatalogColModal';
         modal.className = 'sc-modal-overlay';
 
         modal.innerHTML = `
-    <div class="sc-modal" style="max-width:420px;width:95%">
+        <div class="sc-modal" style="max-width:420px;width:95%">
 
-        <div class="sc-modal-header"
-             style="background:linear-gradient(
-                        135deg,#1e1b4b,#312e81);
-                    border-bottom:2px solid rgba(99,102,241,0.4)">
-            <h3 class="sc-modal-title">
-                <i class="fas fa-columns"
-                   style="color:#a5b4fc"></i>
-                ניהול עמודות
-            </h3>
-            <button class="sc-modal-close"
-                    id="scCatalogColClose">&times;</button>
-        </div>
-
-        <div style="padding:10px 20px 6px;
-                    background:rgba(99,102,241,0.06);
-                    border-bottom:1px solid rgba(99,102,241,0.15);
-                    font-size:0.78rem;color:#888;
-                    display:flex;align-items:center;gap:6px">
-            <i class="fas fa-info-circle"
-               style="color:#6366f1"></i>
-            <span>גרור לשינוי סדר • סמן/בטל לחשיפה/הסתרה</span>
-        </div>
-
-        <div id="scCatalogColList"
-             style="padding:14px 18px;
-                    overflow-y:auto;
-                    max-height:55vh">
-            ${itemsHTML}
-        </div>
-
-        <div class="sc-modal-footer"
-             style="justify-content:space-between">
-            <button onclick="window._scDashboard
-                                 .resetCatalogColumnSettings()"
-                    style="padding:7px 14px;
-                           background:rgba(107,114,128,0.15);
-                           border:1px solid rgba(107,114,128,0.35);
-                           border-radius:6px;color:#9ca3af;
-                           font-size:0.82rem;font-weight:600;
-                           cursor:pointer;display:flex;
-                           align-items:center;gap:5px;
-                           font-family:inherit">
-                <i class="fas fa-undo"></i> איפוס
-            </button>
-            <div style="display:flex;gap:8px">
-                <button onclick="document.getElementById(
-                                     'scCatalogColModal').remove()"
-                        class="sc-modal-cancel-btn">
-                    <i class="fas fa-times"></i> סגור
-                </button>
-                <button onclick="window._scDashboard
-                                     .applyCatalogColumnSettings()"
-                        style="padding:7px 16px;
-                               background:linear-gradient(
-                                   135deg,#4f46e5,#7c3aed);
-                               border:none;border-radius:6px;
-                               color:white;font-size:0.82rem;
-                               font-weight:700;cursor:pointer;
-                               display:flex;align-items:center;
-                               gap:5px;font-family:inherit">
-                    <i class="fas fa-check"></i> החל
-                </button>
+            <div class="sc-modal-header" style="
+                background:linear-gradient(135deg,#1e1b4b,#312e81);
+                border-bottom:2px solid rgba(99,102,241,0.4)">
+                <h3 class="sc-modal-title">
+                    <i class="fas fa-user-cog"
+                    style="color:#a5b4fc"></i>
+                    הגדרות עמודות אישיות
+                </h3>
+                <button class="sc-modal-close"
+                        id="scCatalogColClose">&times;</button>
             </div>
-        </div>
-    </div>`;
+
+            <div style="padding:8px 20px 6px;
+                        background:rgba(99,102,241,0.06);
+                        border-bottom:1px solid rgba(99,102,241,0.15);
+                        font-size:0.78rem;color:#888;
+                        display:flex;align-items:center;gap:6px">
+                <i class="fas fa-info-circle"
+                style="color:#6366f1"></i>
+                <span>גרור לשינוי סדר • סמן/בטל לחשיפה/הסתרה</span>
+            </div>
+
+            <!-- ══ כפתורי בחר/בטל הכל ══ -->
+            <div style="
+                display:flex;align-items:center;gap:8px;
+                padding:8px 18px;
+                background:rgba(255,255,255,0.02);
+                border-bottom:1px solid rgba(255,255,255,0.06)">
+                <button id="scColSelectAll"
+                        style="padding:4px 12px;
+                            background:rgba(34,197,94,0.1);
+                            border:1px solid rgba(34,197,94,0.3);
+                            border-radius:5px;color:#86efac;
+                            font-size:0.75rem;font-weight:600;
+                            cursor:pointer;font-family:inherit;
+                            display:flex;align-items:center;gap:4px">
+                    <i class="fas fa-check-double"></i> בחר הכל
+                </button>
+                <button id="scColDeselectAll"
+                        style="padding:4px 12px;
+                            background:rgba(239,68,68,0.1);
+                            border:1px solid rgba(239,68,68,0.25);
+                            border-radius:5px;color:#fca5a5;
+                            font-size:0.75rem;font-weight:600;
+                            cursor:pointer;font-family:inherit;
+                            display:flex;align-items:center;gap:4px">
+                    <i class="fas fa-times"></i> בטל הכל
+                </button>
+                <span id="scColVisibleCount"
+                    style="font-size:0.75rem;color:#888;
+                            margin-right:auto">
+                </span>
+            </div>
+
+            <div class="sc-col-search-wrap">
+                <i class="fas fa-search"></i>
+                <input type="text"
+                    id="scColSearch"
+                    class="sc-col-search-input"
+                    placeholder="חפש עמודה..." />
+            </div>
+            <div id="scCatalogColList"
+                style="padding:14px 18px;
+                        overflow-y:auto;
+                        max-height:50vh">
+                ${itemsHTML}
+            </div>
+
+            <div class="sc-modal-footer"
+                style="justify-content:space-between">
+                <button onclick="window._scDashboard
+                                    .resetCatalogColumnSettings()"
+                        style="padding:7px 14px;
+                            background:rgba(107,114,128,0.15);
+                            border:1px solid rgba(107,114,128,0.35);
+                            border-radius:6px;color:#9ca3af;
+                            font-size:0.82rem;font-weight:600;
+                            cursor:pointer;display:flex;
+                            align-items:center;gap:5px;
+                            font-family:inherit">
+                    <i class="fas fa-undo"></i> איפוס
+                </button>
+                <div style="display:flex;gap:8px">
+                    <button onclick="document.getElementById(
+                                        'scCatalogColModal').remove()"
+                            class="sc-modal-cancel-btn">
+                        <i class="fas fa-times"></i> סגור
+                    </button>
+                    <button onclick="window._scDashboard
+                                        .applyCatalogColumnSettings()"
+                            style="padding:7px 16px;
+                                background:linear-gradient(
+                                    135deg,#4f46e5,#7c3aed);
+                                border:none;border-radius:6px;
+                                color:white;font-size:0.82rem;
+                                font-weight:700;cursor:pointer;
+                                display:flex;align-items:center;
+                                gap:5px;font-family:inherit">
+                        <i class="fas fa-check"></i> החל
+                    </button>
+                </div>
+            </div>
+        </div>`;
 
         document.body.appendChild(modal);
 
-        // ── Drag & Drop ──
+        // ── פונקציה לעדכון מונה עמודות גלויות ──
+        const updateVisibleCount = () => {
+            const total = modal.querySelectorAll(
+                '.sc-col-mgr-item input[type="checkbox"]:not(:disabled)'
+            ).length;
+            const checked = modal.querySelectorAll(
+                '.sc-col-mgr-item input[type="checkbox"]:not(:disabled):checked'
+            ).length;
+            const countEl = document.getElementById('scColVisibleCount');
+            if (countEl) {
+                countEl.textContent = `${checked} / ${total} גלויות`;
+            }
+        };
+
+        updateVisibleCount();
+
+        setTimeout(() => {
+            document.getElementById('scColSearch')
+                ?.addEventListener('input', e => {
+
+                    const term = e.target.value.toLowerCase().trim();
+
+                    document.querySelectorAll('.sc-col-mgr-item')
+                        .forEach(item => {
+
+                            const text = item.textContent.toLowerCase();
+
+                            item.style.display =
+                                !term || text.includes(term)
+                                    ? ''
+                                    : 'none';
+                        });
+                });
+        }, 0);
+
+        // ── האזן לשינויים בחוץ ──
+        modal.addEventListener('change', e => {
+            if (e.target.type === 'checkbox') {
+                updateVisibleCount();
+            }
+        });
+
+        // ── בחר הכל ──
+        document.getElementById('scColSelectAll')
+            ?.addEventListener('click', () => {
+                modal.querySelectorAll(
+                    '.sc-col-mgr-item input[type="checkbox"]:not(:disabled)'
+                ).forEach(cb => {
+                    if (!cb.checked) {
+                        cb.checked = true;
+                        const col = cb.id.replace('scCatalogCol-', '');
+                        this.visibleColumns[col] = true;
+                    }
+                });
+                updateVisibleCount();
+            });
+
+        // ── בטל הכל (חוץ משדות חובה) ──
+        document.getElementById('scColDeselectAll')
+            ?.addEventListener('click', () => {
+                modal.querySelectorAll(
+                    '.sc-col-mgr-item input[type="checkbox"]:not(:disabled)'
+                ).forEach(cb => {
+                    if (cb.checked) {
+                        cb.checked = false;
+                        const col = cb.id.replace('scCatalogCol-', '');
+                        this.visibleColumns[col] = false;
+                    }
+                });
+                updateVisibleCount();
+            });
+
         this._initCatalogColDragDrop();
 
         document.getElementById('scCatalogColClose')
@@ -10815,19 +14956,21 @@ class SystemsCatalogDashboard {
 
         const defs = this.getColumnDefinitions();
 
-        // קרא סדר חדש מה-DOM - ללא היפוך (הסדר ב-DOM הוא הסדר הנכון)
+        // ─── קרא סדר חדש מה-DOM ───
         const newReorderable = [...list.querySelectorAll('.sc-col-mgr-item')]
             .map(item => item.getAttribute('data-col'));
-        // ← הוסר .reverse()
 
-        // עמודות קבועות (לא ניתנות לסידור מחדש)
+        // ─── עמודות קבועות (לא ניתנות לסידור מחדש) ───
         const fixedCols = this.columnOrder
             .filter(col => defs[col] && !defs[col].canReorder);
 
-        this.columnOrder = [...newReorderable, ...fixedCols];
+        // ─── בנה סדר: number ראשון → reorderable → buttons אחרון ───
+        const middle = newReorderable.filter(k => k !== 'number' && k !== 'buttons');
+        this.columnOrder = ['number', ...middle, 'buttons'];
 
-        // ── ודא ש-number תמיד גלוי ──
-        this.visibleColumns['number'] = true;   // ← חדש
+        // ─── ודא ש-number תמיד גלוי ───
+        this.visibleColumns['number'] = true;
+        this.visibleColumns['buttons'] = true;
 
         this._savePreferences();
 
@@ -10840,6 +14983,18 @@ class SystemsCatalogDashboard {
     }
 
     getDefaultColumns() {
+        // ─── אם יש הגדרות מהשרת - השתמש בהן ───
+        if (this._serverColumnDefs && this._serverColumnDefs.length > 0) {
+            return Object.fromEntries(
+                this._serverColumnDefs.map(col => [
+                    col.key,
+                    col.defaultVisible
+                ])
+            );
+        }
+
+        // ─── fallback: ברירת מחדל קשיחה ───
+        // סדר מפורש - number ראשון, buttons אחרון
         return {
             number: true,
             name: true,
@@ -10848,9 +15003,9 @@ class SystemsCatalogDashboard {
             status: true,
             systemManager: true,
             departmentManager: true,
-            team: true,
-            department: true,
             domain: true,
+            department: true,
+            team: true,
             businessDivision: true,
             appClassification: true,
             appType: true,
@@ -10860,16 +15015,23 @@ class SystemsCatalogDashboard {
             publisher: true,
             supportVendor: true,
             hasAutomation: false,
-            createdAt: true,
+            createdAt: true,   // ← לפני buttons
             lastValidatedAt: false,
             requiresValidation: false,
-            buttons: true
+            lastValidationEmailSentAt: false,
+            buttons: true,   // ← תמיד אחרון
         };
     }
 
     resetCatalogColumnSettings() {
         this.visibleColumns = this.getDefaultColumns();
-        this.columnOrder = Object.keys(this.visibleColumns);
+
+        // ─── בנה סדר מפורש: number ראשון, buttons אחרון ───
+        const allKeys = Object.keys(this.visibleColumns)
+            .filter(k => k !== 'number' && k !== 'buttons');
+
+        this.columnOrder = ['number', ...allKeys, 'buttons'];
+
         this._savePreferences();
         document.getElementById('scCatalogColModal')?.remove();
         this.renderContent();
@@ -10973,8 +15135,20 @@ class SystemsCatalogDashboard {
     }
 
     escHtml(str) {
-        if (!str) return '';
-        return str
+        if (str === null || str === undefined) return '';
+
+        let s;
+        if (str instanceof Set) {
+            s = [...str].join(', ');
+        } else if (Array.isArray(str)) {
+            s = str.join(', ');
+        } else if (typeof str === 'object') {
+            s = JSON.stringify(str);
+        } else {
+            s = String(str);
+        }
+
+        return s
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
@@ -11220,22 +15394,73 @@ class SystemsCatalogDashboard {
         .sc-toast-success { background:#166534; border:1px solid #22c55e; color:#4ade80; }
         .sc-toast-error   { background:#7f1d1d; border:1px solid #ef4444; color:#fca5a5; }
         .sc-toast-info    { background:#1e3a5f; border:1px solid #3b82f6; color:#93c5fd; }
+        /* ══ Scroll Wrapper - Scrollbar ══ */
         .sc-scroll-wrapper {
+            overflow-x: auto !important;
+            overflow-y: auto !important;
+            direction: rtl;
             flex: 1;
-            overflow-y: auto;
-            overflow-x: auto;
             min-height: 0;
-            direction: ltr;
         }
-        .sc-scroll-wrapper::-webkit-scrollbar { width:7px; height:7px; }
-        .sc-scroll-wrapper::-webkit-scrollbar-track { background:#111; }
+
+        .sc-scroll-wrapper::-webkit-scrollbar {
+            width: 10px;
+            height: 17px;
+        }
+
+        .sc-scroll-wrapper::-webkit-scrollbar-track {
+            background: #1a1a2e;
+            border-radius: 5px;
+        }
+
         .sc-scroll-wrapper::-webkit-scrollbar-thumb {
-            background:#333; border-radius:4px;
+            background: #4a4a6a;
+            border-radius: 5px;
+            border: 2px solid #1a1a2e;
         }
-        .sc-scroll-wrapper .sc-content,
-        .sc-scroll-wrapper .sc-pagination { direction: rtl; }
+
+        .sc-scroll-wrapper::-webkit-scrollbar-thumb:hover {
+            background: #6366f1;
+        }
+
+        .sc-scroll-wrapper::-webkit-scrollbar-corner {
+            background: #1a1a2e;
+        }
+
+        /* Light Mode - Scrollbar */
+        [data-theme="light"] .sc-scroll-wrapper::-webkit-scrollbar-track {
+            background: #e0e0f0;
+            border-radius: 5px;
+        }
+
+        [data-theme="light"] .sc-scroll-wrapper::-webkit-scrollbar-thumb {
+            background: #9090b0;
+            border-radius: 5px;
+            border: 2px solid #e0e0f0;
+        }
+
+        [data-theme="light"] .sc-scroll-wrapper::-webkit-scrollbar-thumb:hover {
+            background: #6366f1;
+        }
+
+        [data-theme="light"] .sc-scroll-wrapper::-webkit-scrollbar-corner {
+            background: #e0e0f0;
+        }
+        .sc-scroll-wrapper .sc-stats-view,
+        .sc-scroll-wrapper .sc-cards-grid { direction: rtl; }
+
+        /* Pagination - נדבק לתחתית ולא לשמאל */
+        .sc-pagination {
+            direction: rtl;
+            position: sticky;
+            bottom: 0;
+            right: 0;
+            left: 0;  /* ← הוסף */
+            width: 100%;  /* ← הוסף */
+            z-index: 20;
+        }
         .sc-table {
-            width: 100%;
+            min-width: max-content;
             border-collapse: collapse;
             font-size: 0.82rem;
             direction: rtl;
@@ -11281,7 +15506,7 @@ class SystemsCatalogDashboard {
             vertical-align: middle;
             text-align: center;
         }
-        .sc-td-center { text-align: center; }
+        .sc-td-center { text-align: center; max-width: 110px;}
         .sc-td-number {
             font-weight: 700;
             color: #a5b4fc;
@@ -11364,8 +15589,11 @@ class SystemsCatalogDashboard {
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            max-width: 130px;
+            max-width: 110px;
             cursor: default;
+        }
+        .sc-td-name {
+            max-width: 125px;
         }
         .sc-td-truncate[dir="ltr"] { direction:ltr; text-align:center; }
         .sc-td-desc { max-width: 180px; text-align: right; }
@@ -11930,24 +16158,79 @@ class SystemsCatalogDashboard {
             background: #1e1e2e;
             border: 1px solid #3a3a5a;
             border-radius: 10px;
-            padding: 16px;
             box-shadow: 0 8px 32px rgba(0,0,0,0.6);
             min-width: 640px;
+            max-width: 760px;
+            max-height: 70vh;          /* ← גובה מקסימלי */
+            display: flex;
+            flex-direction: column;
             animation: scFadeIn 0.15s ease;
             direction: rtl;
+            overflow: hidden;           /* ← הכרחי לborder-radius עם גלילה */
+        }
+        /* ─── כותרת פופאפ - נשארת קבועה ─── */
+        .sc-filters-popup-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 16px 12px;    /* ← הוסף padding */
+            border-bottom: 1px solid #2a2a4e;
+            flex-shrink: 0;             /* ← לא מתכווץ */
+            background: #1e1e2e;        /* ← רקע קבוע */
+            position: sticky;           /* ← נדבק לראש */
+            top: 0;
+            z-index: 1;
+        }
+
+        /* ─── גריד פילטרים - גולל ─── */
+        .sc-filters-popup-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            padding: 14px 16px;         /* ← padding במקום על הפופאפ */
+            overflow-y: auto;           /* ← גלילה רק כאן */
+            flex: 1;
+            min-height: 0;
+        }
+
+        /* ─── Scrollbar עיצוב ─── */
+        .sc-filters-popup-grid::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .sc-filters-popup-grid::-webkit-scrollbar-track {
+            background: #16162a;
+            border-radius: 3px;
+        }
+
+        .sc-filters-popup-grid::-webkit-scrollbar-thumb {
+            background: #3a3a5a;
+            border-radius: 3px;
+        }
+
+        .sc-filters-popup-grid::-webkit-scrollbar-thumb:hover {
+            background: #6366f1;
+        }
+            [data-theme="light"] .sc-filters-popup-header {
+            background: #fff;
+            border-bottom: 1px solid #eee;
+        }
+
+        [data-theme="light"] .sc-filters-popup-grid::-webkit-scrollbar-track {
+            background: #f0f0f8;
+        }
+
+        [data-theme="light"] .sc-filters-popup-grid::-webkit-scrollbar-thumb {
+            background: #c8c8e0;
+        }
+
+        [data-theme="light"] .sc-filters-popup-grid::-webkit-scrollbar-thumb:hover {
+            background: #6366f1;
         }
         @keyframes scFadeIn { from{opacity:0} to{opacity:1} }
         @keyframes scSlideIn {
             from{transform:translateY(-20px);opacity:0}
             to{transform:translateY(0);opacity:1}
-        }
-        .sc-filters-popup-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 14px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #2a2a4e;
         }
         .sc-filters-popup-title {
             font-size: 0.88rem;
@@ -11972,11 +16255,6 @@ class SystemsCatalogDashboard {
             gap: 5px;
         }
         .sc-clear-filters-btn:hover { background:rgba(239,68,68,0.2); }
-        .sc-filters-popup-grid {
-            display: grid;
-            grid-template-columns: repeat(3,1fr);
-            gap: 12px;
-        }
         .sc-filter-group {
             display: flex;
             flex-direction: column;
@@ -13489,7 +17767,7 @@ class SystemsCatalogDashboard {
         }
 
         [data-theme="light"] .sc-edit-input {
-            background: #f5f5f5;
+            background: #ffffff;
             border: 1px solid #ccc;
             color: #1a1a2e;
         }
@@ -13497,7 +17775,7 @@ class SystemsCatalogDashboard {
         [data-theme="light"] .sc-edit-input::placeholder { color: #aaa; }
 
         [data-theme="light"] .sc-form-textarea {
-            background: #f5f5f5;
+            background: #ffffff;
             border: 1px solid #ccc;
             color: #1a1a2e;
         }
@@ -14447,6 +18725,28 @@ class SystemsCatalogDashboard {
         .sc-import-auto-btn:hover {
             background: rgba(34,197,94,0.2);
             border-color: rgba(34,197,94,0.55);
+        }
+
+        /* ── Import Auto Button (Header) ── */
+        .sc-mail-auto-btn {
+            padding: 6px 14px;
+            border-radius: 6px;
+            background: rgba(20,184,166,0.1);
+            border: 1px solid rgba(20,184,166,0.35);
+            color: #99f6e4;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .sc-mail-auto-btn:hover {
+            background: rgba(59,130,246,0.2);
+            border-color: rgba(59,130,246,0.55);
         }
 
         /* ── Automation Badge (3 states) ── */
@@ -15821,6 +20121,725 @@ class SystemsCatalogDashboard {
             background: rgba(245,158,11,0.1);
             color: #b45309;
             border: 1px solid rgba(245,158,11,0.3);
+        }
+        /* ══ Column Filter Multi Controls ══ */
+        .sc-col-filter-multi-controls {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-bottom: 1px solid #2a2a4e;
+        }
+
+        .sc-col-filter-select-all-btn,
+        .sc-col-filter-clear-sel-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 9px;
+            border-radius: 5px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+            border: 1px solid transparent;
+            font-family: inherit;
+        }
+
+        .sc-col-filter-select-all-btn {
+            background: rgba(34,197,94,0.1);
+            border-color: rgba(34,197,94,0.3);
+            color: #86efac;
+        }
+
+        .sc-col-filter-select-all-btn:hover {
+            background: rgba(34,197,94,0.22);
+            border-color: rgba(34,197,94,0.5);
+        }
+
+        .sc-col-filter-clear-sel-btn {
+            background: rgba(239,68,68,0.1);
+            border-color: rgba(239,68,68,0.25);
+            color: #fca5a5;
+        }
+
+        .sc-col-filter-clear-sel-btn:hover {
+            background: rgba(239,68,68,0.2);
+            border-color: rgba(239,68,68,0.45);
+        }
+
+        .sc-col-filter-sel-count {
+            font-size: 0.72rem;
+            color: #a5b4fc;
+            font-weight: 700;
+            margin-right: auto;
+            background: rgba(99,102,241,0.12);
+            border: 1px solid rgba(99,102,241,0.25);
+            border-radius: 8px;
+            padding: 1px 7px;
+        }
+
+        /* ══ אופציית "הכל" - מובדלת ══ */
+        .sc-col-filter-option-all {
+            border-bottom: 1px solid #2a2a4e;
+            margin-bottom: 3px;
+            padding-bottom: 7px !important;
+            font-weight: 700 !important;
+        }
+
+        .sc-col-filter-option-all .sc-col-filter-option-label {
+            color: #a5b4fc;
+        }
+
+        .sc-col-filter-option-all.sc-col-filter-option-active {
+            background: rgba(99,102,241,0.15) !important;
+        }
+
+        /* Checkbox בתוך option */
+        .sc-col-filter-option {
+            gap: 8px;
+        }
+
+        .sc-col-filter-cb {
+            flex-shrink: 0;
+            pointer-events: none;
+        }
+
+        /* indeterminate style */
+        .sc-col-filter-cb-all:indeterminate {
+            accent-color: #f59e0b;
+        }
+
+        /* Light Mode */
+        [data-theme="light"] .sc-col-filter-option-all {
+            border-bottom: 1px solid #e0e0f0;
+        }
+
+        [data-theme="light"] .sc-col-filter-option-all .sc-col-filter-option-label {
+            color: #4338ca;
+        }
+
+        [data-theme="light"] .sc-col-filter-multi-controls {
+            border-bottom: 1px solid #eee;
+        }
+
+        [data-theme="light"] .sc-col-filter-select-all-btn {
+            background: rgba(34,197,94,0.08);
+            border-color: rgba(34,197,94,0.2);
+            color: #15803d;
+        }
+
+        [data-theme="light"] .sc-col-filter-clear-sel-btn {
+            background: rgba(239,68,68,0.08);
+            border-color: rgba(239,68,68,0.2);
+            color: #dc2626;
+        }
+
+        [data-theme="light"] .sc-col-filter-sel-count {
+            background: rgba(99,102,241,0.08);
+            border-color: rgba(99,102,241,0.2);
+            color: #4338ca;
+        }
+        .sc-stats-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-right: auto;
+        }
+
+        .sc-inline-link-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 0.75rem;
+            font-weight: 600;
+
+            background: rgba(34,197,94,0.12);
+            border: 1px solid rgba(34,197,94,0.35);
+            color: #86efac;
+        }
+
+        .sc-inline-link-btn:hover {
+            background: rgba(34,197,94,0.22);
+        }
+
+        .sc-inline-link-btn-warning {
+            background: rgba(245,158,11,0.12);
+            border-color: rgba(245,158,11,0.35);
+            color: #fcd34d;
+        }
+
+        .sc-inline-link-btn-warning:hover {
+            background: rgba(245,158,11,0.22);
+        }
+        [data-theme="light"] .sc-inline-link-btn {
+            background: rgba(34,197,94,0.08);
+            border-color: rgba(34,197,94,0.25);
+            color: #15803d;
+        }
+
+        [data-theme="light"] .sc-inline-link-btn:hover {
+            background: rgba(34,197,94,0.15);
+            border-color: rgba(34,197,94,0.4);
+        }
+
+        [data-theme="light"] .sc-inline-link-btn-warning {
+            background: rgba(245,158,11,0.08);
+            border-color: rgba(245,158,11,0.25);
+            color: #b45309;
+        }
+
+        [data-theme="light"] .sc-inline-link-btn-warning:hover {
+            background: rgba(245,158,11,0.15);
+            border-color: rgba(245,158,11,0.4);
+        }[data-theme="light"] .sc-inline-link-btn {
+            background: rgba(34,197,94,0.08);
+            border-color: rgba(34,197,94,0.25);
+            color: #15803d;
+        }
+
+        [data-theme="light"] .sc-inline-link-btn:hover {
+            background: rgba(34,197,94,0.15);
+            border-color: rgba(34,197,94,0.4);
+        }
+
+        [data-theme="light"] .sc-inline-link-btn-warning {
+            background: rgba(245,158,11,0.08);
+            border-color: rgba(245,158,11,0.25);
+            color: #b45309;
+        }
+
+        [data-theme="light"] .sc-inline-link-btn-warning:hover {
+            background: rgba(245,158,11,0.15);
+            border-color: rgba(245,158,11,0.4);
+        }
+
+        /* ══ Horizontal Scroll + Sticky Number Column ══ */
+        .sc-scroll-wrapper {
+            overflow-x: auto !important;
+            overflow-y: auto !important;
+            direction: rtl;  /* ← שנה מ-ltr ל-rtl */
+        }
+
+        /* תוכן פנימי - חזור ל-ltr כדי שהטבלה תעבוד נכון */
+        .sc-scroll-wrapper .sc-table {
+            direction: rtl;
+        }
+
+        /* עמודת מספר קפואה */
+        .sc-th-sticky-num,
+        .sc-td-sticky-num {
+            position: sticky !important;
+            right: 0 !important;
+            z-index: 15 !important;
+            background: #1a1a2e !important;
+            box-shadow: -2px 0 6px rgba(0,0,0,0.4);
+        }
+
+        .sc-tr:hover .sc-td-sticky-num {
+            background: rgba(99,102,241,0.12) !important;
+        }
+
+        .sc-tr:nth-child(odd) .sc-td-sticky-num {
+            background: #0f0f1a !important;
+        }
+
+        .sc-tr:nth-child(even) .sc-td-sticky-num {
+            background: rgba(255,255,255,0.045) !important;
+        }
+        /* Light Mode */
+        [data-theme="light"] .sc-tr:nth-child(odd) .sc-td-sticky-num {
+            background: #ffffff !important;
+        }
+
+        [data-theme="light"] .sc-tr:nth-child(even) .sc-td-sticky-num {
+            background: #f5f7fa !important;
+        }
+        /* Light mode */
+        [data-theme="light"] .sc-th-sticky-num {
+            background: #e8e8f0 !important;
+        }
+
+        [data-theme="light"] .sc-td-sticky-num {
+            background: #ffffff !important;
+            box-shadow: -2px 0 6px rgba(0,0,0,0.1);
+        }
+
+        [data-theme="light"] .sc-tr:nth-child(even) .sc-td-sticky-num {
+            background: #f3f4f8 !important;
+        }
+
+        [data-theme="light"] .sc-tr:hover .sc-td-sticky-num {
+            background: rgba(99,102,241,0.06) !important;
+        }
+        /* פריט קבוע (לא ניתן לגרירה) */
+        .sc-col-mgr-item-fixed {
+            opacity: 0.75;
+            background: rgba(99,102,241,0.04) !important;
+            border-color: rgba(99,102,241,0.15) !important;
+            cursor: default !important;
+        }
+
+        .sc-col-mgr-item-fixed:hover {
+            background: rgba(99,102,241,0.06) !important;
+            border-color: rgba(99,102,241,0.2) !important;
+            transform: none !important;
+        }
+
+        [data-theme="light"] .sc-col-mgr-item-fixed {
+            background: rgba(99,102,241,0.03) !important;
+            border-color: rgba(99,102,241,0.1) !important;
+        }
+        .sc-th-sticky-num {
+            position: sticky !important;
+            right: 0 !important;
+            top: 0 !important;
+            z-index: 30 !important;
+            background: #1a1a2e !important;
+            box-shadow: -2px 0 6px rgba(0,0,0,0.4);
+        }
+
+        .sc-td-sticky-num {
+            position: sticky !important;
+            right: 0 !important;
+            z-index: 15 !important;
+            background: #0f0f1a;
+            box-shadow: -2px 0 6px rgba(0,0,0,0.4);
+        }
+        .sc-col-search-wrap {
+            position: relative;
+            padding: 10px 18px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .sc-col-search-wrap i {
+            position: absolute;
+            right: 28px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #666;
+        }
+
+        .sc-col-search-input {
+            width: 100%;
+            padding: 7px 32px 7px 10px;
+            border-radius: 6px;
+            background: #252535;
+            border: 1px solid #3a3a5a;
+            color: #e0e0e0;
+        }
+        /* ══ Permissions Modal ══ */
+        .sc-permissions-btn {
+            padding: 6px 10px;
+            background: rgba(239,68,68,0.12);
+            border: 1px solid rgba(239,68,68,0.35);
+            border-radius: 6px;
+            color: #fca5a5;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .sc-permissions-btn:hover {
+            background: rgba(239,68,68,0.22);
+            border-color: rgba(239,68,68,0.6);
+            transform: translateY(-1px);
+        }
+
+        .sc-perm-groups-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
+            gap: 14px;
+        }
+
+        .sc-perm-group {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid rgba(255,255,255,0.07) !important;
+            border-radius: 10px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+
+        .sc-perm-group-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 12px 14px;
+            background: rgba(255,255,255,0.03);
+        }
+
+        .sc-perm-group-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+
+        .sc-perm-group-info { flex: 1; min-width: 0; }
+
+        .sc-perm-group-title {
+            font-size: 0.88rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            margin-bottom: 3px;
+        }
+
+        .sc-perm-group-count {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 20px;
+            height: 18px;
+            padding: 0 5px;
+            border-radius: 9px;
+            font-size: 0.68rem;
+            font-weight: 700;
+        }
+
+        .sc-perm-group-desc {
+            font-size: 0.72rem;
+            color: #666;
+            line-height: 1.4;
+        }
+
+        .sc-perm-users-wrap {
+            padding: 8px 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            min-height: 44px;
+            flex: 1;
+        }
+
+        .sc-perm-user-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 8px;
+            background: rgba(99,102,241,0.12);
+            border: 1px solid rgba(99,102,241,0.25);
+            border-radius: 8px;
+            font-size: 0.75rem;
+            color: #a5b4fc;
+            animation: scFadeIn 0.15s ease;
+        }
+
+        .sc-perm-user-name {
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .sc-perm-remove-btn {
+            background: none;
+            border: none;
+            color: #555;
+            cursor: pointer;
+            font-size: 0.6rem;
+            padding: 1px 3px;
+            border-radius: 50%;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            line-height: 1;
+        }
+
+        .sc-perm-remove-btn:hover {
+            background: rgba(239,68,68,0.2);
+            color: #fca5a5;
+        }
+
+        .sc-perm-empty {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            color: #444;
+            font-style: italic;
+            padding: 4px 2px;
+            width: 100%;
+        }
+
+        .sc-perm-add-wrap {
+            display: flex;
+            gap: 6px;
+            padding: 8px 10px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            background: rgba(255,255,255,0.02);
+        }
+
+        .sc-perm-add-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            background: rgba(34,197,94,0.12);
+            border: 1px solid rgba(34,197,94,0.35);
+            border-radius: 6px;
+            color: #86efac;
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: all 0.15s;
+            flex-shrink: 0;
+        }
+
+        .sc-perm-add-btn:hover {
+            background: rgba(34,197,94,0.25);
+            border-color: rgba(34,197,94,0.6);
+            transform: scale(1.08);
+        }
+
+        /* Light Mode */
+        [data-theme="light"] .sc-permissions-btn {
+            background: rgba(239,68,68,0.08);
+            border-color: rgba(239,68,68,0.25);
+            color: #dc2626;
+        }
+
+        [data-theme="light"] .sc-perm-group {
+            background: #fff;
+            border: 1px solid #e0e0f0 !important;
+        }
+
+        [data-theme="light"] .sc-perm-group-header {
+            background: #f8f8ff;
+            border-bottom: 1px solid #eee;
+        }
+
+        [data-theme="light"] .sc-perm-group-desc { color: #888; }
+
+        [data-theme="light"] .sc-perm-user-tag {
+            background: rgba(99,102,241,0.08);
+            border-color: rgba(99,102,241,0.2);
+            color: #4338ca;
+        }
+
+        [data-theme="light"] .sc-perm-remove-btn { color: #bbb; }
+
+        [data-theme="light"] .sc-perm-remove-btn:hover {
+            background: rgba(239,68,68,0.1);
+            color: #dc2626;
+        }
+
+        [data-theme="light"] .sc-perm-empty { color: #bbb; }
+
+        [data-theme="light"] .sc-perm-add-wrap {
+            background: #f8f8ff;
+            border-top: 1px solid #eee;
+        }
+
+        [data-theme="light"] .sc-perm-add-btn {
+            background: rgba(34,197,94,0.08);
+            border-color: rgba(34,197,94,0.25);
+            color: #15803d;
+        }
+
+        /* ══ Multi-Select Field ══ */
+        .sc-multiselect-wrap {
+            position: relative;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .sc-multiselect-display {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 34px;
+            padding: 4px 10px;
+            background: #252535;
+            border: 1px solid #3a3a5a;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: border-color 0.2s;
+            flex-wrap: wrap;
+        }
+
+        .sc-multiselect-display:hover {
+            border-color: #f59e0b;
+        }
+
+        .sc-multiselect-display-text {
+            flex: 1;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            min-width: 0;
+        }
+
+        .sc-multiselect-tag {
+            display: inline-flex;
+            align-items: center;
+            padding: 1px 7px;
+            background: rgba(99,102,241,0.15);
+            border: 1px solid rgba(99,102,241,0.35);
+            border-radius: 8px;
+            color: #a5b4fc;
+            font-size: 0.72rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .sc-multiselect-dropdown {
+            position: absolute;
+            top: calc(100% + 3px);
+            right: 0;
+            left: 0;
+            z-index: 99999;
+            background: #1e1e2e;
+            border: 1px solid #3a3a5a;
+            border-radius: 8px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.5);
+            max-height: 200px;
+            overflow-y: auto;
+            padding: 4px;
+            animation: scFadeIn 0.15s ease;
+        }
+
+        .sc-multiselect-dropdown::-webkit-scrollbar { width: 5px; }
+        .sc-multiselect-dropdown::-webkit-scrollbar-track { background: #111; }
+        .sc-multiselect-dropdown::-webkit-scrollbar-thumb {
+            background: #333; border-radius: 3px;
+        }
+
+        .sc-multiselect-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.82rem;
+            color: #ccc;
+            transition: background 0.12s;
+            user-select: none;
+        }
+
+        .sc-multiselect-option:hover {
+            background: rgba(99,102,241,0.12);
+            color: #e0e0e0;
+        }
+
+        .sc-multiselect-selected {
+            background: rgba(99,102,241,0.15) !important;
+            color: #a5b4fc !important;
+            font-weight: 600;
+        }
+
+        .sc-edit-input-readonly .sc-multiselect-display {
+            cursor: default;
+            opacity: 0.65;
+            pointer-events: none;
+        }
+
+        /* Light Mode */
+        [data-theme="light"] .sc-multiselect-display {
+            background: #ffffff;
+            border-color: #ccc;
+        }
+
+        [data-theme="light"] .sc-multiselect-display:hover {
+            border-color: #f59e0b;
+        }
+
+        [data-theme="light"] .sc-multiselect-tag {
+            background: rgba(99,102,241,0.08);
+            border-color: rgba(99,102,241,0.2);
+            color: #4338ca;
+        }
+
+        [data-theme="light"] .sc-multiselect-dropdown {
+            background: #fff;
+            border-color: #ccc;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+        }
+
+        [data-theme="light"] .sc-multiselect-option { color: #333; }
+
+        [data-theme="light"] .sc-multiselect-option:hover {
+            background: rgba(99,102,241,0.06);
+        }
+
+        [data-theme="light"] .sc-multiselect-selected {
+            background: rgba(99,102,241,0.1) !important;
+            color: #4338ca !important;
+        }
+
+        /* ══ Readonly Fields - Visual Distinction ══ */
+        .sc-edit-input-readonly,
+        .sc-edit-input-readonly:focus,
+        textarea.sc-edit-input-readonly,
+        select.sc-edit-input-readonly {
+            background: rgba(255,255,255,0.02) !important;
+            border-color: #2a2a3e !important;
+            color: #ffffff !important;
+            cursor: not-allowed !important;
+            box-shadow: none !important;
+            opacity: 0.7;
+        }
+
+        [data-theme="light"] .sc-edit-input-readonly,
+        [data-theme="light"] .sc-edit-input-readonly:focus,
+        [data-theme="light"] textarea.sc-edit-input-readonly,
+        [data-theme="light"] select.sc-edit-input-readonly {
+            background: #f0f0f0 !important;
+            border-color: #ddd !important;
+            color: #100c0c !important;
+            cursor: not-allowed !important;
+            box-shadow: none !important;
+            opacity: 0.75;
+        }
+
+        /* Multiselect readonly */
+        .sc-multiselect-wrap.sc-edit-input-readonly .sc-multiselect-display {
+            background: rgba(255,255,255,0.02) !important;
+            border-color: #2a2a3e !important;
+            cursor: not-allowed !important;
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        [data-theme="light"] .sc-multiselect-wrap.sc-edit-input-readonly .sc-multiselect-display {
+            background: #f0f0f0 !important;
+            border-color: #ddd !important;
+        }
+
+        /* =========================
+        DARK MODE
+        ========================= */
+        .sc-select.sc-edit-select:disabled {
+            background: #1f1f2e !important;
+            border: 1px solid #35354f !important;
+            color: #7a7a8d !important;
+            opacity: 1;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        /* =========================
+        LIGHT MODE
+        ========================= */
+        [data-theme="light"] .sc-select.sc-edit-select:disabled {
+            background: #f3f4f6 !important;
+            border: 1px solid #d1d5db !important;
+            color: #6b7280 !important;
+            opacity: 1;
+            cursor: not-allowed;
+            box-shadow: none;
         }
         `;
         document.head.appendChild(style);

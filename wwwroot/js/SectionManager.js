@@ -1,7 +1,7 @@
 // SectionManager.js
 class SectionManager {
     constructor() {
-        this.sectionStates = JSON.parse(localStorage.getItem('sectionStates') ||
+        this.sectionStates = JSON.parse(userSettings.getItem('sectionStates') ||
             '{"shifts": false, "employeeTasks": false, "phoneDirectory": false, "activityManagement": false, "procedures": false, "messages": false, "dailyTasks": false, "teamLinks": false,"datacenter": false,"alerts": false ,"changes": false }');
     }
 
@@ -28,7 +28,7 @@ class SectionManager {
         }
 
         // Save state to localStorage
-        localStorage.setItem('sectionStates', JSON.stringify(this.sectionStates));
+        userSettings.setItem('sectionStates', JSON.stringify(this.sectionStates));
 
         // Update toggle all button state in SectionDragManager
         if (sectionDragManager && typeof sectionDragManager.updateToggleAllState === 'function') {

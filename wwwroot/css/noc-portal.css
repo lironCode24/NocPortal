@@ -1201,6 +1201,16 @@ body {
     left: 100%;
 }
 
+.btn-send-email-recipients {
+    background: linear-gradient(135deg, #06b6d4 0%, #2563eb 100%);
+    box-shadow: 0 8px 25px rgba(37, 99, 235, 0.30);
+}
+
+.btn-send-email-recipients:hover {
+    background: linear-gradient(135deg, #0891b2 0%, #1d4ed8 100%);
+    box-shadow: 0 15px 35px rgba(37, 99, 235, 0.40);
+}
+
 /* Filter Tabs Container */
 .filter-tabs {
     display: flex;
@@ -13358,7 +13368,6 @@ button.folder-view-btn:focus,
     flex: 0 1 auto;
     font-weight: 600;
     font-size: 0.95rem;
-    max-width: 120px;
 }
 
 .activity-tab-actions {
@@ -14416,6 +14425,21 @@ button.folder-view-btn:focus,
     cursor: not-allowed;
 }
 
+.bulk-reminder-btn {
+    color: #e67e22;
+    border-color: #e67e22;
+}
+
+.bulk-reminder-btn:hover {
+    background-color: #e67e22;
+    color: white;
+}
+
+.bulk-reminder-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .bulk-assign-btn {
     color: #007bff;
     border-color: #007bff;
@@ -14678,7 +14702,7 @@ button.folder-view-btn:focus,
 
 .alerts-color-mode-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(230, 126, 34, 0.4);
+    box-shadow: 0 6px 20px rgba(128, 90, 213, 0.4);
 }
 
 #alertProcedureMappingBtn {
@@ -15133,6 +15157,51 @@ button.folder-view-btn:focus,
     margin: 0;
 }
 
+/* ── Bottom row: תאריך + כפתורים זה ליד זה ── */
+.activity-tab-bottom-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-width: 0;
+    margin-top: 2px;
+}
+
+/* ── עדכון activity-tab-actions - יישב בשורה התחתונה ── */
+.activity-tab-actions {
+    display: flex;
+    gap: 3px;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.2s;
+    align-items: center;
+    /* הסר: position absolute אם קיים */
+    margin-right: 0;
+}
+
+.activity-tab:hover .activity-tab-actions,
+.activity-tab.active .activity-tab-actions {
+    opacity: 1;
+}
+
+/* ── activity-tab-date נשאר בשורה התחתונה ── */
+.activity-tab-date {
+    font-size: 0.75rem !important;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Dark mode */
+[data-theme="dark"] .activity-tab:not(.active) .activity-tab-actions {
+    color: #a78bfa;
+}
+
 /* סגנונות משופרים לאזור הפילטרים של פעילויות */
 .activity-filters {
     display: flex;
@@ -15447,6 +15516,13 @@ button.folder-view-btn:focus,
 .flatpickr-prev-month,
 .flatpickr-next-month {
     transform: scaleX(-1);
+}
+
+.flatpickr-prev-month{
+    left: 90% !important;
+}
+.flatpickr-next-month{
+    right: 90% !important;
 }
 
 /* יישור טקסט לימין */
@@ -19231,6 +19307,9 @@ tr.severity-text-dark-unknown .actions-btn {
     color: #212f53;
     cursor: pointer;
     padding: 5px;
+}
+.severity-text-dark-critical .send-mail-btn {
+    color: #657398;
 }
 
 .send-mail-btn:hover {
@@ -25001,25 +25080,19 @@ tr.severity-text-dark-unknown .actions-btn {
     color: #ffd54f !important;
 }
 
-/* ── שורת הודעות ב-User Menu ─────────────────────────────────────── */
-.user-messages-row {
-    padding: .4rem .6rem;
-    margin-bottom: .3rem;
-}
-
 .btn-messages-indicator {
     width: 100%;
     display: flex;
     align-items: center;
-    gap: .7rem;
+    gap: .5rem;
     background: rgba(240, 165, 0, .08);
     border: 1px solid rgba(240, 165, 0, .25);
     border-radius: 8px;
-    padding: .55rem .9rem;
+    padding: .45rem .4rem;
     cursor: pointer;
     color: #f0a500;
-    font-size: .85rem;
-    font-weight: 500;
+    font-size: .8rem;
+    font-weight: 400;
     transition: all .2s;
     text-align: right;
     direction: rtl;
@@ -27981,8 +28054,9 @@ mark.quick-highlight {
     border-radius: 16px;
     width: 100%;
     max-width: 580px;
-    max-height: 85vh;
-    display: flex;
+    max-height: 85vh; 
+    overflow: hidden; 
+    display: flex; 
     flex-direction: column;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
     animation: tvSlideUp 0.25s ease;
@@ -29095,6 +29169,11 @@ mark.quick-highlight {
 [data-theme="dark"] .activity-management-section .task-text {
     color: var(--text-primary);
 }
+/* ── Task Text & Content ── */
+[data-theme="dark"] .activity-management-section .completed .task-text,
+[data-theme="dark"] .activity-management-section .skipped .task-text {
+    color: var(--bg-primary);
+}
 
 [data-theme="dark"] .activity-management-section .task-description {
     color: var(--text-secondary);
@@ -29124,15 +29203,15 @@ mark.quick-highlight {
     background: rgba(40, 167, 69, 0.1);
     border-radius: 6px;
     padding: 6px 10px;
-    color: #80d080;
+    color: #6ab06a;
 }
 
 [data-theme="dark"] .task-completed-by i {
-    color: #28a745;
+    color: #6ab06a;
 }
 
 [data-theme="dark"] .task-completed-by strong {
-    color: #80d080;
+    color: #6ab06a;
 }
 
 [data-theme="dark"] .completion-time {
@@ -29160,15 +29239,11 @@ mark.quick-highlight {
 /* ── Task Skip Reason ── */
 [data-theme="dark"] .task-skip-reason {
     background: rgba(255, 193, 7, 0.1);
-    color: #fcd34d;
+    color: #856404;
 }
 
 [data-theme="dark"] .task-skip-reason i {
     color: #f59e0b;
-}
-
-[data-theme="dark"] .task-skip-reason strong {
-    color: #fcd34d;
 }
 
 /* ── Task Status Dropdown ── */
@@ -30161,6 +30236,278 @@ mark.quick-highlight {
 
 [data-theme="dark"] #activityTasksContainer::-webkit-scrollbar-thumb:hover {
     background: #667eea;
+}
+
+/* ─── שורת סינון ─── */
+.task-filters-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 14px;
+    background: var(--card-item-bg, rgba(255,255,255,0.04));
+    border: 1px solid var(--border-color, rgba(255,255,255,0.08));
+    border-radius: 10px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+    direction: rtl;
+}
+.filter-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.82rem;
+}
+.filter-group label {
+    color: var(--text-secondary, #9ca3af);
+    white-space: nowrap;
+}
+.filter-group select {
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color, #3d4a5c);
+    background: var(--input-bg, #2a3347);
+    color: var(--text-primary, #e0e0e0);
+    font-size: 0.82rem;
+    cursor: pointer;
+}
+.filter-clear-btn {
+    padding: 4px 10px;
+    background: rgba(220,53,69,0.1);
+    border: 1px solid rgba(220,53,69,0.25);
+    color: #dc3545;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.filter-results-count {
+    font-size: 0.75rem;
+    color: #667eea;
+    font-weight: 600;
+    margin-right: auto;
+}
+.filter-toggle-btn {
+    padding: 6px 10px;
+    background: rgba(102,126,234,0.1);
+    border: 1px solid rgba(102,126,234,0.25);
+    color: #667eea;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: 0.82rem;
+}
+
+/* ─── כותרות קיבוץ לפי תאריך ─── */
+.task-date-group-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 18px 0 8px;
+    padding: 0 4px;
+}
+.date-group-line {
+    flex: 1;
+    height: 1px;
+    background: var(--border-color, rgba(255,255,255,0.08));
+}
+.date-group-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 14px;
+    background: var(--card-item-bg, rgba(255,255,255,0.06));
+    border: 1px solid var(--border-color, rgba(255,255,255,0.1));
+    border-radius: 20px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-secondary, #9ca3af);
+    white-space: nowrap;
+}
+.date-group-label i {
+    color: #667eea;
+}
+.date-group-day {
+    color: var(--text-primary, #e0e0e0);
+}
+.date-group-date {
+    color: var(--text-secondary, #9ca3af);
+    font-weight: 400;
+}
+.date-group-count {
+    background: rgba(102,126,234,0.15);
+    color: #667eea;
+    border-radius: 10px;
+    padding: 1px 7px;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+.today-header .date-group-label {
+    border-color: rgba(40,167,69,0.3);
+    background: rgba(40,167,69,0.08);
+    color: #28a745;
+}
+.today-badge {
+    background: #28a745;
+    color: #fff;
+    border-radius: 8px;
+    padding: 1px 7px;
+    font-size: 0.68rem;
+    font-weight: 700;
+}
+.past-header .date-group-label {
+    opacity: 0.6;
+}
+.no-date-header .date-group-label {
+    border-style: dashed;
+}
+.date-group-tasks {
+    padding-right: 4px;
+}
+
+/* ══════════════════════════════════════════════════════════
+   DATE GROUPS - COLLAPSIBLE
+══════════════════════════════════════════════════════════ */
+
+/* ─── כפתורי פתח הכל / סגור הכל ─── */
+.date-groups-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 4px 10px;
+    direction: rtl;
+}
+
+.date-groups-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 8px;
+    border: 1.5px solid rgba(102, 126, 234, 0.3);
+    background: rgba(102, 126, 234, 0.07);
+    color: #667eea;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.date-groups-toggle-btn:hover {
+    background: rgba(102, 126, 234, 0.15);
+    border-color: #667eea;
+    transform: translateY(-1px);
+    box-shadow: 0 3px 10px rgba(102, 126, 234, 0.2);
+}
+
+.date-groups-toggle-btn.collapse-all {
+    background: rgba(100, 116, 139, 0.07);
+    border-color: rgba(100, 116, 139, 0.3);
+    color: #64748b;
+}
+
+.date-groups-toggle-btn.collapse-all:hover {
+    background: rgba(100, 116, 139, 0.15);
+    border-color: #64748b;
+    color: #475569;
+}
+
+/* ─── כותרת קבוצה - ניתנת ללחיצה ─── */
+.collapsible-header {
+    cursor: pointer;
+    user-select: none;
+    transition: opacity 0.15s ease;
+}
+
+.collapsible-header:hover {
+    opacity: 0.85;
+}
+
+.collapsible-header:hover .date-group-label {
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+}
+
+/* ─── חץ בכותרת ─── */
+.date-group-chevron {
+    font-size: 0.7rem;
+    color: #94a3b8;
+    transition: transform 0.25s ease;
+    margin-right: 4px;
+}
+
+/* כשהקבוצה סגורה - החץ מסתובב */
+.group-collapsed .date-group-chevron {
+    transform: rotate(-180deg);
+}
+
+/* ─── מונה משימות שהושלמו ─── */
+.date-group-completed-count {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: rgba(40, 167, 69, 0.12);
+    color: #28a745;
+    border: 1px solid rgba(40, 167, 69, 0.25);
+    border-radius: 10px;
+    padding: 1px 7px;
+    font-size: 0.7rem;
+    font-weight: 700;
+}
+
+.date-group-completed-count i {
+    font-size: 0.62rem;
+}
+
+/* ─── קבוצת משימות - מצב פתוח/סגור ─── */
+.date-group-tasks {
+    overflow: hidden;
+    max-height: 9999px;
+    transition: max-height 0.35s ease,
+                opacity  0.25s ease,
+                padding  0.25s ease;
+    opacity: 1;
+    padding-right: 4px;
+}
+
+.date-group-tasks.collapsed {
+    max-height: 0 !important;
+    opacity: 0;
+    padding: 0;
+}
+
+/* ─── Dark Mode ─── */
+[data-theme="dark"] .date-groups-toggle-btn {
+    background: rgba(102, 126, 234, 0.1);
+    border-color: rgba(102, 126, 234, 0.3);
+    color: #a78bfa;
+}
+
+[data-theme="dark"] .date-groups-toggle-btn:hover {
+    background: rgba(102, 126, 234, 0.2);
+    border-color: #a78bfa;
+    color: #c4b5fd;
+}
+
+[data-theme="dark"] .date-groups-toggle-btn.collapse-all {
+    background: rgba(100, 116, 139, 0.1);
+    border-color: rgba(100, 116, 139, 0.3);
+    color: #94a3b8;
+}
+
+[data-theme="dark"] .date-groups-toggle-btn.collapse-all:hover {
+    background: rgba(100, 116, 139, 0.2);
+    color: #cbd5e1;
+}
+
+[data-theme="dark"] .date-group-chevron {
+    color: #5a5a7a;
+}
+
+[data-theme="dark"] .date-group-completed-count {
+    background: rgba(40, 167, 69, 0.1);
+    color: #80d080;
+    border-color: rgba(40, 167, 69, 0.2);
 }
 
 /* ==========================================
@@ -31959,3 +32306,814 @@ mark.quick-highlight {
     color: #667eea;
 }
 
+/* ══ התראת שינויים ספר טלפונים ══════════════════════════════════ */
+/* ─── כפתור התראה ב-header ──────────────────────────────────── */
+
+.phone-changes-alert-btn.visible {
+    display: inline-flex;
+}
+
+.phone-changes-alert-btn {
+    background: rgba(245,158,11,.15);
+    color: #b45309; /* amber-700 */
+    animation: alertPulse 2.5s ease-in-out infinite;
+}
+
+.phone-changes-alert-btn {
+    display: none;
+}
+
+.phone-changes-alert-btn.visible {
+    display: flex;
+}
+
+.phone-changes-alert-btn:hover {
+    background: rgba(245,158,11,.25);
+    border-color: rgba(180,83,9,.35);
+    color: #92400e; /* amber-800 */
+    text-decoration: none;
+}
+
+.phone-changes-alert-btn .alert-count {
+    background: #d97706; /* amber-600 */
+    color: #fff;
+    border-radius: 10px;
+    padding: .05rem .45rem;
+    font-size: .72rem;
+    font-weight: 700;
+    min-width: 18px;
+    text-align: center;
+}
+
+[data-theme="dark"] .phone-changes-alert-btn {
+    background: rgba(245,158,11,.12);
+    color: #fbbf24;
+    animation: alertPulse 2.5s ease-in-out infinite;
+}
+
+[data-theme="dark"] .phone-changes-alert-btn:hover {
+    background: rgba(245,158,11,.22);
+    border-color: rgba(245,158,11,.5);
+    color: #fde68a;
+    text-decoration: none;
+}
+
+[data-theme="dark"] .phone-changes-alert-btn .alert-count {
+    background: #f59e0b;
+    color: #000;
+    border-radius: 10px;
+    padding: .05rem .45rem;
+    font-size: .72rem;
+    font-weight: 700;
+    min-width: 18px;
+    text-align: center;
+}
+
+@keyframes alertPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,.0); }
+    50%       { box-shadow: 0 0 0 5px rgba(245,158,11,.15); }
+}
+
+/* ─── פופאפ שינויים ──────────────────────────────────────────── */
+.phone-changes-popup-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.55);
+    z-index: 9998;
+    backdrop-filter: blur(3px);
+    animation: fadeIn .2s ease;
+}
+
+.phone-changes-popup-overlay.visible {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+.phone-changes-popup {
+    background: #1a1a2e;
+    border: 1px solid rgba(245,158,11,.3);
+    border-radius: 16px;
+    padding: 0;
+    width: min(720px, 92vw);
+    box-shadow: 0 20px 60px rgba(0,0,0,.6),
+                0 0 0 1px rgba(245,158,11,.1);
+    animation: slideUp .25s ease;
+    overflow: hidden;
+}
+
+@keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* ─── כותרת פופאפ ────────────────────────────────────────────── */
+.popup-header {
+    display: flex;
+    align-items: center;
+    gap: .8rem;
+    padding: 1.2rem 1.5rem;
+    background: rgba(245,158,11,.08);
+    border-bottom: 1px solid rgba(245,158,11,.15);
+}
+
+.popup-header-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    background: rgba(245,158,11,.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #f59e0b;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.popup-header-text {
+    flex: 1;
+}
+
+.popup-header-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: rgba(255,255,255,.9);
+    margin-bottom: .15rem;
+}
+
+.popup-header-subtitle {
+    font-size: .78rem;
+    color: rgba(255,255,255,.4);
+}
+
+.popup-close-btn {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,.3);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: .3rem;
+    border-radius: 6px;
+    transition: all .2s;
+    line-height: 1;
+}
+
+.popup-close-btn:hover {
+    color: rgba(255,255,255,.7);
+    background: rgba(255,255,255,.08);
+}
+
+/* ─── גוף פופאפ ──────────────────────────────────────────────── */
+.popup-body {
+    padding: 1.3rem 1.5rem;
+}
+
+/* ─── כרטיסי מיני סיכום ──────────────────────────────────────── */
+.popup-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: .7rem;
+    margin-bottom: 1.2rem;
+}
+
+.popup-summary-card {
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 10px;
+    padding: .8rem;
+    text-align: center;
+}
+
+.popup-summary-card .card-val {
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: .25rem;
+}
+
+.popup-summary-card .card-lbl {
+    font-size: .72rem;
+    color: rgba(255,255,255,.4);
+}
+
+.popup-summary-card.new-card       .card-val { color: #22c55e; }
+.popup-summary-card.removed-card   .card-val { color: #ef4444; }
+.popup-summary-card.changed-card   .card-val { color: #f59e0b; }
+.popup-summary-card.reapprove-card .card-val { color: #3b82f6; }
+
+/* ─── מידע קובץ בפופאפ ───────────────────────────────────────── */
+.popup-file-info {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .6rem .9rem;
+    background: rgba(99,102,241,.07);
+    border: 1px solid rgba(99,102,241,.15);
+    border-radius: 8px;
+    font-size: .78rem;
+    color: rgba(255,255,255,.45);
+    margin-bottom: 1.2rem;
+}
+
+.popup-file-info i    { color: #6366f1; }
+.popup-file-info strong { color: rgba(255,255,255,.7); }
+
+/* ─── כפתורי פעולה בפופאפ ────────────────────────────────────── */
+.popup-actions {
+    display: flex;
+    gap: .7rem;
+    justify-content: flex-end;
+    padding: 1rem 1.5rem;
+    border-top: 1px solid rgba(255,255,255,.07);
+    background: rgba(255,255,255,.02);
+}
+
+.popup-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .55rem 1.2rem;
+    background: rgba(245,158,11,.15);
+    border: 1px solid rgba(245,158,11,.35);
+    border-radius: 8px;
+    color: #fbbf24;
+    font-size: .85rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all .2s;
+}
+
+.popup-btn-primary:hover {
+    background: rgba(245,158,11,.25);
+    border-color: rgba(245,158,11,.55);
+    color: #fde68a;
+    text-decoration: none;
+}
+
+.popup-btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .55rem 1.1rem;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 8px;
+    color: rgba(255,255,255,.45);
+    font-size: .85rem;
+    cursor: pointer;
+    transition: all .2s;
+}
+
+.popup-btn-secondary:hover {
+    background: rgba(255,255,255,.06);
+    color: rgba(255,255,255,.7);
+}
+
+/* ─── "אל תציג שוב היום" ─────────────────────────────────────── */
+.popup-dont-show {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    font-size: .78rem;
+    color: rgba(255,255,255,.3);
+    cursor: pointer;
+    margin-right: auto;
+    user-select: none;
+}
+
+.popup-dont-show input[type="checkbox"] {
+    accent-color: #6366f1;
+    cursor: pointer;
+}
+
+.popup-dont-show:hover { color: rgba(255,255,255,.5); }
+
+/* ── Admin Alerts Stack - אחד מתחת לשני ── */
+.admin-alerts-stack {
+    display: flex;
+    flex-direction: column;   /* ← עמודה במקום שורה */
+    align-items: stretch;     /* ← כל כפתור ברוחב מלא */
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+/* כפתורים בתוך ה-stack - גודל אחיד */
+.admin-alerts-stack .btn-header-admin,
+.admin-alerts-stack .phone-changes-alert-btn {
+    width: 100%;
+    justify-content: flex-start;
+    font-size: 0.72rem;
+    padding: 4px 8px;
+    white-space: nowrap;
+}
+
+/* pending-users-alert בתוך ה-stack */
+.admin-alerts-stack .pending-users-alert {
+    font-size: 0.72rem;
+    padding: 4px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+    animation: none;          /* ← מבטל אנימציה שעלולה לגרום לבעיות layout */
+}
+/* ══════════════════════════════════════════════════════════
+   EXPORT OPTIONS MODAL - מודל אפשרויות ייצוא לאקסל
+══════════════════════════════════════════════════════════ */
+
+/* ── גודל מודל ── */
+.sc-export-modal {
+    max-width: 420px;
+    width: 95%;
+}
+
+/* ── כותרת מודל ── */
+.sc-export-modal-header {
+    border-bottom: 2px solid rgba(34, 197, 94, 0.35) !important;
+    background: linear-gradient(
+        135deg,
+        rgba(34, 197, 94, 0.08),
+        rgba(16, 185, 129, 0.05)
+    ) !important;
+}
+
+/* ── body עם gap ── */
+.sc-export-modal-body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 20px;
+}
+
+/* ── תיבת מידע ── */
+.sc-export-info-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: rgba(34, 197, 94, 0.06);
+    border: 1px solid rgba(34, 197, 94, 0.2);
+    border-radius: 8px;
+    font-size: 0.82rem;
+    color: #888;
+}
+
+.sc-export-info-box i {
+    color: #22c55e;
+    flex-shrink: 0;
+}
+
+.sc-export-info-count {
+    color: #86efac;
+}
+
+/* ── סקשן בחירת עמודות ── */
+.sc-export-cols-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* ── כותרת בחירת עמודות ── */
+.sc-export-cols-title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #777;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.sc-export-cols-title i {
+    color: #6366f1;
+}
+
+/* ── label אפשרות ── */
+.sc-export-option-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 14px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 2px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+
+.sc-export-option-label:hover {
+    background: rgba(99, 102, 241, 0.06);
+    border-color: rgba(99, 102, 241, 0.25);
+}
+
+/* ── radio ── */
+.sc-export-radio {
+    accent-color: #6366f1;
+    width: 16px;
+    height: 16px;
+    margin-top: 1px;
+    flex-shrink: 0;
+    cursor: pointer;
+}
+
+/* ── תוכן אפשרות ── */
+.sc-export-option-content {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+/* ── כותרת אפשרות ── */
+.sc-export-option-title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #e0e0e0;
+    margin-bottom: 3px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+/* ── תיאור אפשרות ── */
+.sc-export-option-desc {
+    font-size: 0.75rem;
+    color: #888;
+    line-height: 1.4;
+}
+
+/* ── אייקונים צבעוניים ── */
+.sc-export-icon-purple { color: #6366f1; font-size: 0.8rem; }
+.sc-export-icon-green  { color: #22c55e; font-size: 0.8rem; }
+.sc-export-icon-amber  { color: #f59e0b; font-size: 0.8rem; }
+
+/* ── מספרים צבעוניים ── */
+.sc-export-count-purple { color: #a5b4fc; }
+.sc-export-count-green  { color: #86efac; }
+.sc-export-count-amber  { color: #fcd34d; }
+
+/* ── כפתור אישור ── */
+.sc-export-confirm-btn {
+    padding: 8px 20px;
+    background: linear-gradient(
+        135deg,
+        rgba(34, 197, 94, 0.8),
+        rgba(22, 163, 74, 0.9)
+    );
+    border: 1px solid rgba(34, 197, 94, 0.6);
+    border-radius: 6px;
+    color: #052e16;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.sc-export-confirm-btn:hover {
+    box-shadow: 0 4px 14px rgba(34, 197, 94, 0.35);
+    transform: translateY(-1px);
+}
+
+/* ══════════════════════════════════════════════════════════
+   LIGHT MODE - EXPORT OPTIONS MODAL
+══════════════════════════════════════════════════════════ */
+
+[data-theme="light"] .sc-export-modal-header {
+    border-bottom-color: rgba(34, 197, 94, 0.25) !important;
+    background: linear-gradient(
+        135deg,
+        rgba(34, 197, 94, 0.05),
+        rgba(16, 185, 129, 0.03)
+    ) !important;
+}
+
+[data-theme="light"] .sc-export-info-box {
+    background: rgba(34, 197, 94, 0.05);
+    border-color: rgba(34, 197, 94, 0.15);
+    color: #555;
+}
+
+[data-theme="light"] .sc-export-info-box i {
+    color: #16a34a;
+}
+
+[data-theme="light"] .sc-export-info-count {
+    color: #15803d;
+}
+
+[data-theme="light"] .sc-export-cols-title {
+    color: #555;
+}
+
+[data-theme="light"] .sc-export-option-label {
+    background: #ffffff;
+    border-color: #e0e0e0;
+}
+
+[data-theme="light"] .sc-export-option-label:hover {
+    background: rgba(99, 102, 241, 0.04);
+    border-color: rgba(99, 102, 241, 0.2);
+}
+
+[data-theme="light"] .sc-export-option-title {
+    color: #1a1a2e;
+}
+
+[data-theme="light"] .sc-export-option-desc {
+    color: #666;
+}
+
+[data-theme="light"] .sc-export-icon-purple { color: #4338ca; }
+[data-theme="light"] .sc-export-icon-green  { color: #16a34a; }
+[data-theme="light"] .sc-export-icon-amber  { color: #b45309; }
+
+[data-theme="light"] .sc-export-count-purple { color: #4338ca; }
+[data-theme="light"] .sc-export-count-green  { color: #15803d; }
+[data-theme="light"] .sc-export-count-amber  { color: #b45309; }
+
+[data-theme="light"] .sc-export-confirm-btn {
+    background: linear-gradient(135deg, #16a34a, #15803d);
+    border-color: rgba(22, 163, 74, 0.5);
+    color: #ffffff;
+}
+
+[data-theme="light"] .sc-export-confirm-btn:hover {
+    box-shadow: 0 4px 14px rgba(22, 163, 74, 0.3);
+}
+
+[data-theme="dark"] #entryPermitEmailRecipientsModal .modal-content {
+    color: #000;
+}
+
+/* ===== FREEZE DAYS - ChangesManager ===== */
+.calendar-day.freeze-day {
+    background: rgba(239, 68, 68, 0.07) !important;
+    border-color: rgba(239, 68, 68, 0.35) !important;
+    position: relative;
+}
+
+.calendar-day.freeze-day .day-number {
+    color: #f87171;
+}
+
+.freeze-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 9px;
+    font-weight: 700;
+    color: #f87171;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 4px;
+    padding: 1px 5px;
+    margin-bottom: 3px;
+    white-space: nowrap;
+    width: fit-content;
+}
+
+/* Light mode */
+[data-theme="light"] .calendar-day.freeze-day {
+    background: rgba(220, 38, 38, 0.05) !important;
+    border-color: rgba(220, 38, 38, 0.25) !important;
+}
+
+[data-theme="light"] .freeze-badge {
+    color: #dc2626;
+    background: rgba(220, 38, 38, 0.1);
+    border-color: rgba(220, 38, 38, 0.25);
+}
+
+/* ============================================================
+   CHANGE ALARM POPUP
+   ============================================================ */
+
+.change-alarm-popup {
+    position: fixed;
+    bottom: 24px;
+    left: 24px;
+    z-index: 999999;
+    width: 420px;
+    max-width: calc(100vw - 32px);
+
+    opacity: 0;
+    transform: translateY(12px);
+    pointer-events: none;
+
+    transition:
+        opacity 0.25s ease,
+        transform 0.25s ease;
+}
+
+.change-alarm-popup.show {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+.change-alarm-content {
+    position: relative;
+    background: #ffffff;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow:
+        0 8px 24px rgba(0, 0, 0, 0.15),
+        0 2px 6px rgba(0, 0, 0, 0.08);
+    border: 1px solid #e5e7eb;
+}
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+
+.change-alarm-header {
+    padding: 16px 20px;
+    background: linear-gradient(135deg, #0f6cbd, #2563eb);
+    color: #fff;
+}
+
+.change-alarm-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.change-alarm-subtitle {
+    margin-top: 4px;
+    font-size: 17px;
+    opacity: 0.9;
+}
+
+/* ============================================================
+   CLOSE BUTTON
+   ============================================================ */
+
+.change-alarm-close-btn {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    border: none;
+    background: transparent;
+    color: white;
+    font-size: 22px;
+    cursor: pointer;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    transition: background 0.2s;
+}
+
+.change-alarm-close-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+/* ============================================================
+   BODY
+   ============================================================ */
+
+.change-alarm-body {
+    padding: 18px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.change-alarm-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.change-alarm-row:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.change-alarm-label {
+    color: #64748b;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.change-alarm-value,
+.change-alarm-name {
+    color: #0f172a;
+    font-size: 13px;
+    font-weight: 500;
+    text-align: left;
+}
+
+.change-alarm-date {
+    color: #2563eb;
+    font-weight: 600;
+}
+
+.change-alarm-message {
+    margin-top: 8px;
+    padding: 12px;
+    background: #f8fafc;
+    border-radius: 8px;
+    border-right: 4px solid #0f6cbd;
+    font-size: 14px;
+    color: #334155;
+    line-height: 1.5;
+}
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+
+.change-alarm-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 16px 20px;
+    border-top: 1px solid #e5e7eb;
+    background: #fafafa;
+}
+
+.change-alarm-btn {
+    border: none;
+    cursor: pointer;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.change-alarm-btn-link {
+    background: #0f6cbd;
+    color: #fff;
+}
+
+.change-alarm-btn-link:hover {
+    background: #115ea3;
+}
+
+.change-alarm-btn-snooze {
+    background: #f3f4f6;
+    color: #374151;
+}
+
+.change-alarm-btn-snooze:hover {
+    background: #e5e7eb;
+}
+
+.change-alarm-btn-close {
+    background: #dc2626;
+    color: #fff;
+}
+
+.change-alarm-btn-close:hover {
+    background: #b91c1c;
+}
+
+/* ============================================================
+   SNOOZE TOAST
+   ============================================================ */
+
+.change-alarm-snooze-toast {
+    margin-top: 10px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: #ecfdf5;
+    color: #065f46;
+    border: 1px solid #a7f3d0;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.task-controls-row .sort-options,
+.task-controls-row .task-filters-bar {
+    display: flex;
+    align-items: center;
+}
+
+.task-controls-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.filters-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}

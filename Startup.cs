@@ -12,9 +12,10 @@ namespace MyWebApp
 {
     public class Startup
     {
-        public Startup(IConfiguration configuration)
+        public Startup(IConfiguration configuration, IWebHostEnvironment env)
         {
             Configuration = configuration;
+            PortalPaths.Initialize(env);
         }
 
         public IConfiguration Configuration { get; }
@@ -65,6 +66,7 @@ namespace MyWebApp
             services.AddSingleton<EmailService>();
             services.AddSingleton<PasswordResetService>();
             services.AddSingleton<SecretsService>();
+            services.AddHostedService<ValidationReminderService>();
         }
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
@@ -105,6 +107,16 @@ namespace MyWebApp
                     name: "dashboards",
                     pattern: "Dashboards",
                     defaults: new { controller = "Dashboards", action = "Index" });
+
+                endpoints.MapControllerRoute(
+                    name: "systemValidate",
+                    pattern: "SystemsCatalog/Validate/{id}",
+                    defaults: new { controller = "SystemsCatalog", action = "Validate" });
+
+                endpoints.MapControllerRoute(
+                    name: "systemsCatalog",
+                    pattern: "SystemsCatalog",
+                    defaults: new { controller = "SystemsCatalog", action = "Index" });
 
                 endpoints.MapControllerRoute(
                     name: "default",

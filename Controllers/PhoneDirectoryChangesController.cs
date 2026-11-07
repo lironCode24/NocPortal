@@ -15,25 +15,28 @@ public class PhoneDirectoryChangesController : Controller
 {
 
     // ─── נתיבים ──────────────────────────────────────────────────────
-    private readonly string _currentCsvPath;
+    private readonly string _currentCsvPath =
+        PortalPaths.UnderFiles(@"phone_directory.csv");
 
-    private readonly string _updatedCsvFolder;
+    private readonly string _updatedCsvFolder =
+        PortalPaths.UnderFiles(@"Helix_Employees_Export\MergePhoneDirectory");
 
-    private readonly string _historyFilePath;
+    private readonly string _historyFilePath =
+        PortalPaths.UnderFiles(@"phone_directory_changes_history.json");
 
     private readonly AuditLogService _auditLog;
     private readonly ILogger<PhoneDirectoryChangesController> _logger;
 
+    // ← הוסף בראש המחלקה, ליד שאר השדות הסטטיים
+    // ─── שם אגף מערכות מידע (לאישור אוטומטי) ────────────────────────
+    private const string IT_DIVISION = "מטה ואסטרטגיה";
+
     public PhoneDirectoryChangesController(
         AuditLogService auditLog,
-        ILogger<PhoneDirectoryChangesController> logger,
-        IWebHostEnvironment env)
+        ILogger<PhoneDirectoryChangesController> logger)
     {
         _auditLog = auditLog;
         _logger   = logger;
-        _currentCsvPath = Path.Combine(env.WebRootPath, "assets", "files", "phone_directory.csv");
-        _updatedCsvFolder = Path.Combine(env.WebRootPath, "assets", "files", "Helix_Employees_Export", "MergePhoneDirectory");
-        _historyFilePath = Path.Combine(env.WebRootPath, "assets", "files", "phone_directory_changes_history.json");
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -43,6 +46,210 @@ public class PhoneDirectoryChangesController : Controller
     public IActionResult Index()
     {
         return View();
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // GET: בדוק אם יש שינויים ממתינים (לשימוש ה-header)
+    // ═══════════════════════════════════════════════════════════════
+    [HttpGet]
+    public IActionResult GetPendingChangesCount()
+    {
+        try
+        {
+            var latestFile = GetLatestUpdatedCsvFile();
+            if (latestFile == null)
+                return Json(new
+                {
+                    success        = true,
+                    pendingCount   = 0,
+                    reApproveCount = 0,
+                    hasChanges     = false
+                });
+
+            var currentContacts = ReadCsvContacts(_currentCsvPath);
+            var updatedContacts = ReadCsvContacts(latestFile);
+            var comparison      = CompareContacts(currentContacts, updatedContacts);
+            var history         = ReadHistory();
+            MarkProcessedChanges(comparison.Changes, history);
+
+            // ✅ חדש: אשר אוטומטית שינויים של עובדים שאינם באגף מערכות מידע
+            var pendingBeforeAuto = comparison.Changes
+                .Count(c => c.Status == ChangeStatus.Pending);
+
+            if (pendingBeforeAuto > 0)
+            {
+                AutoApproveNonITChanges(
+                    comparison.Changes,
+                    updatedContacts,
+                    history);
+
+                _logger.LogInformation(
+                    "אישור אוטומטי: לפני={Before}, אחרי={After}",
+                    pendingBeforeAuto,
+                    comparison.Changes.Count(c => c.Status == ChangeStatus.Pending));
+            }
+
+            // ─── ספור רק שינויים שנשארו ממתינים (אגף מערכות מידע) ────
+            var pendingCount = comparison.Changes
+                .Count(c => c.Status == ChangeStatus.Pending);
+
+            var reApproveCount = comparison.Changes
+                .Count(c => c.Status == ChangeStatus.ReApprove);
+
+            var summary = comparison.Summary;
+
+            return Json(new
+            {
+                success        = true,
+                pendingCount   = pendingCount,
+                reApproveCount = reApproveCount,
+                hasChanges     = pendingCount > 0 || reApproveCount > 0,
+                summary        = new
+                {
+                    newEmployees     = summary.NewEmployees,
+                    removedEmployees = summary.RemovedEmployees,
+                    fieldChanges     = summary.FieldChanges,
+                    total            = summary.TotalChanges
+                },
+                fileDate = System.IO.File.GetLastWriteTime(latestFile)
+                            .ToString("dd/MM/yyyy HH:mm")
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                "GetPendingChangesCount error: {Error}", ex.Message);
+            return Json(new
+            {
+                success        = false,
+                pendingCount   = 0,
+                reApproveCount = 0,
+                hasChanges     = false
+            });
+        }
+    }
+
+    // ─── האם העובד שייך לאגף מערכות מידע ────────────────────────────
+    private bool IsITDivision(string division)
+    {
+        if (string.IsNullOrWhiteSpace(division))
+            return true;
+
+        return division.Trim().Contains(
+            IT_DIVISION,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ─── אשר אוטומטית שינויים שאינם אגף מערכות מידע ────────────────
+    private void AutoApproveNonITChanges(
+        List<DirectoryChange>    changes,
+        List<CsvContact>         updatedContacts,
+        List<ChangeHistoryEntry> history)
+    {
+        var updatedByEmail = updatedContacts.ToDictionary(
+            c => c.Email,
+            c => c,
+            StringComparer.OrdinalIgnoreCase);
+
+        var currentContacts = ReadCsvContacts(_currentCsvPath);
+        var currentByEmail  = currentContacts.ToDictionary(
+            c => c.Email,
+            c => c,
+            StringComparer.OrdinalIgnoreCase);
+
+        var autoApprovedBy = "אישור אוטומטי";
+        var autoApprovedAt = DateTime.Now;
+
+        foreach (var change in changes)
+        {
+            // ← רק שינויים ממתינים
+            if (change.Status != ChangeStatus.Pending) continue;
+
+            // ✅ חדש: דלג על שינויים שנדחו ידנית בהיסטוריה
+            var historyEntry = history.FirstOrDefault(h =>
+                h.ChangeId == change.ChangeId);
+
+            if (historyEntry != null &&
+                historyEntry.Status == ChangeStatus.Rejected)
+            {
+                _logger.LogInformation(
+                    "דילוג על אישור אוטומטי - שינוי נדחה ידנית: " +
+                    "{Employee} | שינוי: {Field}",
+                    change.EmployeeName, change.FieldName);
+                continue;
+            }
+
+            // ← קבע את האגף של העובד
+            string division = "";
+
+            if (change.ChangeType == ChangeType.RemovedEmployee)
+            {
+                if (currentByEmail.TryGetValue(
+                        change.Email, out var curContact))
+                    division = curContact.Division;
+            }
+            else
+            {
+                if (updatedByEmail.TryGetValue(
+                        change.Email, out var updContact))
+                    division = updContact.Division;
+            }
+
+            // ← אם לא אגף מערכות מידע - אשר אוטומטית
+            if (!IsITDivision(division))
+            {
+                _logger.LogInformation(
+                    "אישור אוטומטי: {Employee} | אגף: '{Division}' | " +
+                    "שינוי: {Field}",
+                    change.EmployeeName, division, change.FieldName);
+
+                var applyRequest = new ApproveChangeRequest
+                {
+                    ChangeId     = change.ChangeId,
+                    ChangeType   = change.ChangeType,
+                    EmployeeName = change.EmployeeName,
+                    EmployeeId   = change.EmployeeId,
+                    Email        = change.Email,
+                    FieldName    = change.FieldName,
+                    OldValue     = change.OldValue,
+                    NewValue     = change.NewValue,
+                    Notes        = $"אושר אוטומטית - אגף: {division}"
+                };
+
+                var applyResult = ApplyChangeToDirectory(applyRequest);
+
+                var entry = new ChangeHistoryEntry
+                {
+                    ChangeId     = change.ChangeId,
+                    ChangeType   = change.ChangeType,
+                    EmployeeName = change.EmployeeName,
+                    EmployeeId   = change.EmployeeId,
+                    Email        = change.Email,
+                    FieldName    = change.FieldName,
+                    OldValue     = change.OldValue,
+                    NewValue     = change.NewValue,
+                    Status       = applyResult.Success
+                                    ? ChangeStatus.Approved
+                                    : ChangeStatus.Failed,
+                    ProcessedBy  = autoApprovedBy,
+                    ProcessedAt  = autoApprovedAt,
+                    Notes        = applyResult.Success
+                                    ? $"אישור אוטומטי - אגף: {division}"
+                                    : applyResult.Message
+                };
+
+                history.RemoveAll(h => h.ChangeId == change.ChangeId);
+                history.Add(entry);
+
+                change.Status      = applyResult.Success
+                                        ? ChangeStatus.Approved
+                                        : ChangeStatus.Failed;
+                change.ProcessedBy = autoApprovedBy;
+                change.ProcessedAt = autoApprovedAt;
+            }
+        }
+
+        SaveHistory(history);
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -119,21 +326,23 @@ public class PhoneDirectoryChangesController : Controller
             var username    = GetCurrentUsername();
             var displayName = GetCurrentDisplayName();
 
-            // ─── טען היסטוריה ─────────────────────────────────────
-            var history = ReadHistory();
-
-            // ─── בדוק אם כבר טופל ────────────────────────────────
+            var history  = ReadHistory();
             var existing = history.FirstOrDefault(h =>
                 h.ChangeId == request.ChangeId);
 
-            if (existing != null && existing.Status != ChangeStatus.Pending)
-                return Json(new
-                {
-                    success = false,
-                    message = $"שינוי זה כבר {GetStatusText(existing.Status)}"
-                });
+            // ← אפשר אישור אם: Pending, Rejected, ReApprove, או עברו 5 דקות
+            if (existing != null && existing.Status == ChangeStatus.Approved)
+            {
+                var daysSince = DateTime.Now - existing.ProcessedAt;
+                if (daysSince <= TimeSpan.FromSeconds(5*60))
+                    return Json(new
+                    {
+                        success = false,
+                        message = "שינוי זה כבר אושר"
+                    });
+                // ← עברו יותר מ-5 דקות - המשך לאישור מחדש
+            }
 
-            // ─── החל את השינוי על ה-CSV ───────────────────────────
             var applyResult = ApplyChangeToDirectory(request);
 
             if (!applyResult.Success)
@@ -143,37 +352,34 @@ public class PhoneDirectoryChangesController : Controller
                     message = applyResult.Message
                 });
 
-            // ─── שמור בהיסטוריה ──────────────────────────────────
             var entry = new ChangeHistoryEntry
             {
-                ChangeId    = request.ChangeId,
-                ChangeType  = request.ChangeType,
+                ChangeId     = request.ChangeId,
+                ChangeType   = request.ChangeType,
                 EmployeeName = request.EmployeeName,
-                Email        = request.Email,    
-                FieldName   = request.FieldName,
-                OldValue    = request.OldValue,
-                NewValue    = request.NewValue,
-                Status      = ChangeStatus.Approved,
-                ProcessedBy = displayName,
-                ProcessedAt = DateTime.Now,
-                Notes       = request.Notes ?? ""
+                Email        = request.Email,
+                FieldName    = request.FieldName,
+                OldValue     = request.OldValue,
+                NewValue     = request.NewValue,
+                Status       = ChangeStatus.Approved,
+                ProcessedBy  = displayName,
+                ProcessedAt  = DateTime.Now,
+                Notes        = request.Notes ?? ""
             };
 
-            // ─── הסר ישן אם קיים ─────────────────────────────────
             history.RemoveAll(h => h.ChangeId == request.ChangeId);
             history.Add(entry);
             SaveHistory(history);
 
-            // ─── Audit Log ────────────────────────────────────────
             _auditLog.Log(new AuditLogEntry
             {
                 EventType   = "PHONE_DIRECTORY_CHANGE_APPROVED",
                 Username    = username,
                 PerformedBy = displayName,
                 Details     = $"אושר שינוי: {request.ChangeType} | " +
-                              $"עובד: {request.EmployeeName} | " +
-                              $"שדה: {request.FieldName} | " +
-                              $"{request.OldValue} → {request.NewValue}",
+                            $"עובד: {request.EmployeeName} | " +
+                            $"שדה: {request.FieldName} | " +
+                            $"{request.OldValue} → {request.NewValue}",
                 Success     = true
             });
 
@@ -208,19 +414,26 @@ public class PhoneDirectoryChangesController : Controller
             var existing = history.FirstOrDefault(h =>
                 h.ChangeId == request.ChangeId);
 
-            if (existing != null && existing.Status != ChangeStatus.Pending)
-                return Json(new
-                {
-                    success = false,
-                    message = $"שינוי זה כבר {GetStatusText(existing.Status)}"
-                });
+            // ← אפשר דחייה מ-Pending ומ-ReApprove
+            if (existing != null &&
+                existing.Status != ChangeStatus.Pending &&
+                existing.Status != ChangeStatus.ReApprove)
+            {
+                // ← בדוק אם עברו 5 ימים
+                if (DateTime.Now - existing.ProcessedAt <= TimeSpan.FromDays(5))
+                    return Json(new
+                    {
+                        success = false,
+                        message = $"שינוי זה כבר {GetStatusText(existing.Status)}"
+                    });
+            }
 
             var entry = new ChangeHistoryEntry
             {
                 ChangeId     = request.ChangeId,
                 ChangeType   = request.ChangeType,
                 EmployeeName = request.EmployeeName,
-                Email        = request.Email,    
+                Email        = request.Email,
                 FieldName    = request.FieldName,
                 OldValue     = request.OldValue,
                 NewValue     = request.NewValue,
@@ -240,7 +453,7 @@ public class PhoneDirectoryChangesController : Controller
                 Username    = username,
                 PerformedBy = displayName,
                 Details     = $"נדחה שינוי: {request.ChangeType} | " +
-                              $"עובד: {request.EmployeeName}",
+                            $"עובד: {request.EmployeeName}",
                 Success     = true
             });
 
@@ -284,9 +497,20 @@ public class PhoneDirectoryChangesController : Controller
                     var existing = history.FirstOrDefault(h =>
                         h.ChangeId == change.ChangeId);
 
-                    if (existing != null &&
-                        existing.Status != ChangeStatus.Pending)
-                        continue;
+                    if (existing != null)
+                    {
+                        var canApprove =
+                            existing.Status == ChangeStatus.Pending ||
+                            existing.Status == ChangeStatus.ReApprove ||
+                            (
+                                existing.Status == ChangeStatus.Approved &&
+                                DateTime.Now - existing.ProcessedAt >
+                                TimeSpan.FromMinutes(5)
+                            );
+
+                        if (!canApprove)
+                            continue;
+                    }
 
                     // ─── החל שינוי ────────────────────────────────
                     var applyResult = ApplyChangeToDirectory(change);
@@ -381,9 +605,20 @@ public class PhoneDirectoryChangesController : Controller
                 var existing = history.FirstOrDefault(h =>
                     h.ChangeId == change.ChangeId);
 
-                if (existing != null &&
-                    existing.Status != ChangeStatus.Pending)
-                    continue;
+                if (existing != null)
+                {
+                    var canApprove =
+                        existing.Status == ChangeStatus.Pending ||
+                        existing.Status == ChangeStatus.ReApprove ||
+                        (
+                            existing.Status == ChangeStatus.Approved &&
+                            DateTime.Now - existing.ProcessedAt >
+                            TimeSpan.FromMinutes(5)
+                        );
+
+                    if (!canApprove)
+                        continue;
+                }
 
                 var entry = new ChangeHistoryEntry
                 {
@@ -486,15 +721,15 @@ public class PhoneDirectoryChangesController : Controller
         var lines = System.IO.File.ReadAllLines(filePath, Encoding.UTF8);
         if (lines.Length == 0) return contacts;
 
-        // ─── זהה עמודות לפי כותרת ────────────────────────────────
         var headerCols = SplitCsvLine(lines[0]);
         var colIndex   = DetectColumnIndices(headerCols);
 
         _logger.LogInformation(
             "CSV עמודות שזוהו: שם={Name} תפקיד={Role} " +
-            "טלפון={Phone} שלוחה={Ext} מייל={Email}",
+            "טלפון={Phone} שלוחה={Ext} מייל={Email} אגף={Division}",
             colIndex.FullName, colIndex.Role,
-            colIndex.Phone, colIndex.Extension, colIndex.Email);
+            colIndex.Phone, colIndex.Extension, 
+            colIndex.Email, colIndex.Division);  // ← הוסף Division ללוג
 
         for (int i = 1; i < lines.Length; i++)
         {
@@ -504,7 +739,6 @@ public class PhoneDirectoryChangesController : Controller
             var cols = SplitCsvLine(line);
             if (cols.Length < 2) continue;
 
-            // ─── קרא לפי אינדקס שזוהה ────────────────────────────
             string GetCol(int idx) =>
                 idx >= 0 && idx < cols.Length
                     ? cols[idx].Trim() : "";
@@ -512,7 +746,6 @@ public class PhoneDirectoryChangesController : Controller
             var fullName = GetCol(colIndex.FullName);
             if (string.IsNullOrWhiteSpace(fullName)) continue;
 
-            // ─── אם אין כותרת מייל - חפש מייל בכל העמודות ────────
             var email = GetCol(colIndex.Email);
             if (string.IsNullOrWhiteSpace(email))
             {
@@ -523,6 +756,7 @@ public class PhoneDirectoryChangesController : Controller
                         fullName, email);
             }
             email = CleanEmail(email);
+
             contacts.Add(new CsvContact
             {
                 FullName    = fullName,
@@ -533,7 +767,8 @@ public class PhoneDirectoryChangesController : Controller
                 PhoneNumber = GetCol(colIndex.Phone),
                 Extension   = GetCol(colIndex.Extension),
                 Email       = email,
-                EmployeeId  = GetCol(colIndex.EmployeeId)
+                EmployeeId  = GetCol(colIndex.EmployeeId),
+                Division    = GetCol(colIndex.Division)  // ← חדש: קרא אגף
             });
         }
 
@@ -590,6 +825,9 @@ public class PhoneDirectoryChangesController : Controller
                 idx.Email = i;
             else if (h.Contains("מזהה")  || h.Contains("id"))
                 idx.EmployeeId = i;
+            // ✅ חדש: זיהוי עמודת אגף
+            else if (h.Contains("אגף") || h.Contains("division"))
+                idx.Division = i;
         }
 
         return idx;
@@ -659,6 +897,7 @@ private bool IsValidEmail(string val)
         public int Extension  { get; set; } = 6;
         public int Email      { get; set; } = 7;
         public int EmployeeId { get; set; } = 8;
+        public int Division   { get; set; } = -1; 
     }
 
     // ─── פיצול שורת CSV (תומך בפסיקים בתוך מרכאות) ──────────────
@@ -827,6 +1066,10 @@ private bool IsValidEmail(string val)
                 NormalizePhone);
 
             CheckFieldChange(changes, upd.FullName, upd.EmployeeId, upd.Email,
+                "אגף",       cur.Division,    upd.Division,
+                ChangeType.OtherChange);
+
+            CheckFieldChange(changes, upd.FullName, upd.EmployeeId, upd.Email,
                 "תחום",      cur.Domain,      upd.Domain,
                 ChangeType.OtherChange);
 
@@ -854,9 +1097,20 @@ private bool IsValidEmail(string val)
             TotalChanges     = changes.Count
         };
 
+        // שינויים בפרטים ממוינים א-ת לפי שם עובד
+        // עובדים חדשים ושהוסרו נשארים בראש, שינויי פרטים ממוינים
+        var sortedChanges = changes
+            .OrderBy(c => c.ChangeType == ChangeType.NewEmployee      ? 0 :
+                        c.ChangeType == ChangeType.RemovedEmployee  ? 1 : 2)
+            .ThenBy(c => c.EmployeeName,
+                    StringComparer.Create(
+                        new System.Globalization.CultureInfo("he-IL"),
+                        ignoreCase: true))
+            .ToList();
+
         return new ComparisonResult
         {
-            Changes = changes,
+            Changes = sortedChanges,
             Summary = summary
         };
     }
@@ -998,9 +1252,21 @@ private bool IsValidEmail(string val)
         {
             if (historyDict.TryGetValue(change.ChangeId, out var entry))
             {
-                change.Status      = entry.Status;
                 change.ProcessedBy = entry.ProcessedBy;
                 change.ProcessedAt = entry.ProcessedAt;
+
+                // ← אם עברו יותר מ-5 דקות - סטטוס ReApprove
+                if (entry.ProcessedAt != default &&
+                    DateTime.Now - entry.ProcessedAt > TimeSpan.FromSeconds(5 * 60) &&
+                    entry.Status == ChangeStatus.Approved)
+                {
+                    change.Status = ChangeStatus.ReApprove;
+                    change.CanReApprove = true;
+                }
+                else
+                {
+                    change.Status = entry.Status;
+                }
             }
         }
     }
@@ -1114,26 +1380,30 @@ private bool IsValidEmail(string val)
     {
         return fieldName switch
         {
-            "שם מלא"  => 0,
-            "תפקיד"   => 1,
-            "תחום"    => 2,
-            "מחלקה"   => 3,
-            "צוות"    => 4,
-            "טלפון"   => 5,
-            "שלוחה"   => 6,
-            "מייל"    => 7,
-            _         => -1
+            "שם מלא"    => 0,
+            "תפקיד"     => 1,
+            "תחום"      => 2,
+            "מחלקה"     => 3,
+            "צוות"      => 4,
+            "טלפון"     => 5,
+            "שלוחה"     => 6,
+            "מייל"      => 7,
+            "מזהה עובד" => 8,
+            "אגף"       => 9,
+            _           => -1
         };
     }
 
-    // ─── עצב ערך CSV (הוסף מרכאות אם צריך) ──────────────────────
+    // ─── עצב ערך CSV - החלף פסיקים ב-& ──────────────────────────
     private string EscapeCsvValue(string value)
     {
         if (string.IsNullOrEmpty(value)) return "";
 
-        // אם יש פסיק, מרכאות, או ירידת שורה - עטוף במרכאות
-        if (value.Contains(',') ||
-            value.Contains('"') ||
+        // ─── החלף פסיקים ב-& לפני הכל ───────────────────────────
+        value = value.Replace(",", " & ");
+
+        // ─── אם נשארו מרכאות או ירידת שורה - עטוף במרכאות ───────
+        if (value.Contains('"')  ||
             value.Contains('\n') ||
             value.Contains('\r'))
         {
@@ -1150,14 +1420,15 @@ private bool IsValidEmail(string val)
         {
             contact.FullName,
             contact.Role,
+            contact.Division,
             contact.Domain,
             contact.Department,
             contact.Team,
             contact.PhoneNumber,
             contact.Extension,
-            contact.Email
+            contact.Email,
+            contact.EmployeeId
         };
-
         return string.Join(",", fields.Select(EscapeCsvValue));
     }
 
@@ -1168,8 +1439,14 @@ private bool IsValidEmail(string val)
 
         if (!string.IsNullOrEmpty(contact.Role))
             parts.Add($"תפקיד: {contact.Role}");
+        if (!string.IsNullOrEmpty(contact.Division))
+            parts.Add($"אגף: {contact.Division}");
+        if (!string.IsNullOrEmpty(contact.Domain))
+            parts.Add($"תחום: {contact.Domain}");
         if (!string.IsNullOrEmpty(contact.Department))
             parts.Add($"מחלקה: {contact.Department}");
+        if (!string.IsNullOrEmpty(contact.Team))
+            parts.Add($"צוות: {contact.Team}");
         if (!string.IsNullOrEmpty(contact.PhoneNumber))
             parts.Add($"טלפון: {contact.PhoneNumber}");
         if (!string.IsNullOrEmpty(contact.Extension))
@@ -1256,10 +1533,11 @@ private bool IsValidEmail(string val)
     private string GetStatusText(ChangeStatus status)
         => status switch
         {
-            ChangeStatus.Approved => "אושר",
-            ChangeStatus.Rejected => "נדחה",
-            ChangeStatus.Failed   => "נכשל",
-            _                     => "ממתין"
+            ChangeStatus.Approved   => "אושר",
+            ChangeStatus.Rejected   => "נדחה",
+            ChangeStatus.Failed     => "נכשל",
+            ChangeStatus.ReApprove  => "ממתין לאישור מחדש",
+            _                       => "ממתין"
         };
 
     // ═══════════════════════════════════════════════════════════════
@@ -1277,6 +1555,7 @@ private bool IsValidEmail(string val)
         public string Extension   { get; set; } = "";
         public string Email       { get; set; } = "";
         public string EmployeeId  { get; set; } = "";
+        public string Division    { get; set; } = ""; 
     }
 
     public class DirectoryChange
@@ -1285,13 +1564,14 @@ private bool IsValidEmail(string val)
         public ChangeType    ChangeType   { get; set; }
         public string        EmployeeName { get; set; } = "";
         public string        EmployeeId   { get; set; } = "";
-        public string        Email        { get; set; } = ""; // ← חדש
+        public string        Email        { get; set; } = ""; 
         public string        FieldName    { get; set; } = "";
         public string        OldValue     { get; set; } = "";
         public string        NewValue     { get; set; } = "";
         public ChangeStatus  Status       { get; set; } = ChangeStatus.Pending;
         public string?       ProcessedBy  { get; set; }
         public DateTime?     ProcessedAt  { get; set; }
+        public bool CanReApprove { get; set; } = false;
     }
 
     public class ChangeHistoryEntry
@@ -1358,6 +1638,7 @@ private bool IsValidEmail(string val)
         Pending,
         Approved,
         Rejected,
-        Failed
+        Failed,
+        ReApprove
     }
 }

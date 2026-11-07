@@ -1,0 +1,13 @@
+[
+  {
+    "Id": "92db0b36-deb9-4cc6-a51c-d6b5d77c6846",
+    "Timestamp": "2026-11-07T08:03:36.5314328Z",
+    "EventType": "LOGIN",
+    "Username": "admin",
+    "UserId": "admin-default-001",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "כניסה מוצלחת | Role: Admin",
+    "Success": true
+  }
+]

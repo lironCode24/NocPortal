@@ -1,0 +1,1351 @@
+@* file: Views/Messages/BlockedDaysManager.cshtml *@
+@{
+    Layout = "~/Views/Shared/_AdminLayout.cshtml";
+    ViewData["Title"] = "ניהול שליחת אישורי כניסה אוטומטים";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+    <link rel="stylesheet" href="~/css/admin-panel.css">
+    <link rel="stylesheet" href="/lib/flatpickr-4.6.13/flatpickr.min.css">
+    <script src="/lib/flatpickr-4.6.13/flatpickr.min.js"></script>
+    <script src="/lib/flatpickr-4.6.13/l10n/he.js"></script>
+  
+    <style>
+        /* ── Layout ── */
+        .blocked-grid {
+            display: grid;
+            grid-template-columns: 2fr 2fr;
+            gap: 1rem;
+        }
+        @@media (max-width: 900px) {
+            .blocked-grid { grid-template-columns: 1fr; }
+        }
+
+        /* ── Cards ── */
+        .section-card {
+            background: rgba(255,255,255,.04);
+            border: 1px solid rgba(255,255,255,.08);
+            border-radius: 12px;
+            padding: 0.4rem;
+        }
+        .section-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #e6edf3;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+        }
+        .section-title i { color: #58a6ff; }
+
+        /* ── Date list ── */
+        .date-list {
+            display: flex;
+            flex-direction: column;
+            gap: .5rem;
+            max-height: 320px;
+            overflow-y: auto;
+        }
+        .date-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255,255,255,.05);
+            border: 1px solid rgba(255,255,255,.08);
+            border-radius: 8px;
+            padding: .6rem .9rem;
+            gap: .8rem;
+        }
+        .date-item-info { flex: 1; min-width: 0; }
+        .date-item-date {
+            font-weight: 600;
+            color: #e6edf3;
+            font-size: .9rem;
+        }
+        .date-item-note {
+            font-size: .78rem;
+            color: rgba(255,255,255,.4);
+            margin-top: .15rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .date-item-badge {
+            font-size: .72rem;
+            padding: .2rem .55rem;
+            border-radius: 20px;
+            white-space: nowrap;
+        }
+        .badge-manual   { background: rgba(88,166,255,.15); color: #58a6ff; }
+        .badge-holiday  { background: rgba(210,153,34,.15);  color: #d29922; }
+        .badge-weekend  { background: rgba(139,148,158,.15); color: #8b949e; }
+
+        /* ── Weekday toggles ── */
+        .weekday-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: .4rem;
+        }
+        .weekday-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: .5rem .2rem;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,.1);
+            background: rgba(255,255,255,.04);
+            color: rgba(255,255,255,.5);
+            cursor: pointer;
+            font-size: .75rem;
+            transition: all .2s;
+            user-select: none;
+        }
+        .weekday-btn:hover {
+            border-color: rgba(88,166,255,.4);
+            color: #e6edf3;
+        }
+        .weekday-btn.active {
+            background: rgba(218,54,51,.15);
+            border-color: rgba(218,54,51,.4);
+            color: #f85149;
+        }
+        .weekday-btn .day-num {
+            font-size: .65rem;
+            opacity: .6;
+            margin-top: .15rem;
+        }
+
+        /* ── Holiday list ── */
+        .holiday-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: .5rem .7rem;
+            border-radius: 6px;
+            background: rgba(210,153,34,.08);
+            border: 1px solid rgba(210,153,34,.15);
+            font-size: .82rem;
+            color: #e6edf3;
+        }
+        .holiday-item .holiday-date {
+            color: rgba(255,255,255,.4);
+            font-size: .75rem;
+        }
+        .holiday-blocked { opacity: .5; }
+
+        /* ── Toggle switch ── */
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: .7rem 0;
+            border-bottom: 1px solid rgba(255,255,255,.06);
+        }
+        .toggle-row:last-child { border-bottom: none; }
+        .toggle-label {
+            font-size: .88rem;
+            color: #e6edf3;
+        }
+        .toggle-desc {
+            font-size: .75rem;
+            color: rgba(255,255,255,.35);
+            margin-top: .15rem;
+        }
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 24px;
+            flex-shrink: 0;
+        }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute;
+            inset: 0;
+            background: rgba(255,255,255,.1);
+            border-radius: 24px;
+            cursor: pointer;
+            transition: .3s;
+        }
+        .slider:before {
+            content: '';
+            position: absolute;
+            width: 18px; height: 18px;
+            left: 3px; bottom: 3px;
+            background: #fff;
+            border-radius: 50%;
+            transition: .3s;
+        }
+        input:checked + .slider { background: #238636; }
+        input:checked + .slider:before { transform: translateX(20px); }
+
+        /* ── Add date form ── */
+        .add-date-form {
+            display: flex;
+            gap: .6rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+        .add-date-form input[type="date"],
+        .add-date-form input[type="text"] {
+            flex: 1;
+            min-width: 120px;
+        }
+
+        /* ── Status banner ── */
+        .status-banner {
+            display: flex;
+            align-items: center;
+            gap: .8rem;
+            padding: .9rem 1.1rem;
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+            font-size: .88rem;
+        }
+        .status-banner.blocked {
+            background: rgba(218,54,51,.12);
+            border: 1px solid rgba(218,54,51,.3);
+            color: #f85149;
+        }
+        .status-banner.allowed {
+            background: rgba(35,134,54,.12);
+            border: 1px solid rgba(35,134,54,.3);
+            color: #3fb950;
+        }
+        .status-banner i { font-size: 1.1rem; }
+
+        /* ── Preview table ── */
+        .preview-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: .82rem;
+        }
+        .preview-table th {
+            text-align: right;
+            padding: .5rem .7rem;
+            color: rgba(255,255,255,.4);
+            border-bottom: 1px solid rgba(255,255,255,.08);
+            font-weight: 500;
+        }
+        .preview-table td {
+            padding: .5rem .7rem;
+            border-bottom: 1px solid rgba(255,255,255,.05);
+            color: #e6edf3;
+        }
+        .preview-table tr:last-child td { border-bottom: none; }
+        .preview-table tr.blocked-row td { color: #f85149; }
+        .preview-table tr.allowed-row td { color: #3fb950; }
+
+        /* ── Empty state ── */
+        .empty-list {
+            text-align: center;
+            padding: 1.5rem;
+            color: rgba(255,255,255,.25);
+            font-size: .85rem;
+        }
+        .empty-list i {
+            font-size: 1.8rem;
+            display: block;
+            margin-bottom: .5rem;
+        }
+
+        /* ── Scrollbar ── */
+        .date-list::-webkit-scrollbar { width: 4px; }
+        .date-list::-webkit-scrollbar-track {
+            background: rgba(255,255,255,.03);
+        }
+        .date-list::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,.1);
+            border-radius: 4px;
+        }
+        .flatpickr-input {
+            background: rgba(255,255,255,.06) !important;
+            border: 1px solid rgba(255,255,255,.12) !important;
+            color: #e6edf3 !important;
+            border-radius: 8px !important;
+            padding: .5rem .75rem !important;
+            width: 100% !important;
+            font-size: .88rem !important;
+            cursor: pointer !important;
+        }
+        .flatpickr-input:focus {
+            border-color: rgba(88,166,255,.5) !important;
+            outline: none !important;
+            box-shadow: 0 0 0 3px rgba(88,166,255,.15) !important;
+        }
+        .flatpickr-calendar {
+            background: #161b22 !important;
+            border: 1px solid rgba(255,255,255,.12) !important;
+            border-radius: 12px !important;
+            box-shadow: 0 8px 32px rgba(0,0,0,.5) !important;
+            direction: rtl !important;
+        }
+        .flatpickr-day.selected {
+            background: #58a6ff !important;
+            border-color: #58a6ff !important;
+        }
+        .flatpickr-day:hover {
+            background: rgba(88,166,255,.2) !important;
+        }
+        .flatpickr-months .flatpickr-month,
+        .flatpickr-weekdays,
+        span.flatpickr-weekday {
+            background: #161b22 !important;
+            color: rgba(255,255,255,.6) !important;
+        }
+        .flatpickr-day {
+            color: #e6edf3 !important;
+        }
+        .flatpickr-day.flatpickr-disabled {
+            color: rgba(255,255,255,.2) !important;
+        }
+        .numInputWrapper span {
+            border-color: rgba(255,255,255,.1) !important;
+        }
+        .numInputWrapper span:hover {
+            background: rgba(255,255,255,.1) !important;
+        }
+        .cur-month, .cur-year {
+            color: #e6edf3 !important;
+        }
+        .time-setting-card {
+            padding: 1rem;
+            border-radius: 12px;
+            background: rgba(88,166,255,.06);
+            border: 1px solid rgba(88,166,255,.15);
+        }
+
+        .time-setting-header {
+            display: flex;
+            align-items: center;
+            gap: .75rem;
+            margin-bottom: .8rem;
+        }
+
+        .time-setting-header i {
+            color: #58a6ff;
+            font-size: 1.1rem;
+        }
+
+        .time-setting-title {
+            color: #e6edf3;
+            font-weight: 600;
+            font-size: .8rem;
+        }
+
+        .time-setting-desc {
+            color: rgba(255,255,255,.45);
+            font-size: .75rem;
+            margin-top: .15rem;
+        }
+
+        .time-setting-body {
+            display: flex;
+            gap: .75rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .time-picker {
+            width: 150px;
+        }
+
+        .time-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: .4rem;
+            padding: .45rem .8rem;
+            border-radius: 20px;
+            background: rgba(35,134,54,.12);
+            color: #3fb950;
+            font-size: .78rem;
+        }
+
+        /* ── Permit Email Time ───────────────────────────── */
+        #permitEmailTime {
+            width: 120px;
+            padding: .5rem .2rem;
+            border-radius: 8px;
+            border: 1px solid rgba(88,166,255,.25);
+            background: rgba(255,255,255,.06);
+            color: #e6edf3;
+            font-size: .8rem;
+            font-weight: 600;
+            transition: all .2s ease;
+            cursor: pointer;
+        }
+
+        #permitEmailTime:hover {
+            border-color: rgba(88,166,255,.45);
+            background: rgba(255,255,255,.08);
+        }
+
+        #permitEmailTime:focus {
+            outline: none;
+            border-color: #58a6ff;
+            box-shadow: 0 0 0 3px rgba(88,166,255,.15);
+        }
+
+        #permitEmailTime::-webkit-calendar-picker-indicator {
+            filter: invert(85%);
+            cursor: pointer;
+        }
+
+        #permitEmailTime::-webkit-datetime-edit {
+            color: #e6edf3;
+        }
+
+        #permitEmailTime::-webkit-datetime-edit-hour-field,
+        #permitEmailTime::-webkit-datetime-edit-minute-field {
+            color: #58a6ff;
+            font-weight: 700;
+        }
+
+    </style>
+}
+
+@section Scripts {
+
+<script>
+// ══ Flatpickr - אתחול שדות תאריך ══════════════════════════════════════
+//  הוסף פונקציה זו לאתחול כל שדות התאריך
+function initDatePickers() {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const commonConfig = {
+        dateFormat: "d/m/Y",        //  פורמט תצוגה dd/mm/yyyy
+        altInput: false,
+        locale: "he",               //  עברית
+        minDate: today,
+        disableMobile: false,
+        allowInput: true,           //  אפשר הקלדה ידנית
+        //  המרה פנימית - Flatpickr שומר כ-dd/mm/yyyy אבל אנחנו צריכים yyyy-MM-dd
+        // לכן נשתמש ב-parseDate ו-formatDate
+        parseDate: (dateStr, format) => {
+            // תמיכה בפורמט dd/mm/yyyy
+            if (dateStr && dateStr.includes('/')) {
+                const parts = dateStr.split('/');
+                if (parts.length === 3) {
+                    return new Date(
+                        parseInt(parts[2]),
+                        parseInt(parts[1]) - 1,
+                        parseInt(parts[0])
+                    );
+                }
+            }
+            return new Date(dateStr);
+        }
+    };
+
+    //  אתחל כל שדה date-picker
+    document.querySelectorAll('.date-picker').forEach(el => {
+        if (!el._flatpickr) {
+            flatpickr(el, { ...commonConfig });
+        }
+    });
+}
+
+//  פונקציה עזר - קבל ערך yyyy-MM-dd מ-Flatpickr
+function getDateValue(elementId) {
+    const el = document.getElementById(elementId);
+    if (!el) return '';
+    
+    const fp = el._flatpickr;
+    if (fp && fp.selectedDates.length > 0) {
+        const d = fp.selectedDates[0];
+        const year  = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day   = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`; //  מחזיר yyyy-MM-dd לשרת
+    }
+    
+    // fallback - אם הוקלד ידנית בפורמט dd/mm/yyyy
+    const val = el.value;
+    if (val && val.includes('/')) {
+        const parts = val.split('/');
+        if (parts.length === 3) {
+            return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+        }
+    }
+    
+    return val;
+}
+
+//  פונקציה עזר - נקה שדה Flatpickr
+function clearDatePicker(elementId) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    const fp = el._flatpickr;
+    if (fp) {
+        fp.clear();
+    } else {
+        el.value = '';
+    }
+}
+// ══ State ══════════════════════════════════════════════════════════════
+let config = {
+    blockedDates: [],
+    blockedWeekDays: [6],
+    blockIsraeliHolidays: true,
+    dateNotes: {},
+    permitEmailTime: "06:50"
+};
+let upcomingHolidays = [];
+let isDirty = false;
+
+// ══ Init ═══════════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', async () => {
+    initDatePickers();
+    await loadConfig();
+    checkTodayStatus();
+    renderPreview();
+});
+
+// ══ Load / Save ════════════════════════════════════════════════════════
+async function loadConfig() {
+    try {
+        showLoading(true);
+        const res  = await fetch('/Messages/GetBlockedDaysConfig');
+        const data = await res.json();
+
+        if (!data.success) throw new Error(data.error);
+
+        config           = data.config;
+        const timeInput = document.getElementById('permitEmailTime');
+
+        if (timeInput) {
+            timeInput.value = config.permitEmailTime || "06:50";
+        }
+        upcomingHolidays = data.upcomingHolidays || [];
+        console.log(upcomingHolidays)
+
+        updateTimeLabel();
+        renderAll();
+        await loadPermitPersonName();
+
+    } catch (e) {
+        showToast('שגיאה בטעינת הגדרות: ' + e.message, 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+function onPermitTimeChanged(time) {
+    config.permitEmailTime = time;
+    markDirty();
+}
+
+async function saveConfig() {
+    try {
+        const btn = document.getElementById('btnSave');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> שומר...';
+
+        const res = await fetch('/Messages/SaveBlockedDaysConfig', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify(config)
+        });
+        const data = await res.json();
+
+        if (!data.success) throw new Error(data.error);
+
+        isDirty = false;
+        showToast('ההגדרות נשמרו בהצלחה', 'success');
+        checkTodayStatus();
+        renderPreview();
+    } catch (e) {
+        showToast('שגיאה בשמירה: ' + e.message, 'error');
+    } finally {
+        const btn = document.getElementById('btnSave');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save"></i> שמור הגדרות';
+    }
+}
+
+// ══ Permit Person Name ════════════════════════════════════════════════
+async function loadPermitPersonName() {
+    try {
+        const res  = await fetch('/Messages/GetPermitPersonName');
+        const data = await res.json();
+
+        if (data.success) {
+            const input = document.getElementById('permitPersonName');
+            if (input) {
+                input.value = data.personName || 'דן בירון';
+                updatePermitPersonPreview(data.personName);
+            }
+        }
+    } catch (e) {
+        console.error('Error loading permit person name:', e);
+    }
+}
+
+async function savePermitPersonName() {
+    const input = document.getElementById('permitPersonName');
+    if (!input) return;
+
+    const name = input.value.trim();
+    if (!name) {
+        showToast('יש להזין שם', 'error');
+        input.focus();
+        return;
+    }
+
+    try {
+        const btn = event.currentTarget;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> שומר...';
+
+        const res = await fetch('/Messages/SavePermitPersonName', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ personName: name })
+        });
+        const data = await res.json();
+
+        if (!data.success) throw new Error(data.error);
+
+        updatePermitPersonPreview(name);
+        showToast(`השם עודכן ל: ${name}`, 'success');
+    } catch (e) {
+        showToast('שגיאה בשמירת השם: ' + e.message, 'error');
+    } finally {
+        const btn = document.querySelector(
+            'button[onclick="savePermitPersonName()"]');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-save"></i> שמור שם';
+        }
+    }
+}
+
+function updatePermitPersonPreview(name) {
+    const preview     = document.getElementById('permitPersonPreview');
+    if (!preview) return;
+
+    if (name) {
+        const today = new Date();
+        const d = `${String(today.getDate()).padStart(2,'0')}/${String(today.getMonth()+1).padStart(2,'0')}/${today.getFullYear()}`;
+    } 
+}
+
+// ══ Render ═════════════════════════════════════════════════════════════
+function renderAll() {
+    renderWeekdays();
+    renderHolidayToggle();
+    renderBlockedDatesList();
+    renderUpcomingHolidays();
+    renderPreview();
+}
+
+// ── ימי שבוע ──────────────────────────────────────────────────────────
+const WEEKDAY_NAMES = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+
+function renderWeekdays() {
+    const container = document.getElementById('weekdayGrid');
+    container.innerHTML = '';
+
+    WEEKDAY_NAMES.forEach((name, idx) => {
+        const isActive = config.blockedWeekDays.includes(idx);
+        const isSat    = idx === 6;
+
+        const btn = document.createElement('div');
+        btn.className = 'weekday-btn' + (isActive ? ' active' : '');
+        btn.title     = isSat ? 'שבת - חסום תמיד' : '';
+        btn.innerHTML = `
+            <span>${name}</span>
+            <span class="day-num">${idx === 0 ? 'א' :
+                idx === 1 ? 'ב' : idx === 2 ? 'ג' :
+                idx === 3 ? 'ד' : idx === 4 ? 'ה' :
+                idx === 5 ? 'ו' : 'ש'}</span>`;
+
+        if (isSat) {
+            // שבת תמיד חסומה - לא ניתן לשנות
+            btn.style.opacity = '.6';
+            btn.style.cursor  = 'not-allowed';
+        } else {
+            btn.onclick = () => toggleWeekday(idx);
+        }
+
+        container.appendChild(btn);
+    });
+}
+
+function toggleWeekday(dayIdx) {
+    const i = config.blockedWeekDays.indexOf(dayIdx);
+    if (i >= 0) {
+        config.blockedWeekDays.splice(i, 1);
+    } else {
+        config.blockedWeekDays.push(dayIdx);
+        config.blockedWeekDays.sort();
+    }
+    markDirty();
+    renderWeekdays();
+    renderPreview();
+}
+
+// ── חגים ──────────────────────────────────────────────────────────────
+function renderHolidayToggle() {
+    const toggle = document.getElementById('toggleHolidays');
+    if (toggle) toggle.checked = config.blockIsraeliHolidays;
+}
+
+function onHolidayToggle(checked) {
+    config.blockIsraeliHolidays = checked;
+    markDirty();
+    renderUpcomingHolidays();
+    renderPreview();
+}
+
+function renderUpcomingHolidays() {
+    const container = document.getElementById('holidayList');
+    if (!container) return;
+
+    if (!upcomingHolidays.length) {
+        container.innerHTML =
+            '<div class="empty-list"><i class="fas fa-calendar"></i>אין חגים קרובים</div>';
+        return;
+    }
+
+    container.innerHTML = upcomingHolidays.map(h => {
+        if(h.isBlocked){
+        const blocked = config.blockIsraeliHolidays;
+        const dateObj = new Date(h.date);
+        const d2 = new Date(h.date + 'T00:00:00');
+        const display = `${String(d2.getDate()).padStart(2,'0')}/${String(d2.getMonth()+1).padStart(2,'0')}/${d2.getFullYear()}`;
+
+        return `
+        <div class="holiday-item ${blocked ? '' : 'holiday-blocked'}">
+            <div>
+                <div>${escHtml(h.name)}</div>
+                <div class="holiday-date">${display}</div>
+            </div>
+            <span class="date-item-badge badge-holiday">
+                <i class="fas fa-${blocked
+                    ? 'ban' : 'check'}"></i>
+                ${blocked ? 'חסום' : 'מותר'}
+            </span>
+        </div>`;
+        }
+    }).join('');
+
+}
+
+function formatDateHebrew(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00'); // מניעת בעיית timezone
+    const day   = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year  = d.getFullYear();
+    const days  = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+    return `${days[d.getDay()]} ${day}/${month}/${year}`;
+}
+
+//  עדכן - addBlockedDateRange
+async function addBlockedDateRange() {
+    const startStr = getDateValue('rangeStartDate'); //  שימוש בפונקציה החדשה
+    const endStr   = getDateValue('rangeEndDate');   //  שימוש בפונקציה החדשה
+    const noteInput = document.getElementById('rangeNote');
+
+    if (!startStr || !endStr) {
+        showToast('יש לבחור תאריך התחלה וסיום', 'error');
+        return;
+    }
+
+    if (endStr < startStr) {
+        showToast('תאריך סיום חייב להיות אחרי תאריך התחלה', 'error');
+        return;
+    }
+
+    try {
+        const res = await fetch('/Messages/AddBlockedDateRange', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                startDate: startStr, //  yyyy-MM-dd לשרת
+                endDate:   endStr,   //  yyyy-MM-dd לשרת
+                note:      noteInput.value.trim()
+            })
+        });
+        const data = await res.json();
+
+        if (!data.success) throw new Error(data.error);
+
+        await loadConfig();
+
+        clearDatePicker('rangeStartDate'); //  שימוש בפונקציה החדשה
+        clearDatePicker('rangeEndDate');   //  שימוש בפונקציה החדשה
+        noteInput.value = '';
+
+        showToast(`נוספו ${data.added} תאריכים בהצלחה. אל תשכח לשמור!`, 'success');
+    } catch (e) {
+        showToast('שגיאה: ' + e.message, 'error');
+    }
+}
+
+// ── תאריכים ידניים ────────────────────────────────────────────────────
+function renderBlockedDatesList() {
+    const container = document.getElementById('blockedDatesList');
+    if (!container) return;
+
+    if (!config.blockedDates.length) {
+        container.innerHTML =
+            '<div class="empty-list">' +
+            '<i class="fas fa-calendar-times"></i>' +
+            'אין תאריכים חסומים ידנית</div>';
+        return;
+    }
+
+    container.innerHTML = config.blockedDates.map(dateStr => {
+        //  תיקון - שימוש ב-dateStr במקום h.date
+        const d2 = new Date(dateStr + 'T00:00:00');
+        const display = `${String(d2.getDate()).padStart(2,'0')}/${String(d2.getMonth()+1).padStart(2,'0')}/${d2.getFullYear()}`;
+        const note = config.dateNotes?.[dateStr] || '';
+
+        return `
+        <div class="date-item" id="date-item-${dateStr}">
+            <div class="date-item-info">
+                <div class="date-item-date">${display}</div>
+                ${note
+                    ? `<div class="date-item-note">
+                           <i class="fas fa-sticky-note"
+                              style="font-size:.7rem"></i>
+                           ${escHtml(note)}
+                       </div>`
+                    : ''}
+            </div>
+            <span class="date-item-badge badge-manual">ידני</span>
+            <button class="btn btn-danger btn-sm"
+                    onclick="removeBlockedDate('${dateStr}')"
+                    title="הסר תאריך">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>`;
+    }).join('');
+}
+
+// ── תצוגה מקדימה ──────────────────────────────────────────────────────
+function renderPreview() {
+    const container = document.getElementById('previewTable');
+    if (!container) return;
+
+    const today = new Date();
+    const rows  = [];
+
+    // הצג 14 ימים קדימה
+    for (let i = 0; i < 14; i++) {
+        const d = new Date(today);
+        d.setDate(today.getDate() + i);
+
+        const dateStr = d.toISOString().split('T')[0];
+        const days = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+        const day   = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year  = d.getFullYear();
+        const display = `${days[d.getDay()]} ${day}/${month}/${year}`;
+
+        const { blocked, reason } = checkDateBlocked(d, dateStr);
+
+        rows.push(`
+        <tr class="${blocked ? 'blocked-row' : 'allowed-row'}">
+            <td>${display}</td>
+            <td>
+                <i class="fas fa-${blocked
+                    ? 'ban' : 'check-circle'}"></i>
+                ${blocked ? 'חסום' : 'ישלח'}
+            </td>
+            <td style="color:rgba(255,255,255,.4); font-size:.78rem">
+                ${reason || '—'}
+            </td>
+        </tr>`);
+    }
+
+    container.innerHTML = rows.join('');
+}
+
+// ── בדיקת תאריך (client-side) ─────────────────────────────────────────
+function checkDateBlocked(dateObj, dateStr) {
+    // שבת
+    if (dateObj.getDay() === 6)
+        return { blocked: true, reason: 'שבת' };
+
+    // ימי שבוע חסומים
+    if (config.blockedWeekDays.includes(dateObj.getDay()))
+        return { blocked: true, reason: 'יום שבוע חסום' };
+
+    // תאריכים ידניים
+    if (config.blockedDates.includes(dateStr)) {
+        const note = config.dateNotes?.[dateStr];
+        return { blocked: true, reason: note || 'חסום ידנית' };
+    }
+
+    // חגים
+    if (config.blockIsraeliHolidays) {
+        const holiday = upcomingHolidays.find(h => h.date === dateStr);
+        if (holiday)
+            return { blocked: true, reason: `חג: ${holiday.name}` };
+    }
+
+    return { blocked: false, reason: '' };
+}
+
+// ── סטטוס היום ────────────────────────────────────────────────────────
+async function checkTodayStatus() {
+    try {
+        const today  = new Date().toISOString().split('T')[0];
+        const res    = await fetch(
+            `/Messages/CheckDateBlocked?date=${today}`);
+        const data   = await res.json();
+
+        const banner = document.getElementById('todayBanner');
+        if (!banner) return;
+
+        if (data.isBlocked) {
+            banner.className = 'status-banner blocked';
+            banner.innerHTML = `
+                <i class="fas fa-ban"></i>
+                <div>
+                    <strong>היום (${data.date}) - מייל לא ישלח</strong>
+                    <div style="font-size:.8rem; opacity:.8">
+                        סיבה: ${escHtml(data.reason)}
+                    </div>
+                </div>`;
+        } else {
+            banner.className = 'status-banner allowed';
+            const sendTime =
+                config.permitEmailTime || "06:50";
+
+            banner.innerHTML = `
+                <i class="fas fa-check-circle"></i>
+                <div>
+                    <strong>
+                        היום (${data.date}) -
+                        מייל ישלח ב-${sendTime}
+                    </strong>
+                    <div style="font-size:.8rem; opacity:.8">
+                        אין חסימה פעילה להיום
+                    </div>
+                </div>`;
+        }
+    } catch (e) {
+        console.error('Error checking today status:', e);
+    }
+}
+
+function updateTimeLabel() {
+    const el = document.getElementById("currentSendTimeLabel");
+
+    if (!el) return;
+
+    el.textContent =
+        `(נשלח בימים חול ב-${config.permitEmailTime || "06:50"})`;
+}
+
+// ══ Actions ════════════════════════════════════════════════════════════
+//  עדכן - addBlockedDate
+function addBlockedDate() {
+    const dateStr = getDateValue('newBlockedDate'); //  שימוש בפונקציה החדשה
+    const noteInput = document.getElementById('newBlockedNote');
+
+    if (!dateStr) {
+        showToast('יש לבחור תאריך', 'error');
+        document.getElementById('newBlockedDate').focus();
+        return;
+    }
+
+    const note = noteInput.value.trim();
+
+    if (config.blockedDates.includes(dateStr)) {
+        showToast('תאריך זה כבר קיים ברשימה', 'error');
+        return;
+    }
+
+    config.blockedDates.push(dateStr);
+    config.blockedDates.sort();
+
+    if (note) {
+        config.dateNotes          = config.dateNotes || {};
+        config.dateNotes[dateStr] = note;
+    }
+
+    clearDatePicker('newBlockedDate'); //  שימוש בפונקציה החדשה
+    noteInput.value = '';
+
+    markDirty();
+    renderBlockedDatesList();
+    renderPreview();
+    showToast('התאריך נוסף. אל תשכח לשמור!', 'success');
+}
+
+function removeBlockedDate(dateStr) {
+    const idx = config.blockedDates.indexOf(dateStr);
+    if (idx >= 0) config.blockedDates.splice(idx, 1);
+
+    if (config.dateNotes) delete config.dateNotes[dateStr];
+
+    markDirty();
+    renderBlockedDatesList();
+    renderPreview();
+}
+
+// ── הוספת חגים לרשימה הידנית ──────────────────────────────────────────
+function addAllHolidaysManually() {
+    if (!upcomingHolidays.length) {
+        showToast('אין חגים קרובים להוסיף', 'error');
+        return;
+    }
+
+    let added = 0;
+    upcomingHolidays.forEach(h => {
+        if (!config.blockedDates.includes(h.date)) {
+            config.blockedDates.push(h.date);
+            config.dateNotes        = config.dateNotes || {};
+            config.dateNotes[h.date] = h.name;
+            added++;
+        }
+    });
+
+    config.blockedDates.sort();
+    markDirty();
+    renderBlockedDatesList();
+    renderPreview();
+    showToast(`נוספו ${added} חגים לרשימה הידנית`, 'success');
+}
+
+// ══ Helpers ════════════════════════════════════════════════════════════
+function markDirty() {
+    isDirty = true;
+    const btn = document.getElementById('btnSave');
+    if (btn) {
+        btn.classList.add('btn-primary');
+        btn.classList.remove('btn-secondary');
+    }
+}
+
+function showLoading(show) {
+    const el = document.getElementById('loadingOverlay');
+    if (el) el.style.display = show ? 'flex' : 'none';
+}
+
+function showToast(msg, type = 'success') {
+    const toast = document.createElement('div');
+    toast.style.cssText = `
+        position:fixed; bottom:1.5rem; left:50%;
+        transform:translateX(-50%);
+        background:${type === 'success' ? '#238636' : '#da3633'};
+        color:#fff; padding:.7rem 1.4rem;
+        border-radius:8px; font-size:.9rem;
+        z-index:99999;
+        box-shadow:0 4px 12px rgba(0,0,0,.4);
+        display:flex; align-items:center; gap:.5rem;
+        max-width:90vw; text-align:center;`;
+    toast.innerHTML = `
+        <i class="fas fa-${type === 'success'
+            ? 'check-circle' : 'exclamation-circle'}"></i>
+        ${escHtml(msg)}`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3500);
+}
+
+function escHtml(str) {
+    return String(str ?? '')
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+        .replace(/'/g,'&#39;');
+}
+
+// אזהרה לפני עזיבת הדף עם שינויים לא שמורים
+window.addEventListener('beforeunload', e => {
+    if (isDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+    }
+});
+</script>
+}
+
+@* ══ PAGE ════════════════════════════════════════════════════════════ *@
+<div class="admin-main-content page-content"
+     style="max-width:2100px; margin:0 auto;grid-template-columns: 2fr 1fr;">
+
+    @* ── כותרת ── *@
+    <div style="display:flex; align-items:center;
+                justify-content:flex-start;gap:.8rem">
+        <div>
+            <h1 style="font-size:1.4rem; font-weight:700;
+                       color:#e6edf3; margin:0">
+                <i class="fas fa-calendar-times"
+                   style="color:#58a6ff; margin-left:.5rem"></i>
+                ניהול שליחת אישורי כניסה אוטומטים
+            </h1>
+            <p style="color:rgba(255,255,255,.4); font-size:.82rem;
+                      margin:.3rem 0 0">
+                קבע מתי <strong>לא</strong> לשלוח את מייל אישור הכניסה
+                היומי 
+                <span id="currentSendTimeLabel">
+                    (נשלח בימים חול)
+                </span>
+            </p>
+        </div>
+        @* ── עריכת שם האדם ── *@
+        <div class="section-card">
+            <p style="font-size:.78rem; color:rgba(255,255,255,.35); margin:0 0 .8rem">
+                שם זה יופיע בנושא ובגוף המייל היומי שנשלח ב-06:50
+            </p>
+
+            <div style="display:flex; gap:.6rem; align-items:flex-end; flex-wrap:wrap">
+                <div style="flex:1; min-width:100px">
+                    <label style="font-size:.75rem; color:rgba(255,255,255,.4);
+                                display:block; margin-bottom:.3rem">
+                        שם מלא
+                    </label>
+                    <input type="text"
+                        id="permitPersonName"
+                        class="form-control"
+                        placeholder="לדוגמה: דן בירון"
+                        maxlength="100" />
+                </div>
+                <button class="btn btn-primary"
+                        onclick="savePermitPersonName()"
+                        style="flex:0 0 auto; height:38px">
+                    <i class="fas fa-save"></i>
+                    שמור שם
+                </button>
+            </div>
+        </div>
+        <div class="time-setting-card section-card">
+            <div class="time-setting-header">
+                <i class="fas fa-clock"></i>
+                <div>
+                    <div class="time-setting-title">שעת שליחת המייל</div>
+                    <div class="time-setting-desc">
+                        המייל היומי יישלח בימי עבודה בשעה שנבחרה
+                    </div>
+                </div>
+            </div>
+
+            <div class="time-setting-body">
+                <input type="time"
+                    id="permitEmailTime"
+                    class="time-picker"
+                    onchange="onPermitTimeChanged(this.value)" />
+            </div>
+        </div>
+        <div style="display:flex; gap:.6rem; flex-wrap:wrap">
+            <button id="btnSave"
+                    class="btn btn-primary"
+                    onclick="saveConfig()">
+                <i class="fas fa-save"></i>
+                שמור הגדרות
+            </button>
+        </div>
+    </div>
+
+    @* ── סטטוס היום ── *@
+    <div id="todayBanner" class="status-banner allowed">
+        <i class="fas fa-spinner fa-spin"></i>
+        <span>בודק סטטוס...</span>
+    </div>
+    @* ── Loading overlay ── *@
+    <div id="loadingOverlay"
+         style="display:none; position:fixed; inset:0;
+                background:rgba(0,0,0,.5); z-index:9999;
+                align-items:center; justify-content:center">
+        <div style="color:#fff; font-size:1.1rem">
+            <i class="fas fa-spinner fa-spin"></i>
+            טוען...
+        </div>
+    </div>
+    @* ══ Grid ══ *@
+    <div class="blocked-grid">
+        @* ── עמודה שמאל: הגדרות ── *@
+        <div style="display:flex; flex-direction:column;">
+
+            @* ── ימי שבוע ── *@
+            <div class="section-card">
+                <div class="section-title">
+                    <i class="fas fa-calendar-week"></i>
+                    ימי שבוע חסומים
+                </div>
+                <p style="font-size:.78rem; color:rgba(255,255,255,.35);
+                           margin:0 0 .8rem">
+                    לחץ על יום לחסימה/שחרור.
+                    שבת חסומה תמיד.
+                </p>
+                <div class="weekday-grid" id="weekdayGrid"></div>
+            </div>
+
+            @* ── חגי ישראל ── *@
+            <div class="section-card">
+                <div class="section-title">
+                    <i class="fas fa-star-of-david"></i>
+                    חגי ישראל
+                </div>
+
+                <div class="toggle-row">
+                    <div>
+                        <div class="toggle-label">
+                            חסום אוטומטית בחגי ישראל
+                        </div>
+                        <div class="toggle-desc">
+                            ראש השנה, יום כיפור, סוכות, פסח,
+                            שבועות, יום העצמאות
+                        </div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox"
+                               id="toggleHolidays"
+                               onchange="onHolidayToggle(this.checked)" />
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <div style="margin-top:.8rem">
+                    <div style="font-size:.78rem;
+                                color:rgba(255,255,255,.35);
+                                margin-bottom:.5rem">
+                        חגים קרובים:
+                    </div>
+                    <div id="holidayList"
+                         style="display:flex; flex-direction:column;
+                                gap:.35rem; max-height:200px;
+                                overflow-y:auto">
+                    </div>
+                </div>
+
+                <button class="btn btn-secondary btn-sm"
+                        style="margin-top:.8rem; width:100%"
+                        onclick="addAllHolidaysManually()">
+                    <i class="fas fa-plus"></i>
+                    הוסף את כל החגים לרשימה הידנית
+                </button>
+            </div>
+
+        </div>
+        
+        @* ── עמודה ימין: תאריכים ידניים ── *@
+        <div style="display:flex; flex-direction:column;">
+        @* ── הוספת טווח תאריכים ── *@
+        <div class="section-card">
+            <div class="section-title">
+                <i class="fas fa-calendar-alt"></i>
+                הוסף טווח תאריכים חסום
+            </div>
+
+            <div style="display:flex; gap:.6rem; flex-wrap:wrap; margin-bottom:.5rem">
+                <div style="flex:1; min-width:130px">
+                    <label style="font-size:.75rem; color:rgba(255,255,255,.4); 
+                                display:block; margin-bottom:.3rem">
+                        מתאריך
+                    </label>
+                    <input type="text"
+                        id="rangeStartDate"
+                        class="form-control date-picker"
+                        min="@DateTime.Now.ToString("yyyy-MM-dd")" />
+                </div>
+                <div style="flex:1; min-width:130px">
+                    <label style="font-size:.75rem; color:rgba(255,255,255,.4); 
+                                display:block; margin-bottom:.3rem">
+                        עד תאריך
+                    </label>
+                    <input type="text"
+                        id="rangeEndDate"
+                        class="form-control date-picker"
+                        min="@DateTime.Now.ToString("yyyy-MM-dd")" />
+                </div>
+            </div>
+            <div style="display:flex; gap:.6rem; flex-wrap:wrap">
+                <input type="text"
+                    id="rangeNote"
+                    class="form-control"
+                    placeholder="סיבה / הערה (אופציונלי)"
+                    style="flex:1" />
+                <button class="btn btn-primary"
+                        onclick="addBlockedDateRange()"
+                        style="flex:0 0 auto">
+                    <i class="fas fa-plus"></i>
+                    הוסף טווח
+                </button>
+            </div>
+        </div>
+            @* ── הוספת תאריך ── *@
+            <div class="section-card">
+                <div class="section-title">
+                    <i class="fas fa-calendar-plus"></i>
+                    הוסף תאריך חסום ידנית
+                </div>
+
+                <div class="add-date-form">
+                    <input type="text"
+                        id="newBlockedDate"
+                        class="form-control date-picker"
+                        placeholder="dd/mm/yyyy"
+                        style="flex:0 0 160px"
+                        autocomplete="off" />
+                    <input type="text"
+                           id="newBlockedNote"
+                           class="form-control"
+                           placeholder="סיבה / הערה (אופציונלי)"
+                           style="flex:1" />
+                    <button class="btn btn-primary"
+                            onclick="addBlockedDate()"
+                            style="flex:0 0 auto">
+                        <i class="fas fa-plus"></i>
+                        הוסף
+                    </button>
+                </div>
+
+                <div class="section-title"
+                     style="margin-top:.5rem">
+                    <i class="fas fa-list"></i>
+                    תאריכים חסומים
+                    <span id="blockedCount"
+                          style="font-size:.75rem;
+                                 color:rgba(255,255,255,.3);
+                                 font-weight:400;
+                                 margin-right:auto">
+                    </span>
+                </div>
+
+                <div class="date-list"
+                     id="blockedDatesList">
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    @* ── תצוגה מקדימה ── *@
+    <div class="section-card">
+        <div class="section-title">
+            <i class="fas fa-eye"></i>
+            תצוגה מקדימה - 14 ימים קרובים
+        </div>
+        <div style="overflow-x:auto">
+            <table class="preview-table">
+                <thead>
+                    <tr>
+                        <th>תאריך</th>
+                        <th>סטטוס</th>
+                        <th>סיבה</th>
+                    </tr>
+                </thead>
+                <tbody id="previewTable">
+                    <tr>
+                        <td colspan="3"
+                            style="text-align:center;
+                                   color:rgba(255,255,255,.3)">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            טוען...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>

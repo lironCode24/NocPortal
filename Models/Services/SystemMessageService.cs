@@ -14,8 +14,7 @@ namespace NocPortal.Services
             IWebHostEnvironment env,
             UserService         userService)
         {
-            var filesRoot = Path.Combine(env.WebRootPath, "assets", "files");
-            _filePath = Path.Combine(filesRoot, "system_messages.json");
+            _filePath = PortalPaths.UnderFiles(@"system_messages.json");
             _userService = userService;
 
             // צור תיקייה אם לא קיימת

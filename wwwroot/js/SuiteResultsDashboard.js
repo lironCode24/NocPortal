@@ -4,8 +4,9 @@ class SuiteResultsDashboard {
         this.containerId = containerId;
         this.currentUser = currentUser;
 
-        this.canEdit = this.checkEditPermission(); // רק ספציפיים
-        this.canRun = this.checkRunPermission();
+        this.canEdit; // רק ספציפיים
+        this.canRun;
+        this.isAdmin;
 
         this.container = null;
         this.suites = [];
@@ -22,7 +23,7 @@ class SuiteResultsDashboard {
 
         // מצב פאנל ניהול
         this.managePanelOpen = false;
-        this._lastRunnerType = localStorage.getItem('sdLastRunnerType') || 'noc';
+        this._lastRunnerType = userSettings.getItem('sdLastRunnerType') || 'noc';
 
         // *** מצב תצוגה קומפקטית ***
         this.compactView = false;
@@ -46,7 +47,7 @@ class SuiteResultsDashboard {
 
         this._runPatchSuites = false;
 
-        this.viewMode = localStorage.getItem('sdViewMode') || 'grid'; // 'grid' | 'list'
+        this.viewMode = userSettings.getItem('sdViewMode') || 'grid'; // 'grid' | 'list'
 
         this.listViewCollapsed = false;
 
@@ -54,7 +55,7 @@ class SuiteResultsDashboard {
         this._runAllLastTime = null;
 
         this._collapsedSuiteKeys = new Set(
-            JSON.parse(localStorage.getItem('sdCollapsedSuites') || '[]')
+            JSON.parse(userSettings.getItem('sdCollapsedSuites') || '[]')
         );
 
     }
@@ -62,19 +63,19 @@ class SuiteResultsDashboard {
     // ==========================================
     // אתחול
     // ==========================================
-    initialize() {
+    async initialize() {
         this.container = document.getElementById(this.containerId);
-        if (!this.container) {
-            console.error(`Container #${this.containerId} not found`);
-            return;
-        }
+        if (!this.container) return;
 
-        this.compactView = localStorage.getItem('sdCompactView') === '1';
+        // טען הרשאות מהשרת תחילה
+        await this._loadPermissionsFromServer();
+
+        this.compactView = userSettings.getItem('sdCompactView') === '1';
 
         // *** טען מצב collapse שמור — Grid View ***
         try {
             const saved = JSON.parse(
-                localStorage.getItem('sdCollapsedSuites') || '[]'
+                userSettings.getItem('sdCollapsedSuites') || '[]'
             );
             this._collapsedSuiteKeys = new Set(saved);
         } catch {
@@ -98,12 +99,59 @@ class SuiteResultsDashboard {
         this._checkRunAllCooldownOnLoad();
     }
 
+    async _loadPermissionsFromServer() {
+        try {
+            const res = await fetch('/SuiteResults/GetCurrentUser',
+                { credentials: 'include' });
+            const data = await res.json();
+
+            if (data.success) {
+                this.currentUser = {
+                    ...this.currentUser,
+                    username: data.username,
+                    role: data.role,
+                    privilegedUsers: data.privilegedUsers || [],
+                    editors: data.editors || [],
+                    runners: data.runners || [],
+                    viewers: data.viewers || []
+                };
+                this.canEdit = this.checkEditPermission();
+                this.canRun = this.checkRunPermission();
+                this.isAdmin = this.currentUser.role === "Admin";
+                this._updatePermissionsUI();
+            }
+        } catch (err) {
+            console.warn('_loadPermissionsFromServer error:', err);
+        }
+    }
+
+
+    // ==========================================
+    // *** עדכון UI לפי הרשאות ***
+    // ==========================================
+    _updatePermissionsUI() {
+        // ─── הצג/הסתר כפתור Manage Mappings ───
+        const mappingsBtn = document.getElementById('rtManageMappingsBtn');
+        if (mappingsBtn)
+            mappingsBtn.style.display = this.canEdit ? 'flex' : 'none';
+
+        // ─── הצג/הסתר כפתור Permissions ───
+        const permBtn = document.getElementById('rtPermissionsBtn');
+        if (permBtn)
+            permBtn.style.display = this.canEdit ? 'flex' : 'none';
+
+        // ─── הצג/הסתר כפתורי עריכה בטבלה ───
+        document.querySelectorAll('.rt-map-btn').forEach(btn => {
+            btn.style.display = this.canEdit ? '' : 'none';
+        });
+    }
+
     // ==========================================
     // *** שמירה וטעינה של מצב List View ***
     // ==========================================
 
     _saveListCollapseState() {
-        localStorage.setItem(
+        userSettings.setItem(
             'sdCollapsedListSuites',
             JSON.stringify([...this._collapsedListSuites])
         );
@@ -112,7 +160,7 @@ class SuiteResultsDashboard {
     _loadListCollapseState() {
         try {
             const saved = JSON.parse(
-                localStorage.getItem('sdCollapsedListSuites') || '[]'
+                userSettings.getItem('sdCollapsedListSuites') || '[]'
             );
             this._collapsedListSuites = new Set(saved);
         } catch {
@@ -161,29 +209,55 @@ class SuiteResultsDashboard {
     // ==========================================
     checkEditPermission() {
         if (!this.currentUser) return false;
-        const { role, username, privilegedUsers } = this.currentUser;
 
-        const privList = Array.isArray(privilegedUsers)
+        const {
+            role,
+            username,
+            privilegedUsers,
+            editors
+        } = this.currentUser;
+
+        const user = (username || '').toLowerCase();
+
+        if (role === 'Admin') return true;
+
+        const adminList = Array.isArray(privilegedUsers)
             ? privilegedUsers.map(u => u.toLowerCase())
             : [];
 
-        if (privList.includes((username || '').toLowerCase())) return true;
-        if (role === 'Admin') return true;
+        if (adminList.includes(user)) return true;
+
+        const editorList = Array.isArray(editors)
+            ? editors.map(u => u.toLowerCase())
+            : [];
+
+        if (editorList.includes(user)) return true;
+
         return false;
     }
 
     checkRunPermission() {
         if (!this.currentUser) return false;
-        const { role, username, privilegedUsers } = this.currentUser;
+        const { role, username, privilegedUsers, runners } = this.currentUser;
 
-        if (['Admin', 'NOC'].includes(role)) return true;
+        // ✅ Admin תמיד יכול להריץ
+        if (role === 'Admin') return true;
 
+        // ✅ NOC מה-role
+        if (role === 'NOC') return true;
+        // ✅ בדוק ב-privilegedUsers (Admins)
         const privList = Array.isArray(privilegedUsers)
             ? privilegedUsers.map(u => u.toLowerCase())
             : [];
-
         if (privList.includes((username || '').toLowerCase())) return true;
-        return false;
+
+        // ✅ בדוק ב-runners
+        const runnerList = Array.isArray(runners)
+            ? runners.map(u => u.toLowerCase())
+            : [];
+        if (runnerList.includes((username || '').toLowerCase())) return true;
+
+        return this.canEdit;
     }
 
     _updateRunAllHeaderBtnFromServer(timeLeftSecs, triggeredBy = '', triggeredAt = '') {
@@ -264,7 +338,7 @@ class SuiteResultsDashboard {
         } catch (err) {
             console.warn('Could not check run-all cooldown:', err);
             if (!this.canEdit) {
-                const lastRunTime = localStorage.getItem('sdRunAllLastTime');
+                const lastRunTime = userSettings.getItem('sdRunAllLastTime');
                 if (!lastRunTime) return;
                 const COOLDOWN_MS = 5 * 60 * 1000;
                 const timeLeft = COOLDOWN_MS -
@@ -445,6 +519,13 @@ class SuiteResultsDashboard {
                                 title="Manage Suites">
                             <i class="fas fa-cog"></i> Manage Suites
                         </button>
+                        ${this.isAdmin ? `
+                        <button class="sd-permissions-btn"
+                                id="sdPermissionsBtn"
+                                title="ניהול הרשאות">
+                            <i class="fas fa-user-shield"></i>
+                            <span>הרשאות</span>
+                        </button>` : ''}
                         <span id="sdLastRefresh"
                               class="sd-last-refresh"></span>
                         <button class="sd-refresh-btn"
@@ -1155,7 +1236,7 @@ class SuiteResultsDashboard {
         const runnerLabel = runnerType === 'automation' ? 'Automation Team' : 'NOC Team';
 
         this._lastRunnerType = runnerType;
-        localStorage.setItem('sdLastRunnerType', runnerType);
+        userSettings.setItem('sdLastRunnerType', runnerType);
 
         // *** נעל כפתורים ***
         if (confirmBtn) {
@@ -1812,7 +1893,7 @@ class SuiteResultsDashboard {
         this.compactView = !this.compactView;
 
         // *** שמור העדפה ***
-        localStorage.setItem('sdCompactView',
+        userSettings.setItem('sdCompactView',
             this.compactView ? '1' : '0');
 
         const btn = document.getElementById('sdCompactBtn');
@@ -2092,7 +2173,7 @@ class SuiteResultsDashboard {
         }
 
         // שמור ב-localStorage
-        localStorage.setItem('sdCollapsedSuites',
+        userSettings.setItem('sdCollapsedSuites',
             JSON.stringify([...this._collapsedSuiteKeys])
         );
 
@@ -2116,7 +2197,7 @@ class SuiteResultsDashboard {
             this._applyCollapseState(idx);
         });
 
-        localStorage.setItem('sdCollapsedSuites',
+        userSettings.setItem('sdCollapsedSuites',
             JSON.stringify([...this._collapsedSuiteKeys])
         );
 
@@ -2141,7 +2222,7 @@ class SuiteResultsDashboard {
             this._collapsedSuiteKeys.delete(suiteKey);
             this._applyCollapseState(idx);
         });
-        localStorage.setItem('sdCollapsedSuites',
+        userSettings.setItem('sdCollapsedSuites',
             JSON.stringify([...this._collapsedSuiteKeys])
         );
     }
@@ -2353,7 +2434,7 @@ class SuiteResultsDashboard {
 
     toggleViewMode() {
         this.viewMode = this.viewMode === 'grid' ? 'list' : 'grid';
-        localStorage.setItem('sdViewMode', this.viewMode);
+        userSettings.setItem('sdViewMode', this.viewMode);
 
         this.listViewCollapsed = false;
 
@@ -3103,7 +3184,7 @@ class SuiteResultsDashboard {
         const divider = document.createElement('div');
         divider.className = 'sd-downtime-divider';
         divider.dataset.collapsed =
-            localStorage.getItem('sdDowntimeCollapsed') === '1'
+            userSettings.getItem('sdDowntimeCollapsed') === '1'
                 ? '1' : '0';
 
         const isCollapsed = divider.dataset.collapsed === '1';
@@ -3188,7 +3269,7 @@ class SuiteResultsDashboard {
                 'לחץ להסתרת טבלת מערכות לילה';
 
             divider.dataset.collapsed = '0';
-            localStorage.setItem('sdDowntimeCollapsed', '0');
+            userSettings.setItem('sdDowntimeCollapsed', '0');
 
         } else {
             // *** סגור ***
@@ -3210,7 +3291,7 @@ class SuiteResultsDashboard {
                 'לחץ להצגת טבלת מערכות לילה';
 
             divider.dataset.collapsed = '1';
-            localStorage.setItem('sdDowntimeCollapsed', '1');
+            userSettings.setItem('sdDowntimeCollapsed', '1');
         }
     }
 
@@ -3631,7 +3712,7 @@ class SuiteResultsDashboard {
                 : 'Click to collapse all Post-Patch suites';
         }
 
-        localStorage.setItem('sdCollapsedSuites',
+        userSettings.setItem('sdCollapsedSuites',
             JSON.stringify([...this._collapsedSuiteKeys])
         );
     }
@@ -4227,6 +4308,10 @@ class SuiteResultsDashboard {
             if (e.target.closest('#sdRunAllCancelBtn'))
                 this.closeRunAllPopup();
 
+            // ─── ניהול הרשאות ───
+            if (e.target.closest('#sdPermissionsBtn'))
+                this._openPermissionsModal();
+
             // אישור הרצת הכל
             const runAllConfirmBtn = e.target.closest('#sdRunAllConfirmBtn');
             if (runAllConfirmBtn && !runAllConfirmBtn.disabled) {
@@ -4382,9 +4467,6 @@ class SuiteResultsDashboard {
             }
 
             // סגירת פופאפ פעולות טסט
-            if (e.target.id === 'sdTestActionOverlay')
-                this.closeTestActionPopup();
-
             if (e.target.closest('#sdTestActionClose'))
                 this.closeTestActionPopup();
 
@@ -4431,8 +4513,6 @@ class SuiteResultsDashboard {
             }
 
             // סגירת פופאפ סוויטה
-            if (e.target.id === 'sdSuiteActionOverlay')
-                this.closeSuiteActionPopup();
             if (e.target.closest('#sdSuiteActionClose'))
                 this.closeSuiteActionPopup();
 
@@ -4523,7 +4603,7 @@ class SuiteResultsDashboard {
 
                     // *** שמור בחירה ***
                     this._lastRunnerType = radio.value;
-                    localStorage.setItem('sdLastRunnerType', radio.value);
+                    userSettings.setItem('sdLastRunnerType', radio.value);
                 }
             }
 
@@ -4603,6 +4683,454 @@ class SuiteResultsDashboard {
                 e.target.id === 'sdMpUidInput')
                 this.addSuiteConfig();
         });
+    }
+
+    async _openPermissionsModal() {
+        const existing = document.getElementById('sdPermissionsModal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'sdPermissionsModal';
+        modal.className = 'sd-popup-overlay';
+        modal.innerHTML = `
+    <div class="sd-popup" style="max-width:900px">
+        <div class="sd-popup-header">
+            <span class="sd-popup-title">
+                <i class="fas fa-user-shield" 
+                   style="color:#a5b4fc"></i>
+                ניהול הרשאות — דשבורד סוויטות
+                <span style="padding:2px 10px;
+                    background:rgba(239,68,68,0.15);
+                    border:1px solid rgba(239,68,68,0.35);
+                    border-radius:8px;color:#fca5a5;
+                    font-size:0.72rem;font-weight:700">
+                    Admin Only
+                </span>
+            </span>
+            <button class="sd-popup-close" 
+                    id="sdPermClose">&times;</button>
+        </div>
+        <div style="display:flex;align-items:center;
+                    justify-content:center;padding:40px;
+                    gap:12px;color:#666">
+            <i class="fas fa-spinner fa-spin"
+               style="color:#6366f1;font-size:1.2rem"></i>
+            <span>טוען הרשאות...</span>
+        </div>
+    </div>`;
+
+        document.body.appendChild(modal);
+
+        document.getElementById('sdPermClose')
+            ?.addEventListener('click', () => modal.remove());
+
+        try {
+            const [permsRes, usersRes] = await Promise.all([
+                fetch('/SuiteResults/GetSuitePermissions',
+                    { credentials: 'include' }),
+                fetch('/SuiteResults/GetAllUsers',
+                    { credentials: 'include' })
+            ]);
+
+            const permsData = await permsRes.json();
+            const usersData = await usersRes.json();
+
+            if (!permsData.success)
+                throw new Error(permsData.message || 'שגיאה');
+
+            this._renderSuitePermissionsModal(
+                modal,
+                permsData.permissions,
+                usersData.success ? usersData.users : []
+            );
+
+        } catch (err) {
+            const popup = modal.querySelector('.sd-popup');
+            if (popup) popup.innerHTML += `
+        <div style="padding:20px;color:#f87171;text-align:center">
+            שגיאה: ${err.message}
+        </div>`;
+        }
+    }
+
+    _renderSuitePermissionsModal(modalEl, perms, allUsers) {
+        const roleGroups = [
+            {
+                key: 'admins',
+                label: 'אדמינים',
+                desc: 'גישה מלאה: ניהול סוויטות, עריכה, הרצה, ניהול הרשאות',
+                icon: 'fa-crown',
+                color: '#ef4444',
+                users: perms.admins || []
+            },
+            {
+                key: 'runners',
+                label: 'מריצים',
+                desc: 'יכולים להריץ סוויטות ובדיקות בודדות',
+                icon: 'fa-play-circle',
+                color: '#22c55e',
+                users: perms.runners || []
+            },
+            {
+                key: 'editors',
+                label: 'עורכים',
+                desc: 'יכולים לערוך טסטים וסוויטות ללא הרשאת ניהול הרשאות',
+                icon: 'fa-edit',
+                color: '#3b82f6',
+                users: perms.editors || []
+            },
+        ];
+
+        // ─── שמור state ───
+        this._permissionsState = {
+            admins: [...(perms.admins || [])],
+            editors: [...(perms.editors || [])],
+            runners: [...(perms.runners || [])],
+            viewers: [...(perms.viewers || [])]
+        };
+        this._allUsersCache = allUsers;
+
+        const buildUserSelect = (groupKey, currentUsers) => {
+            const available = allUsers.filter(u =>
+                !currentUsers.includes(u.username));
+
+            return `
+        <div class="sd-perm-add-wrap">
+            <select class="sd-select sd-perm-add-select"
+                    id="sdPermAdd_${groupKey}"
+                    style="flex:1;font-size:0.8rem">
+                <option value="">— בחר משתמש להוספה —</option>
+                ${available.map(u => `
+                    <option value="${this.escHtml(u.username)}">
+                        ${this.escHtml(u.displayName || u.username)}
+                    </option>`).join('')}
+            </select>
+            <button class="sd-perm-add-btn"
+                    data-group="${groupKey}"
+                    onclick="window.suiteResultsDashboard
+                        ._addPermissionUser('${groupKey}')">
+                <i class="fas fa-plus"></i>
+            </button>
+        </div>`;
+        };
+
+        const buildUserTags = (groupKey, users) => {
+            if (users.length === 0) return `
+        <div class="sd-perm-empty">
+            <i class="fas fa-user-slash"></i>
+            אין משתמשים בקבוצה זו
+        </div>`;
+
+            return users.map(username => {
+                const user = allUsers.find(u =>
+                    u.username.toLowerCase() === username.toLowerCase());
+                const displayName = user?.displayName || username;
+                const isCurrentUser = username.toLowerCase() ===
+                    (this.currentUser?.username || '').toLowerCase();
+
+                return `
+            <div class="sd-perm-user-tag"
+                 data-username="${this.escHtml(username)}"
+                 data-group="${groupKey}">
+                <i class="fas fa-user"
+                   style="font-size:0.65rem;opacity:0.6"></i>
+                <span class="sd-perm-user-name">
+                    ${this.escHtml(displayName)}
+                    ${username !== displayName
+                        ? `<span style="opacity:0.5;font-size:0.7rem">
+                               (${this.escHtml(username)})
+                           </span>`
+                        : ''}
+                </span>
+                ${isCurrentUser
+                        ? `<span style="font-size:0.65rem;color:#fcd34d"
+                             title="זה אתה">
+                           <i class="fas fa-lock"></i>
+                       </span>`
+                        : `<button class="sd-perm-remove-btn"
+                               data-username="${this.escHtml(username)}"
+                               data-group="${groupKey}"
+                               onclick="window.suiteResultsDashboard
+                                   ._removePermissionUser(
+                                       '${groupKey}',
+                                       '${this.escHtml(username)}'
+                                   )">
+                           <i class="fas fa-times"></i>
+                       </button>`}
+            </div>`;
+            }).join('');
+        };
+
+        const groupsHtml = roleGroups.map(group => `
+    <div class="sd-perm-group"
+         style="border:1px solid ${group.color}22;border-radius:10px;
+                overflow:hidden;display:flex;flex-direction:column">
+        <div style="display:flex;align-items:flex-start;gap:10px;
+                    padding:12px 14px;
+                    background:rgba(255,255,255,0.03);
+                    border-bottom:1px solid ${group.color}22">
+            <div style="width:36px;height:36px;border-radius:8px;
+                        background:${group.color}18;
+                        border:1px solid ${group.color}33;
+                        color:${group.color};
+                        display:flex;align-items:center;
+                        justify-content:center;font-size:0.9rem;
+                        flex-shrink:0">
+                <i class="fas ${group.icon}"></i>
+            </div>
+            <div style="flex:1;min-width:0">
+                <div style="font-size:0.88rem;font-weight:700;
+                            color:${group.color};
+                            display:flex;align-items:center;gap:7px;
+                            margin-bottom:3px">
+                    ${group.label}
+                    <span id="sdPermCount_${group.key}"
+                          style="display:inline-flex;align-items:center;
+                                 justify-content:center;min-width:20px;
+                                 height:18px;padding:0 5px;
+                                 border-radius:9px;font-size:0.68rem;
+                                 font-weight:700;
+                                 background:${group.color}18;
+                                 border:1px solid ${group.color}33;
+                                 color:${group.color}">
+                        ${group.users.length}
+                    </span>
+                </div>
+                <div style="font-size:0.72rem;color:#666;
+                            line-height:1.4">
+                    ${group.desc}
+                </div>
+            </div>
+        </div>
+        <div id="sdPermUsers_${group.key}"
+             style="padding:8px 10px;display:flex;
+                    flex-wrap:wrap;gap:5px;min-height:44px;flex:1">
+            ${buildUserTags(group.key, group.users)}
+        </div>
+        ${buildUserSelect(group.key, group.users)}
+    </div>`).join('');
+
+        const popup = modalEl.querySelector('.sd-popup');
+        popup.innerHTML = `
+    <div class="sd-popup-header">
+        <span class="sd-popup-title">
+            <i class="fas fa-user-shield" 
+               style="color:#a5b4fc"></i>
+            ניהול הרשאות — דשבורד סוויטות
+        </span>
+        <button class="sd-popup-close"
+                id="sdPermClose">&times;</button>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:10px;
+                padding:8px 20px;
+                background:rgba(99,102,241,0.06);
+                border-bottom:1px solid rgba(99,102,241,0.15);
+                font-size:0.78rem;color:#888">
+        <i class="fas fa-info-circle" style="color:#6366f1"></i>
+        <span>
+            עדכון אחרון:
+            <strong style="color:#a5b4fc">
+                ${perms.lastUpdated || '—'}
+            </strong>
+        </span>
+    </div>
+
+    <div class="sd-popup-body" style="padding:16px;
+                overflow-y:auto;max-height:60vh">
+        <div style="display:grid;
+                    grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
+                    gap:14px">
+            ${groupsHtml}
+        </div>
+    </div>
+
+    <div style="display:flex;gap:10px;padding:16px 20px;
+                border-top:1px solid #2a2a4e;
+                justify-content:space-between;align-items:center">
+        <div style="font-size:0.75rem;color:#555;
+                    display:flex;align-items:center;gap:6px">
+            <i class="fas fa-exclamation-triangle"
+               style="color:#f59e0b"></i>
+            שינויים נכנסים לתוקף מיד
+        </div>
+        <div style="display:flex;gap:8px">
+            <button class="sd-popup-close sd-mp-add-btn"
+                    style="background:#252535;border-color:#3a3a5a;
+                           color:#999"
+                    id="sdPermCancel">
+                <i class="fas fa-times"></i> ביטול
+            </button>
+            <button id="sdPermSave"
+                    style="padding:8px 20px;
+                           background:linear-gradient(135deg,#4f46e5,#7c3aed);
+                           border:none;border-radius:6px;color:white;
+                           font-size:0.85rem;font-weight:700;
+                           cursor:pointer;display:flex;
+                           align-items:center;gap:6px;
+                           font-family:inherit">
+                <i class="fas fa-save"></i>
+                שמור הרשאות
+            </button>
+        </div>
+    </div>`;
+
+        document.getElementById('sdPermClose')
+            ?.addEventListener('click', () => modalEl.remove());
+        document.getElementById('sdPermCancel')
+            ?.addEventListener('click', () => modalEl.remove());
+        document.getElementById('sdPermSave')
+            ?.addEventListener('click', () =>
+                this._saveSuitePermissions(modalEl));
+    }
+
+    _addPermissionUser(groupKey) {
+        const select = document.getElementById(`sdPermAdd_${groupKey}`);
+        const username = select?.value?.trim();
+        if (!username) { this.showError('בחר משתמש'); return; }
+
+        const group = this._permissionsState[groupKey];
+        if (!group) return;
+
+        if (group.some(u => u.toLowerCase() === username.toLowerCase())) {
+            this.showError('המשתמש כבר קיים בקבוצה');
+            return;
+        }
+
+        group.push(username);
+        this._refreshPermissionGroup(groupKey);
+    }
+
+    _removePermissionUser(groupKey, username) {
+        if (groupKey === 'admins' &&
+            username.toLowerCase() ===
+            (this.currentUser?.username || '').toLowerCase()) {
+            this.showError('לא ניתן להסיר את עצמך מהאדמינים');
+            return;
+        }
+
+        const group = this._permissionsState[groupKey];
+        if (!group) return;
+
+        const idx = group.findIndex(
+            u => u.toLowerCase() === username.toLowerCase());
+        if (idx === -1) return;
+
+        group.splice(idx, 1);
+        this._refreshPermissionGroup(groupKey);
+    }
+
+    _refreshPermissionGroup(groupKey) {
+        const allUsers = this._allUsersCache || [];
+        const groupUsers = this._permissionsState[groupKey] || [];
+
+        const usersWrap = document.getElementById(
+            `sdPermUsers_${groupKey}`);
+        const countEl = document.getElementById(
+            `sdPermCount_${groupKey}`);
+
+        if (countEl) countEl.textContent = groupUsers.length;
+
+        if (!usersWrap) return;
+
+        if (groupUsers.length === 0) {
+            usersWrap.innerHTML = `
+        <div class="sd-perm-empty">
+            <i class="fas fa-user-slash"></i>
+            אין משתמשים בקבוצה זו
+        </div>`;
+        } else {
+            usersWrap.innerHTML = groupUsers.map(username => {
+                const user = allUsers.find(u =>
+                    u.username.toLowerCase() === username.toLowerCase());
+                const displayName = user?.displayName || username;
+                const isCurrentUser = username.toLowerCase() ===
+                    (this.currentUser?.username || '').toLowerCase();
+
+                return `
+            <div class="sd-perm-user-tag"
+                 data-username="${this.escHtml(username)}"
+                 data-group="${groupKey}">
+                <i class="fas fa-user"
+                   style="font-size:0.65rem;opacity:0.6"></i>
+                <span class="sd-perm-user-name">
+                    ${this.escHtml(displayName)}
+                </span>
+                ${isCurrentUser
+                        ? `<i class="fas fa-lock"
+                          style="font-size:0.65rem;color:#fcd34d"
+                          title="זה אתה"></i>`
+                        : `<button class="sd-perm-remove-btn"
+                               data-username="${this.escHtml(username)}"
+                               data-group="${groupKey}"
+                               onclick="window.suiteResultsDashboard
+                                   ._removePermissionUser(
+                                       '${groupKey}',
+                                       '${this.escHtml(username)}'
+                                   )">
+                           <i class="fas fa-times"></i>
+                       </button>`}
+            </div>`;
+            }).join('');
+        }
+
+        // ─── עדכן select ───
+        const select = document.getElementById(`sdPermAdd_${groupKey}`);
+        if (select) {
+            const available = allUsers.filter(u =>
+                !groupUsers.some(g =>
+                    g.toLowerCase() === u.username.toLowerCase()));
+
+            select.innerHTML = `
+        <option value="">— בחר משתמש להוספה —</option>
+        ${available.map(u => `
+            <option value="${this.escHtml(u.username)}">
+                ${this.escHtml(u.displayName || u.username)}
+            </option>`).join('')}`;
+        }
+    }
+
+    async _saveSuitePermissions(modalEl) {
+        const saveBtn = document.getElementById('sdPermSave');
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.innerHTML =
+                '<i class="fas fa-spinner fa-spin"></i> שומר...';
+        }
+
+        try {
+            const payload = {
+                admins: this._permissionsState.admins,
+                editors: this._permissionsState.editors,
+                runners: this._permissionsState.runners,
+                viewers: this._permissionsState.viewers
+            };
+
+            const res = await fetch('/SuiteResults/SaveSuitePermissions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify(payload)
+            });
+
+            const data = await res.json();
+            if (!data.success) throw new Error(data.message || 'שגיאה');
+
+            modalEl.remove();
+            this.showError('✅ הרשאות נשמרו בהצלחה');
+
+            // ─── רענן הרשאות ───
+            await this._loadPermissionsFromServer();
+            this.applyPermissions();
+
+        } catch (err) {
+            this.showError('שגיאה: ' + err.message);
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML =
+                    '<i class="fas fa-save"></i> שמור הרשאות';
+            }
+        }
     }
 
     async exportToExcel() {
@@ -7294,10 +7822,10 @@ class SuiteResultsDashboard {
                 const hh = now.getHours().toString().padStart(2, '0');
                 const mm = now.getMinutes().toString().padStart(2, '0');
                 const ss = now.getSeconds().toString().padStart(2, '0');
-                localStorage.setItem('sdRunAllLastTime', Date.now().toString());
-                localStorage.setItem('sdRunAllTriggeredBy',
+                userSettings.setItem('sdRunAllLastTime', Date.now().toString());
+                userSettings.setItem('sdRunAllTriggeredBy',
                     this.currentUser?.username || '');
-                localStorage.setItem('sdRunAllTriggeredAt',
+                userSettings.setItem('sdRunAllTriggeredAt',
                     `${hh}:${mm}:${ss}`);
 
                 // *** עדכן כפתור Header — NOC יראה cooldown ***
@@ -7563,14 +8091,14 @@ class SuiteResultsDashboard {
         const COOLDOWN_MS = 5 * 60 * 1000;
 
         // *** קרא מידע על מי הריץ ***
-        const triggeredBy = localStorage.getItem('sdRunAllTriggeredBy') || '';
-        const triggeredAt = localStorage.getItem('sdRunAllTriggeredAt') || '';
+        const triggeredBy = userSettings.getItem('sdRunAllTriggeredBy') || '';
+        const triggeredAt = userSettings.getItem('sdRunAllTriggeredAt') || '';
 
         btn.disabled = true;
         btn.classList.add('sd-run-all-btn-cooldown');
 
         const updateLabel = () => {
-            const lastRunTime = localStorage.getItem('sdRunAllLastTime');
+            const lastRunTime = userSettings.getItem('sdRunAllLastTime');
             if (!lastRunTime) {
                 btn.disabled = false;
                 btn.classList.remove('sd-run-all-btn-cooldown');
@@ -7592,8 +8120,8 @@ class SuiteResultsDashboard {
             <i class="fas fa-play-circle"></i>
             <span>Run All</span>`;
                 // *** נקה localStorage ***
-                localStorage.removeItem('sdRunAllTriggeredBy');
-                localStorage.removeItem('sdRunAllTriggeredAt');
+                userSettings.removeItem('sdRunAllTriggeredBy');
+                userSettings.removeItem('sdRunAllTriggeredAt');
                 return;
             }
 
@@ -12619,7 +13147,267 @@ class SuiteResultsDashboard {
             border: 1px solid rgba(239,68,68,0.25);
         }
 
+        /* ===== כפתור ניהול הרשאות ===== */
+        .sd-permissions-btn {
+            background: rgba(99,102,241,0.12);
+            border: 1px solid rgba(99,102,241,0.35);
+            border-radius: 6px;
+            color: #a5b4fc;
+            cursor: pointer;
+            padding: 5px 12px;
+            font-size: 0.82rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .sd-permissions-btn:hover {
+            background: rgba(99,102,241,0.25);
+            border-color: rgba(99,102,241,0.65);
+            transform: translateY(-1px);
+            box-shadow: 0 3px 10px rgba(99,102,241,0.25);
+        }
 
+        [data-theme="light"] .sd-permissions-btn {
+            background: rgba(99,102,241,0.08);
+            border-color: rgba(99,102,241,0.25);
+            color: #4338ca;
+        }
+        [data-theme="light"] .sd-permissions-btn:hover {
+            background: rgba(99,102,241,0.16);
+            border-color: rgba(99,102,241,0.45);
+        }
+
+        /* ===== פופאפ הרשאות — קבוצות ===== */
+        .sd-perm-group {
+            background: rgba(255,255,255,0.02);
+            border-radius: 10px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sd-perm-group-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 12px 14px;
+            background: rgba(255,255,255,0.03);
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+
+        .sd-perm-group-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            flex-shrink: 0;
+        }
+
+        .sd-perm-group-info { flex: 1; min-width: 0; }
+
+        .sd-perm-group-title {
+            font-size: 0.88rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            margin-bottom: 3px;
+        }
+
+        .sd-perm-group-count {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 20px;
+            height: 18px;
+            padding: 0 5px;
+            border-radius: 9px;
+            font-size: 0.68rem;
+            font-weight: 700;
+        }
+
+        .sd-perm-group-desc {
+            font-size: 0.72rem;
+            color: #666;
+            line-height: 1.4;
+        }
+
+        /* ===== תגיות משתמשים ===== */
+        .sd-perm-users-wrap {
+            padding: 8px 10px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            min-height: 44px;
+            flex: 1;
+        }
+
+        .sd-perm-user-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 8px;
+            background: rgba(99,102,241,0.12);
+            border: 1px solid rgba(99,102,241,0.25);
+            border-radius: 8px;
+            font-size: 0.75rem;
+            color: #a5b4fc;
+            animation: sdFadeIn 0.15s ease;
+            transition: all 0.15s;
+        }
+        .sd-perm-user-tag:hover {
+            background: rgba(99,102,241,0.2);
+            border-color: rgba(99,102,241,0.45);
+        }
+
+        .sd-perm-user-name {
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .sd-perm-remove-btn {
+            background: none;
+            border: none;
+            color: #555;
+            cursor: pointer;
+            font-size: 0.6rem;
+            padding: 1px 3px;
+            border-radius: 50%;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            line-height: 1;
+        }
+        .sd-perm-remove-btn:hover {
+            background: rgba(239,68,68,0.2);
+            color: #fca5a5;
+        }
+
+        /* ===== ריק ===== */
+        .sd-perm-empty {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            color: #444;
+            font-style: italic;
+            padding: 4px 2px;
+            width: 100%;
+        }
+
+        /* ===== הוספת משתמש ===== */
+        .sd-perm-add-wrap {
+            display: flex;
+            gap: 6px;
+            padding: 8px 10px;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            background: rgba(255,255,255,0.02);
+        }
+
+        .sd-perm-add-select {
+            flex: 1;
+            background: #252535;
+            border: 1px solid #3a3a5a;
+            border-radius: 6px;
+            color: #e0e0e0;
+            padding: 6px 10px;
+            font-size: 0.8rem;
+            outline: none;
+            direction: rtl;
+            transition: border-color 0.2s;
+        }
+        .sd-perm-add-select:focus {
+            border-color: #6366f1;
+        }
+        .sd-perm-add-select option {
+            background: #252535;
+        }
+
+        .sd-perm-add-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            background: rgba(34,197,94,0.12);
+            border: 1px solid rgba(34,197,94,0.35);
+            border-radius: 6px;
+            color: #86efac;
+            cursor: pointer;
+            font-size: 0.75rem;
+            transition: all 0.15s;
+            flex-shrink: 0;
+        }
+        .sd-perm-add-btn:hover {
+            background: rgba(34,197,94,0.25);
+            border-color: rgba(34,197,94,0.6);
+            transform: scale(1.08);
+        }
+
+        /* ===== גריד קבוצות ===== */
+        .sd-perm-groups-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 14px;
+        }
+
+        /* ===== Light Mode ===== */
+        [data-theme="light"] .sd-perm-group {
+            background: #fff;
+            border: 1px solid #e0e0f0 !important;
+        }
+
+        [data-theme="light"] .sd-perm-group-header {
+            background: #f8f8ff;
+            border-bottom: 1px solid #eee;
+        }
+
+        [data-theme="light"] .sd-perm-group-desc { color: #888; }
+
+        [data-theme="light"] .sd-perm-user-tag {
+            background: rgba(99,102,241,0.08);
+            border-color: rgba(99,102,241,0.2);
+            color: #4338ca;
+        }
+        [data-theme="light"] .sd-perm-user-tag:hover {
+            background: rgba(99,102,241,0.15);
+        }
+
+        [data-theme="light"] .sd-perm-remove-btn { color: #bbb; }
+        [data-theme="light"] .sd-perm-remove-btn:hover {
+            background: rgba(239,68,68,0.1);
+            color: #dc2626;
+        }
+
+        [data-theme="light"] .sd-perm-empty { color: #bbb; }
+
+        [data-theme="light"] .sd-perm-add-wrap {
+            background: #f8f8ff;
+            border-top: 1px solid #eee;
+        }
+
+        [data-theme="light"] .sd-perm-add-select {
+            background: #f5f5f5;
+            border: 1px solid #ccc;
+            color: #1a1a2e;
+        }
+        [data-theme="light"] .sd-perm-add-select option {
+            background: #fff;
+        }
+
+        [data-theme="light"] .sd-perm-add-btn {
+            background: rgba(34,197,94,0.08);
+            border-color: rgba(34,197,94,0.25);
+            color: #15803d;
+        }
+        [data-theme="light"] .sd-perm-add-btn:hover {
+            background: rgba(34,197,94,0.18);
+        }
         `;
 
         document.head.appendChild(style);

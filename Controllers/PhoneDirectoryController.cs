@@ -14,12 +14,7 @@ using Microsoft.AspNetCore.Authorization;
 
 public class PhoneDirectoryController : Controller
 {
-    private readonly string csvPath;
-
-    public PhoneDirectoryController(IWebHostEnvironment env)
-    {
-        csvPath = Path.Combine(env.WebRootPath, "assets", "files", "phone_directory.csv");
-    }
+    private readonly string csvPath = PortalPaths.UnderFiles(@"phone_directory.csv");
 
     [HttpGet]
     public IActionResult GetPhoneDirectory()
@@ -112,14 +107,15 @@ public class PhoneDirectoryController : Controller
             var newContact = new
             {
                 id          = maxId,
-                fullName    = contact.FullName    ?? "",
-                role        = contact.Role        ?? "",
-                domain      = contact.Domain      ?? "",
-                department  = contact.Department  ?? "",
-                team        = contact.Team        ?? "",
+                fullName    = SanitizeCsvField(contact.FullName    ?? ""), 
+                role        = SanitizeCsvField(contact.Role        ?? ""), 
+                domain      = SanitizeCsvField(contact.Domain      ?? ""), 
+                department  = SanitizeCsvField(contact.Department  ?? ""), 
+                team        = SanitizeCsvField(contact.Team        ?? ""), 
                 phoneNumber = contact.PhoneNumber ?? "",
                 extension   = contact.Extension   ?? "",
-                email       = contact.Email       ?? ""
+                email       = contact.Email       ?? "",
+                division    = SanitizeCsvField(contact.Division    ?? "")  
             };
 
             contacts.Add(newContact);
@@ -142,7 +138,7 @@ public class PhoneDirectoryController : Controller
             if (string.IsNullOrWhiteSpace(name))
                 return Json(new { success = false, email = "" });
 
-            var phoneCsvPath = Path.Combine(HttpContext.RequestServices.GetService<IWebHostEnvironment>()?.WebRootPath ?? AppContext.BaseDirectory, "assets", "files", "phone_directory.csv");
+            var phoneCsvPath = PortalPaths.UnderFiles(@"phone_directory.csv");
 
             if (!System.IO.File.Exists(phoneCsvPath))
                 return Json(new { success = false, email = "", message = "קובץ ספר טלפונים לא נמצא" });
@@ -218,7 +214,8 @@ public class PhoneDirectoryController : Controller
 
             for (int i = 1; i < lines.Length; i++)
             {
-                var cols = lines[i].Split(',');
+                // ─── השתמש ב-CSV parser אמיתי במקום Split(',') ───
+                var cols = ParseCsvLine(lines[i]);
                 if (cols.Length < 5) continue;
 
                 var fullName   = cols[0]?.Trim() ?? "";
@@ -228,6 +225,9 @@ public class PhoneDirectoryController : Controller
                 var team       = cols[4]?.Trim() ?? "";
                 var email      = cols.Length > 7 
                                 ? cols[7]?.Trim() ?? "" 
+                                : "";
+                var division   = cols.Length > 9 
+                                ? cols[9]?.Trim() ?? "" 
                                 : "";
 
                 if (string.IsNullOrWhiteSpace(fullName)) continue;
@@ -246,11 +246,11 @@ public class PhoneDirectoryController : Controller
                         Department = department,
                         Team       = team,
                         Email      = email,
+                        Division   = division,
                         MatchScore = score
                     };
                 }
 
-                // ─── התאמה מושלמת - אין טעם להמשיך ──────────────────
                 if (bestScore == 100) break;
             }
 
@@ -271,6 +271,79 @@ public class PhoneDirectoryController : Controller
         {
             return Json(new { success = false, error = ex.Message });
         }
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // CSV Parser אמיתי - מטפל ב:
+    // - שדות עטופים ב-"..."
+    // - גרשיים כפולות "" בתוך שדה
+    // - פסיקים בתוך שדות
+    // ══════════════════════════════════════════════════════════════
+    private static string[] ParseCsvLine(string line)
+    {
+        if (string.IsNullOrEmpty(line)) 
+            return Array.Empty<string>();
+
+        var fields  = new List<string>();
+        var current = new System.Text.StringBuilder();
+        bool inQuotes = false;
+        int  i        = 0;
+
+        while (i < line.Length)
+        {
+            char c = line[i];
+
+            if (inQuotes)
+            {
+                if (c == '"')
+                {
+                    // ─── בדוק אם זה "" (גרשיים כפולות = גרשיים אחת) ───
+                    if (i + 1 < line.Length && line[i + 1] == '"')
+                    {
+                        // ─── הוסף גרשיים בודדות ───
+                        current.Append('"');
+                        i += 2; // ← דלג על שתי הגרשיים
+                        continue;
+                    }
+                    else
+                    {
+                        // ─── סוף שדה עטוף ───
+                        inQuotes = false;
+                        i++;
+                        continue;
+                    }
+                }
+                else
+                {
+                    current.Append(c);
+                }
+            }
+            else
+            {
+                if (c == '"')
+                {
+                    // ─── התחלת שדה עטוף ───
+                    inQuotes = true;
+                }
+                else if (c == ',')
+                {
+                    // ─── סוף שדה ───
+                    fields.Add(current.ToString());
+                    current.Clear();
+                }
+                else
+                {
+                    current.Append(c);
+                }
+            }
+
+            i++;
+        }
+
+        // ─── הוסף שדה אחרון ───
+        fields.Add(current.ToString());
+
+        return fields.ToArray();
     }
 
     // ─── GET: קבל מנהל מחלקה לפי שם מחלקה ──────────────────────
@@ -412,15 +485,16 @@ public class PhoneDirectoryController : Controller
             // Add updated contact
             var updatedContact = new
             {
-                id = contact.Id,
-                fullName = contact.FullName,
-                role = contact.Role,
-                domain = contact.Domain ?? "",
-                department = contact.Department ?? "",
-                team = contact.Team ?? "",
-                phoneNumber = contact.PhoneNumber,
-                extension = contact.Extension ?? "",
-                email = contact.Email ?? "" 
+                id          = contact.Id,
+                fullName    = SanitizeCsvField(contact.FullName    ?? ""), 
+                role        = SanitizeCsvField(contact.Role        ?? ""), 
+                domain      = SanitizeCsvField(contact.Domain      ?? ""), 
+                department  = SanitizeCsvField(contact.Department  ?? ""), 
+                team        = SanitizeCsvField(contact.Team        ?? ""), 
+                phoneNumber = contact.PhoneNumber ?? "",
+                extension   = contact.Extension   ?? "",
+                email       = contact.Email       ?? "",
+                division    = SanitizeCsvField(contact.Division    ?? "")  
             };
 
             contacts.Add(updatedContact);
@@ -660,7 +734,8 @@ public class PhoneDirectoryController : Controller
                                 team        = existingDyn.team?.ToString()       ?? "",
                                 phoneNumber = contact.PhoneNumber                ?? "",
                                 extension   = contact.Extension                  ?? "",
-                                email       = existingDyn.email?.ToString()      ?? ""
+                                email       = existingDyn.email?.ToString()      ?? "",
+                                division    = existingDyn.division?.ToString()   ?? ""  
                             };
 
                             existingContacts.Add(updatedContact);
@@ -707,7 +782,8 @@ public class PhoneDirectoryController : Controller
                         team        = contact.Team        ?? "",
                         phoneNumber = contact.PhoneNumber ?? "",
                         extension   = contact.Extension   ?? "",
-                        email       = contact.Email       ?? ""
+                        email       = contact.Email       ?? "",
+                        division    = contact.Division    ?? ""
                     };
 
                     existingContacts.Add(newContact);
@@ -1221,53 +1297,105 @@ public class PhoneDirectoryController : Controller
         try
         {
             if (!System.IO.File.Exists(filePath))
-            {
                 return new List<object>();
-            }
 
-            var lines = System.IO.File.ReadAllLines(filePath);
+            var lines = System.IO.File.ReadAllLines(filePath, Encoding.UTF8);
+            if (lines.Length == 0) return new List<object>();
+
             var phoneDirectory = new List<object>();
 
-            // Skip header row
-            for (int i = 1; i < lines.Length; i++)
+            // ─── קרא כותרות וזהה עמודות לפי שם ──────────────────────
+            var headerCols = SplitCsvLine(lines[0]);
+
+            int colFullName   = -1;
+            int colRole       = -1;
+            int colDivision   = -1;
+            int colDomain     = -1;
+            int colDepartment = -1;
+            int colTeam       = -1;
+            int colPhone      = -1;
+            int colExtension  = -1;
+            int colEmail      = -1;
+            int colEmployeeId = -1;
+
+            for (int c = 0; c < headerCols.Length; c++)
             {
-                var columns = lines[i].Split(',');
-                
-                if (columns.Length >= 3)
-                {
-                    var fullName = columns[0]?.Trim();
-                    var role = columns[1]?.Trim();
-                    var domain = columns.Length > 2 ? columns[2]?.Trim() : "";
-                    var department = columns.Length > 3 ? columns[3]?.Trim() : "";
-                    var team = columns.Length > 4 ? columns[4]?.Trim() : "";
-                    var phoneNumber = columns.Length > 5 ? columns[5]?.Trim() : "";
-                    var extension = columns.Length > 6 ? columns[6]?.Trim() : "";
-                    var email = columns.Length > 7 ? columns[7]?.Trim() : "";  
+                var h = headerCols[c].Trim()
+                            .ToLowerInvariant()
+                            .Replace("\"", "");
 
-                    // Skip empty rows
-                    if (string.IsNullOrEmpty(fullName) && 
-                        string.IsNullOrEmpty(role) && 
-                        string.IsNullOrEmpty(phoneNumber))
-                    {
-                        continue;
-                    }
-
-                    phoneDirectory.Add(new
-                    {
-                        id = i,
-                        fullName = fullName ?? "",
-                        role = role ?? "",
-                        domain = domain ?? "",
-                        department = department ?? "",
-                        team = team ?? "",
-                        phoneNumber = phoneNumber ?? "",
-                        extension = extension ?? "",
-                        email = email ?? "" 
-                    });
-                }
+                if      (h == "שם מלא")                            colFullName   = c;
+                else if (h == "תפקיד")                             colRole       = c;
+                else if (h == "אגף"   || h.Contains("division"))  colDivision   = c;
+                else if (h == "תחום"  || h.Contains("domain"))    colDomain     = c;
+                else if (h == "מחלקה" || h.Contains("dept"))      colDepartment = c;
+                else if (h == "צוות"  || h.Contains("team"))      colTeam       = c;
+                else if (h == "טלפון" || h.Contains("phone"))     colPhone      = c;
+                else if (h == "שלוחה" || h.Contains("ext"))       colExtension  = c;
+                else if (h == "מייל"  || h.Contains("mail")
+                                    || h.Contains("email"))     colEmail      = c;
+                else if (h == "מזהה עובד" || h == "מזהה"
+                                        || h.Contains("id"))    colEmployeeId = c;
             }
 
-            return phoneDirectory.OrderBy(p => ((dynamic)p).fullName).ToList();
+            // ─── ברירת מחדל אם כותרות לא זוהו ────────────────────────
+            if (colFullName   < 0) colFullName   = 0;
+            if (colRole       < 0) colRole       = 1;
+            if (colDomain     < 0) colDomain     = 2;
+            if (colDepartment < 0) colDepartment = 3;
+            if (colTeam       < 0) colTeam       = 4;
+            if (colPhone      < 0) colPhone      = 5;
+            if (colExtension  < 0) colExtension  = 6;
+            if (colEmail      < 0) colEmail      = 7;
+
+            string GetCol(string[] cols, int idx) =>
+                idx >= 0 && idx < cols.Length
+                    ? cols[idx].Trim().Trim('"') : "";
+
+            for (int i = 1; i < lines.Length; i++)
+            {
+                var line = lines[i].Trim();
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                var columns = SplitCsvLine(line);
+                if (columns.Length < 2) continue;
+
+                var fullName    = GetCol(columns, colFullName);
+                var role        = GetCol(columns, colRole);
+                var division    = GetCol(columns, colDivision);
+                var domain      = GetCol(columns, colDomain);
+                var department  = GetCol(columns, colDepartment);
+                var team        = GetCol(columns, colTeam);
+                var phoneNumber = GetCol(columns, colPhone);
+                var extension   = GetCol(columns, colExtension);
+                var email       = GetCol(columns, colEmail);
+                var employeeId  = GetCol(columns, colEmployeeId);
+
+                // ─── דלג על שורות ריקות ──────────────────────────────
+                if (string.IsNullOrEmpty(fullName) &&
+                    string.IsNullOrEmpty(role)     &&
+                    string.IsNullOrEmpty(phoneNumber))
+                    continue;
+
+                phoneDirectory.Add(new
+                {
+                    id          = i,
+                    fullName    = fullName,
+                    role        = role,
+                    division    = division,
+                    domain      = domain,
+                    department  = department,
+                    team        = team,
+                    phoneNumber = phoneNumber,
+                    extension   = extension,
+                    email       = email,
+                    employeeId  = employeeId
+                });
+            }
+
+            return phoneDirectory
+                .OrderBy(p => ((dynamic)p).fullName)
+                .ToList();
         }
         catch (Exception)
         {
@@ -1275,11 +1403,63 @@ public class PhoneDirectoryController : Controller
         }
     }
 
+    // הוסף לתחתית המחלקה - לפני הסוגר האחרון של PhoneDirectoryController
+    private string[] SplitCsvLine(string line)
+    {
+        var result    = new List<string>();
+        var current   = new StringBuilder();
+        bool inQuotes = false;
+
+        for (int i = 0; i < line.Length; i++)
+        {
+            char c = line[i];
+
+            if (c == '"')
+            {
+                // ─── מרכאות כפולות בתוך שדה ("") ─────────────────
+                if (inQuotes && i + 1 < line.Length
+                            && line[i + 1] == '"')
+                {
+                    current.Append('"');
+                    i++;
+                    continue;
+                }
+
+                // ─── פתיחת מרכאות ─────────────────────────────────
+                if (!inQuotes && current.Length == 0)
+                {
+                    inQuotes = true;
+                    continue;
+                }
+
+                // ─── סגירת מרכאות ─────────────────────────────────
+                if (inQuotes)
+                {
+                    inQuotes = false;
+                    continue;
+                }
+
+                current.Append(c);
+            }
+            else if (c == ',' && !inQuotes)
+            {
+                result.Add(current.ToString());
+                current.Clear();
+            }
+            else
+            {
+                current.Append(c);
+            }
+        }
+
+        result.Add(current.ToString());
+        return result.ToArray();
+    }
+
     private void SavePhoneDirectoryToCsv(string filePath, List<object> contacts)
     {
         try
         {
-            // Ensure directory exists
             var directory = Path.GetDirectoryName(filePath);
             if (!Directory.Exists(directory))
             {
@@ -1287,25 +1467,44 @@ public class PhoneDirectoryController : Controller
             }
 
             var lines = new List<string>();
-            
-            // Add header
-            lines.Add("שם מלא,תפקיד,תחום,מחלקה,צוות,טלפון,שלוחה,מייל");
+            lines.Add("שם מלא,תפקיד,תחום,מחלקה,צוות,טלפון,שלוחה,מייל,מזהה עובד,אגף");
 
-            // Add contacts (sorted by name)
             var sortedContacts = contacts.OrderBy(c => ((dynamic)c).fullName).ToList();
-            
+
             foreach (var contact in sortedContacts)
             {
                 var c = (dynamic)contact;
-                lines.Add($"{c.fullName},{c.role},{c.domain ?? ""},{c.department ?? ""},{c.team ?? ""},{c.phoneNumber},{c.extension ?? ""},{c.email ?? ""}");
+
+                // ─── החלף פסיקים ב-& בכל שדה טקסטואלי ───────────
+                var fullName   = SanitizeCsvField(c.fullName?.ToString()   ?? "");
+                var role       = SanitizeCsvField(c.role?.ToString()       ?? "");
+                var domain     = SanitizeCsvField(c.domain?.ToString()     ?? "");
+                var department = SanitizeCsvField(c.department?.ToString() ?? "");
+                var team       = SanitizeCsvField(c.team?.ToString()       ?? "");
+                var phone      = c.phoneNumber?.ToString() ?? "";
+                var extension  = c.extension?.ToString()   ?? "";
+                var email      = c.email?.ToString()       ?? "";
+                var employeeId = c.employeeId?.ToString()  ?? ""; 
+                var division   = SanitizeCsvField(c.division?.ToString()   ?? "");    
+
+                lines.Add($"{fullName},{role},{domain},{department},{team},{phone},{extension},{email},{employeeId},{division}");
             }
 
-            System.IO.File.WriteAllLines(filePath, lines);
+            System.IO.File.WriteAllLines(filePath, lines, Encoding.UTF8);
         }
         catch (Exception ex)
         {
             throw new Exception($"שגיאה בשמירת הקובץ: {ex.Message}");
         }
+    }
+
+    // ─── נקה שדה CSV - החלף פסיקים ב-& ──────────────────────────
+    private string SanitizeCsvField(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return "";
+
+        // ─── החלף פסיקים ב-& ─────────────────────────────────────
+        return value.Replace(",", " & ");
     }
 
     private List<object> GetDefaultPhoneDirectory()
@@ -1318,7 +1517,7 @@ public class PhoneDirectoryController : Controller
         };
     }
 
-        // ═══════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════
     // MODELS - כל המודלים במקום אחד
     // ═══════════════════════════════════════════════════════════
 
@@ -1333,6 +1532,7 @@ public class PhoneDirectoryController : Controller
         public string PhoneNumber { get; set; } = "";
         public string Extension   { get; set; } = "";
         public string Email       { get; set; } = "";
+        public string Division    { get; set; } = "";
     }
 
     public class DeleteContactModel
@@ -1423,5 +1623,6 @@ public class OrgInfoResult
     public string Department { get; set; } = "";
     public string Team       { get; set; } = "";
     public string Email      { get; set; } = "";
+    public string Division   { get; set; } = "";
     public int    MatchScore { get; set; } = 0;
 }

@@ -7,19 +7,19 @@ class EmployeeTasksDashboard {
         this.searchTerm = '';
         this.filterStatus = 'active';
         this.LAST_EMPLOYEE_KEY = 'snLastSelectedEmployee';
-        this.selectedEmployee = localStorage.getItem(this.LAST_EMPLOYEE_KEY) || 'ALL';
+        this.selectedEmployee = userSettings.getItem(this.LAST_EMPLOYEE_KEY) || 'ALL';
         this.refreshInterval = null;
         this.REFRESH_MS = 30 * 60 * 1000;
 
         // מיון
         this.SORT_MODE_KEY = 'snSortMode_v1';
         this.SORT_DIR_KEY = 'snSortDir_v1';
-        this.sortMode = localStorage.getItem(this.SORT_MODE_KEY) || 'custom';
-        this.sortDirection = localStorage.getItem(this.SORT_DIR_KEY) || 'desc';
+        this.sortMode = userSettings.getItem(this.SORT_MODE_KEY) || 'custom';
+        this.sortDirection = userSettings.getItem(this.SORT_DIR_KEY) || 'desc';
         this.FREE_POSITIONS_KEY = 'snFreePositions_v1';
         this.freePositions = this.loadFreePositions();
         this.FREE_MODE_KEY = 'snFreeModeActive';
-        this.freeMode = localStorage.getItem(this.FREE_MODE_KEY) === 'true';
+        this.freeMode = userSettings.getItem(this.FREE_MODE_KEY) === 'true';
 
         // סדר גרירה בתוך עמודות סטטוס
         this.STATUS_COL_ORDER_KEY = 'snStatusColOrder_v1';
@@ -37,7 +37,7 @@ class EmployeeTasksDashboard {
         this.minimizedNotes = this.loadMinimizedNotes();
 
         this.employeeColors = JSON.parse(
-            localStorage.getItem('stickyEmployeeColors') || '{}'
+            userSettings.getItem('stickyEmployeeColors') || '{}'
         );
 
         this.PALETTE = [
@@ -55,12 +55,12 @@ class EmployeeTasksDashboard {
         };
 
         // צבעי פתקים - מצב ברירת מחדל
-        this.NOTE_COLOR_MODE = localStorage.getItem('snNoteColorMode') || 'status';
+        this.NOTE_COLOR_MODE = userSettings.getItem('snNoteColorMode') || 'status';
         // 'status' | 'progress' | 'priority' | 'employee' | 'custom'
 
         // צבעים מותאמים אישית לפתקים
         this.CUSTOM_NOTE_COLORS = JSON.parse(
-            localStorage.getItem('snCustomNoteColors') || '{}'
+            userSettings.getItem('snCustomNoteColors') || '{}'
         );
 
         // *** הרשאות משתמש ***
@@ -113,14 +113,14 @@ class EmployeeTasksDashboard {
     loadMinimizedNotes() {
         try {
             return JSON.parse(
-                localStorage.getItem(this.MINIMIZED_NOTES_KEY) || '{}'
+                userSettings.getItem(this.MINIMIZED_NOTES_KEY) || '{}'
             );
         } catch (e) { return {}; }
     }
 
     saveMinimizedNotes() {
         try {
-            localStorage.setItem(
+            userSettings.setItem(
                 this.MINIMIZED_NOTES_KEY,
                 JSON.stringify(this.minimizedNotes)
             );
@@ -238,14 +238,14 @@ class EmployeeTasksDashboard {
     loadFreePositions() {
         try {
             return JSON.parse(
-                localStorage.getItem(this.FREE_POSITIONS_KEY) || '{}'
+                userSettings.getItem(this.FREE_POSITIONS_KEY) || '{}'
             );
         } catch (e) { return {}; }
     }
 
     saveFreePositions() {
         try {
-            localStorage.setItem(
+            userSettings.setItem(
                 this.FREE_POSITIONS_KEY,
                 JSON.stringify(this.freePositions)
             );
@@ -255,14 +255,14 @@ class EmployeeTasksDashboard {
     loadTaskOrder() {
         try {
             return JSON.parse(
-                localStorage.getItem(this.DRAG_ORDER_KEY) || '{}'
+                userSettings.getItem(this.DRAG_ORDER_KEY) || '{}'
             );
         } catch (e) { return {}; }
     }
 
     saveTaskOrder() {
         try {
-            localStorage.setItem(
+            userSettings.setItem(
                 this.DRAG_ORDER_KEY,
                 JSON.stringify(this.taskOrder)
             );
@@ -491,7 +491,7 @@ class EmployeeTasksDashboard {
                             this.PALETTE[i % this.PALETTE.length];
                     }
                 });
-                localStorage.setItem(
+                userSettings.setItem(
                     'stickyEmployeeColors',
                     JSON.stringify(this.employeeColors)
                 );
@@ -557,7 +557,7 @@ class EmployeeTasksDashboard {
         }
 
         // שחזר מ-localStorage או מהמצב הנוכחי
-        const saved = localStorage.getItem(this.LAST_EMPLOYEE_KEY) || 'ALL';
+        const saved = userSettings.getItem(this.LAST_EMPLOYEE_KEY) || 'ALL';
         const current = this.selectedEmployee || saved;
 
         select.innerHTML = `<option value="ALL">👥 כל העובדים</option>`;
@@ -937,7 +937,7 @@ class EmployeeTasksDashboard {
             .forEach(radio => {
                 radio.addEventListener('change', e => {
                     this.NOTE_COLOR_MODE = e.target.value;
-                    localStorage.setItem('snNoteColorMode', this.NOTE_COLOR_MODE);
+                    userSettings.setItem('snNoteColorMode', this.NOTE_COLOR_MODE);
 
                     // עדכן active class
                     panel.querySelectorAll('.sn-color-mode-opt')
@@ -1199,7 +1199,7 @@ class EmployeeTasksDashboard {
                 swatch.addEventListener('click', () => {
                     const color = swatch.dataset.color;
                     this.CUSTOM_NOTE_COLORS[taskId] = color;
-                    localStorage.setItem(
+                    userSettings.setItem(
                         'snCustomNoteColors',
                         JSON.stringify(this.CUSTOM_NOTE_COLORS)
                     );
@@ -1212,7 +1212,7 @@ class EmployeeTasksDashboard {
         document.getElementById('snCustomColorInput')
             .addEventListener('change', e => {
                 this.CUSTOM_NOTE_COLORS[taskId] = e.target.value;
-                localStorage.setItem(
+                userSettings.setItem(
                     'snCustomNoteColors',
                     JSON.stringify(this.CUSTOM_NOTE_COLORS)
                 );
@@ -1224,7 +1224,7 @@ class EmployeeTasksDashboard {
         document.getElementById('snColorReset')
             .addEventListener('click', () => {
                 delete this.CUSTOM_NOTE_COLORS[taskId];
-                localStorage.setItem(
+                userSettings.setItem(
                     'snCustomNoteColors',
                     JSON.stringify(this.CUSTOM_NOTE_COLORS)
                 );
@@ -1446,14 +1446,14 @@ class EmployeeTasksDashboard {
     loadStatusColOrder() {
         try {
             return JSON.parse(
-                localStorage.getItem(this.STATUS_COL_ORDER_KEY) || '{}'
+                userSettings.getItem(this.STATUS_COL_ORDER_KEY) || '{}'
             );
         } catch (e) { return {}; }
     }
 
     saveStatusColOrder() {
         try {
-            localStorage.setItem(
+            userSettings.setItem(
                 this.STATUS_COL_ORDER_KEY,
                 JSON.stringify(this.statusColOrder)
             );
@@ -2956,7 +2956,7 @@ class EmployeeTasksDashboard {
             // בחירת עובד
             if (e.target.id === 'snEmployeeSelect') {
                 this.selectedEmployee = e.target.value;
-                localStorage.setItem(this.LAST_EMPLOYEE_KEY, e.target.value);
+                userSettings.setItem(this.LAST_EMPLOYEE_KEY, e.target.value);
                 this.updateSelectColor(e.target);
 
                 // הצג/הסתר אפשרות Status Columns
@@ -2975,7 +2975,7 @@ class EmployeeTasksDashboard {
             if (e.target.id === 'snSortSelect') {
                 this.sortMode = e.target.value;
                 // *** שמור מצב מיון ***
-                localStorage.setItem(this.SORT_MODE_KEY, this.sortMode);
+                userSettings.setItem(this.SORT_MODE_KEY, this.sortMode);
                 this.updateSortDirBtn();
                 this.renderBoard();
             }
@@ -3083,7 +3083,7 @@ class EmployeeTasksDashboard {
             // *** מצב Free Mode ***
             if (e.target.closest('#snFreeModeBtn')) {
                 this.freeMode = !this.freeMode;
-                localStorage.setItem(this.FREE_MODE_KEY, this.freeMode);
+                userSettings.setItem(this.FREE_MODE_KEY, this.freeMode);
                 const btn = document.getElementById('snFreeModeBtn');
                 if (btn) {
                     btn.classList.toggle('active', this.freeMode);
@@ -3125,7 +3125,7 @@ class EmployeeTasksDashboard {
                 this.sortDirection =
                     this.sortDirection === 'asc' ? 'desc' : 'asc';
                 // *** שמור כיוון מיון ***
-                localStorage.setItem(this.SORT_DIR_KEY, this.sortDirection);
+                userSettings.setItem(this.SORT_DIR_KEY, this.sortDirection);
                 this.updateSortDirBtn();
                 this.renderBoard();
                 this.showToast(
