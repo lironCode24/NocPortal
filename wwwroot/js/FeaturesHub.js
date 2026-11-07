@@ -210,8 +210,14 @@ function screenHit(hit, query) {
         </button>`;
 }
 
-function quotedParts(step) {
-    return [...String(step).matchAll(/"([^"]+)"/g)].map(match => match[1]);
+function clickLabel(step) {
+    const text = String(step);
+    if (/אין כפתור|לא קיים|לא מוצג/.test(text)) return "";
+    const match = text.match(/לח(?:ץ|צו|צי)\s+(?:על\s+)?[^".]{0,24}"([^"]+)"/)
+        || text.match(/לוחצים על\s+"([^"]+)"/)
+        || text.match(/פתח(?:ו|י)? את (?:סקשן )?"([^"]+)"/)
+        || text.match(/גלול ל(?:סקשן )?"([^"]+)"/);
+    return match ? match[1].trim() : "";
 }
 
 function renderGuide() {
@@ -228,26 +234,21 @@ function renderGuide() {
     const index = Math.max(0, Math.min(hub.step || 0, last));
     hub.step = index;
     const step = steps[index] || feature.summary;
-    const quotes = quotedParts(step);
-    const target = quotes.length ? quotes[quotes.length - 1] : "";
-    const place = quotes.length > 1 ? quotes.slice(0, -1).join(" · ") : "";
+    const target = clickLabel(step);
     const backLabel = hub.query.trim() ? "חזרה לתוצאות" : "חזרה לכל המדריכים";
     const dots = steps.map((_, dotIndex) =>
         `<span class="step-dot ${dotIndex === index ? "on" : ""} ${dotIndex < index ? "done" : ""}"></span>`
     ).join("");
     const click = target
         ? `<div class="click-stage">
-                <div class="click-kicker">כאן לוחצים</div>
-                ${place ? `<div class="click-place">בתוך ${escapeHtml(place)}</div>` : ""}
+                <div class="click-kicker">חפשו על המסך</div>
                 <div class="fake-btn" aria-hidden="true">
                     <span class="pulse"></span>
                     <i class="fas fa-hand-pointer"></i>
                     <span>${escapeHtml(target)}</span>
                 </div>
            </div>`
-        : `<div class="click-stage plain">
-                <div class="click-kicker">מה עושים בשלב הזה</div>
-           </div>`;
+        : "";
     const prev = index > 0
         ? `<button type="button" class="back-btn" id="prevStep">שלב קודם</button>`
         : `<span></span>`;
