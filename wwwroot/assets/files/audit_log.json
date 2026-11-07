@@ -86,5 +86,38 @@
     "IpAddress": "::1",
     "Details": "כניסה מוצלחת | Role: Admin",
     "Success": true
+  },
+  {
+    "Id": "3b7da76a-5fe2-4190-a36c-1d6d328127e0",
+    "Timestamp": "2026-11-07T11:12:04.5757692Z",
+    "EventType": "LOGOUT",
+    "Username": "admin",
+    "UserId": "admin-default-001",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "יציאה מהמערכת",
+    "Success": true
+  },
+  {
+    "Id": "5f06fc1b-04d4-45fa-8219-d97380f51727",
+    "Timestamp": "2026-11-07T11:19:45.9891101Z",
+    "EventType": "EMAIL_FAILED",
+    "Username": "system",
+    "UserId": "",
+    "PerformedBy": "",
+    "IpAddress": "system",
+    "Details": "שליחה נכשלה אל talyohay@yahoo.com | סוג: LANDING_CONTACT | שגיאה: Failure sending mail.",
+    "Success": false
+  },
+  {
+    "Id": "9510203f-07f9-47d8-b1ab-73dd74ed2e17",
+    "Timestamp": "2026-11-07T11:20:22.4406794Z",
+    "EventType": "EMAIL_FAILED",
+    "Username": "system",
+    "UserId": "",
+    "PerformedBy": "",
+    "IpAddress": "system",
+    "Details": "שליחה נכשלה אל talyohay@yahoo.com | סוג: LANDING_CONTACT | שגיאה: Failure sending mail.",
+    "Success": false
   }
 ]

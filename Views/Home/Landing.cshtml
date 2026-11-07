@@ -8,129 +8,197 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>@ViewData["Title"]</title>
-    <link rel="icon" type="image/png" href="~/images/logo.png" >
-    <link rel="stylesheet" href="~/css/landing.css">
+    <title>NocPortal — חדר הבקרה, במסך אחד</title>
+    <meta name="description" content="NocPortal מרכז את חדר הבקרה למסך אחד: ניטור, משמרת ותמונת מצב. פחות כלים, יותר שליטה.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="~/css/landing.css" asp-append-version="true">
 </head>
 <body>
-    <!-- ============================================
-         HEADER / NAVBAR
-         ============================================ -->
-    <header>
+    <header class="site-header">
         <div class="navbar">
-            <div class="navbar-brand">
-                <span class="logo-icon">
-                    <img src="/images/logo.png" alt="Noc Portal Logo" style="max-width: 50px; height: auto;">
-                </span>
-                <div class="logo-text">
+            <a class="navbar-brand" href="#top">
+                <span class="mark" aria-hidden="true">N</span>
+                <span class="logo-text">
                     <span class="logo-name">NocPortal</span>
-                    <span class="logo-tagline">Control Center Management</span>
-                </div>
-            </div>
-
-            <nav class="navbar-links">
-                <a href="#features">יכולות</a>
-                <a href="#about">אודות</a>
-            </nav>
-
-            <a href="/Auth/Login" class="nav-login-btn">
-                כניסה למערכת
+                    <span class="logo-tagline">חדר בקרה, במסך אחד</span>
+                </span>
             </a>
+
+            <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav">
+                <span class="sr-only">תפריט</span>
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+
+            <nav id="site-nav" class="navbar-links">
+                <a href="#idea">הרעיון</a>
+                <a href="#contact">צור קשר</a>
+                <a href="/Auth/Login" class="nav-login-btn">כניסה</a>
+            </nav>
         </div>
     </header>
 
-    <!-- ============================================
-         HERO SECTION
-         ============================================ -->
-    <section class="hero">
-        <div class="hero-content">
-            <h1>מערכת כוללת לניהול ותפעול חדר בקרה ו-Data Center</h1>
-            <p class="subtitle">
-                מערכת הנדסית שנולדה מתוך השטח כדי לרכז את כל הניטור, המעקב והדשבורדים התפעוליים בממשק אחד מרכזי, נקי ומהיר.
-            </p>
-            
-            <div class="hero-buttons">
-                <a href="/Auth/Login" class="nav-login-btn">כניסה למערכת</a>
-            </div>
-        </div>
-    </section>
-
-    <!-- ============================================
-         FEATURES SECTION
-         ============================================ -->
-    <section id="features" class="features">
-        <h2 class="section-title">מה יש בפנים</h2>
-        <p class="section-subtitle">המסכים שנפתחים אחרי הכניסה</p>
-        
-        <div class="features-grid">
-            <div class="feature-card">
-                <span class="feature-icon">🖥️</span>
-                <h3>פורטל חדר מחשב</h3>
-                <p>התראות ממערכת הניטור, משמרת נוכחית ולוח משמרות, לוח משימות ומודעות, צ'קליסט יומי, נהלים, קישורים, משימות לפי עובד, ניהול פעילויות ומיפוי חדרי השרתים.</p>
-            </div>
-
-            <div class="feature-card">
-                <span class="feature-icon">📞</span>
-                <h3>ספר טלפונים ושינויים</h3>
-                <p>חיפוש אנשי קשר, ייבוא מאקסל, ולוח שינויים מתוכננים בתצוגת לוח שנה או טבלה עם ייצוא.</p>
-            </div>
-
-            <div class="feature-card">
-                <span class="feature-icon">📊</span>
-                <h3>דשבורדים</h3>
-                <p>NOC Events, Data Center, Suites Results, Tests Results, Servers &amp; Systems, Systems Catalog, Changes &amp; CAB, Activity Manager, IT Structure, Manage Tasks ו-Goals &amp; Achievements.</p>
-            </div>
-
-            <div class="feature-card">
-                <span class="feature-icon">🛡️</span>
-                <h3>ניהול</h3>
-                <p>משתמשים והרשאות, לוג פעילות, הודעות מערכת, אישור שינויים בספר הטלפונים, וחסימת ימים לאישורי כניסה אוטומטיים. מדריך הפעולות נמצא בתוך המערכת אחרי הכניסה.</p>
-            </div>
-        </div>
-    </section>
-
-    <!-- ============================================
-         ABOUT / BACKGROUND SECTION
-         ============================================ -->
-    <section id="about" class="about">
-        <div class="about-container">
-            <h2>הרקע לפרויקט</h2>
-            
-            <div class="about-sections">
-                <div class="about-section">
-                    <h3>הצורך - מה החסר?</h3>
-                    <p>
-                        ניהול חדר בקרה דורש מעקב רציף, והכלים הקיימים בשוק לעיתים מורכבים מדי, מפוזרים או לא מותאמים לדינמיקה האמיתית של ה-NOC. צוות תפעול יעיל צריך כלים שמוגבלים אליו – לא להפך.
+    <main id="top">
+        <section class="hero">
+            <div class="hero-grid">
+                <div class="hero-copy">
+                    <p class="eyebrow">לחדר בקרה שעובד בשקט</p>
+                    <h1>המשמרת רואה הכל.<br>במקום אחד.</h1>
+                    <p class="subtitle">
+                        NocPortal מחליף את הקפיצה בין מערכות במסך אחד, ברור וחי.
+                        ניטור, אנשים ומשימות, בלי רעש מסביב.
                     </p>
+                    <div class="hero-buttons">
+                        <a href="#contact" class="btn btn-primary">בואו נדבר</a>
+                        <a href="#idea" class="btn btn-ghost">הרעיון</a>
+                    </div>
                 </div>
 
-                <div class="about-section">
-                    <h3>הפתרון - מה בנינו?</h3>
-                    <p>
-                        פיתחנו את הפורטל כמענה ישיר לכאבים האלו – פתרון שנבנה על ידי אנשי מקצוע עבור אנשי מקצוע, כדי למנוע כפילויות ולקצר זמני תגובה. מערכת פשוטה אך חזקה, מותאמת לצורכי הנוק האמיתיים.
-                    </p>
+                <div class="hero-panel" aria-hidden="true">
+                    <div class="panel-top">
+                        <span class="panel-title">
+                            <span class="panel-dot"></span>
+                            המשמרת עכשיו
+                        </span>
+                        <span class="panel-live">Live</span>
+                    </div>
+                    <div class="panel-metrics">
+                        <div><strong>ניטור</strong><span>מה דורש תשומת לב</span></div>
+                        <div><strong>משמרת</strong><span>מי על המשמרת</span></div>
+                        <div><strong>משימות</strong><span>מה על השולחן</span></div>
+                    </div>
+                    <ul class="panel-list">
+                        <li><span class="sev sev-critical"></span><span>התראה שצריך לראות עכשיו</span><em>פתוח</em></li>
+                        <li><span class="sev sev-major"></span><span>משימה שמחכה למשמרת</span><em>בטיפול</em></li>
+                        <li><span class="sev sev-ok"></span><span>תמונה שאפשר גם להציג על הקיר</span><em>רגוע</em></li>
+                    </ul>
                 </div>
             </div>
-        </div>
-    </section>
+        </section>
 
-    <!-- ============================================
-         FOOTER
-         ============================================ -->
+        <section id="idea" class="idea">
+            <div class="section-head">
+                <p class="kicker">הרעיון</p>
+                <h2>פחות מסכים. יותר שליטה.</h2>
+                <p>חדר בקרה טוב לא צריך עוד מערכת. הוא צריך מקום אחד שבו המשמרת מבינה מה קורה.</p>
+            </div>
+            <div class="idea-grid">
+                <article>
+                    <span class="card-index">01</span>
+                    <h3>מסך אחד למשמרת</h3>
+                    <p>ההתראה, האנשים והמשימה נמצאים מול העיניים. לא בארבעה כלים ובשלושה קבצים.</p>
+                </article>
+                <article>
+                    <span class="card-index">02</span>
+                    <h3>נבנה מתוך השטח</h3>
+                    <p>המוצר נולד בחדר בקרה אמיתי, סביב היום של הצוות ולא סביב מצגת.</p>
+                </article>
+                <article>
+                    <span class="card-index">03</span>
+                    <h3>גם לקיר, גם למנהל</h3>
+                    <p>אותה תמונה עובדת על מסך המשמרת ונותנת למנהלים מבט בלי להיכנס לתוך הרעש.</p>
+                </article>
+            </div>
+        </section>
+
+        <section class="band">
+            <p>מסך אחד למשמרת. תמונה אחת למנהלים. בלי עוד כלי.</p>
+        </section>
+
+        <section id="contact" class="contact">
+            <div class="contact-grid">
+                <div class="contact-copy">
+                    <p class="kicker">צור קשר</p>
+                    <h2>רוצים לראות את זה אצלכם?</h2>
+                    <p>השאירו כמה מילים. ייפתח ג'ימייל עם הפנייה מוכנה, וממנו נחזור לשיחה קצרה על חדר הבקרה שלכם.</p>
+                </div>
+
+                <form id="contactForm" class="contact-form" novalidate>
+                    <label>
+                        שם
+                        <input type="text" name="name" autocomplete="name" required maxlength="80">
+                    </label>
+                    <label>
+                        מייל
+                        <input type="email" name="email" autocomplete="email" required maxlength="120">
+                    </label>
+                    <label>
+                        נושא
+                        <select name="topic" required>
+                            <option value="">בחרו נושא</option>
+                            <option>היכרות עם המוצר</option>
+                            <option>הדגמה לחדר בקרה</option>
+                            <option>שאלה כללית</option>
+                        </select>
+                    </label>
+                    <label>
+                        הודעה
+                        <textarea name="message" rows="5" required maxlength="2000" placeholder="ספרו בקצרה מי אתם ומה תרצו לראות"></textarea>
+                    </label>
+                    <p class="form-status" role="status" hidden></p>
+                    <button type="submit" class="btn btn-primary">פתיחה בג'ימייל</button>
+                </form>
+            </div>
+        </section>
+    </main>
+
     <footer>
-        <div class="footer-content">
-            <div class="footer-contact">
-                <div class="footer-message">
-                    בנינו את המערכת הזו כדי לפתור בעיה אמיתית. נשמח לשמוע מכם פידבק, רעיונות או שאלות.
-                </div>
-                <p>
-                    <a href="mailto:admin@nocportal.local" class="footer-link">צור קשר</a>
-                </p>
-            </div>
-            <div class="footer-copyright">
-                <p>&copy; 2026 NocPortal. כל הזכויות שמורות.</p>
-            </div>
-        </div>
+        <p>NocPortal</p>
+        <p class="footer-copy">&copy; 2026</p>
     </footer>
+
+    <script>
+        const toggle = document.querySelector('.nav-toggle');
+        const nav = document.getElementById('site-nav');
+        toggle.addEventListener('click', () => {
+            const open = nav.classList.toggle('is-open');
+            toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        });
+        nav.querySelectorAll('a').forEach((link) => {
+            link.addEventListener('click', () => {
+                nav.classList.remove('is-open');
+                toggle.setAttribute('aria-expanded', 'false');
+            });
+        });
+
+        const form = document.getElementById('contactForm');
+        const status = form.querySelector('.form-status');
+
+        function showStatus(text, ok) {
+            status.hidden = false;
+            status.textContent = text;
+            status.classList.toggle('is-ok', ok);
+            status.classList.toggle('is-error', !ok);
+        }
+
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            const data = new FormData(form);
+            const name = String(data.get('name') || '').trim();
+            const email = String(data.get('email') || '').trim();
+            const topic = String(data.get('topic') || '').trim();
+            const message = String(data.get('message') || '').trim();
+            const emailOk = /^[^\s@@]+@@[^\s@@]+\.[^\s@@]+$/.test(email);
+
+            if (name.length < 2 || !emailOk || !topic || message.length < 5) {
+                showStatus('מלאו שם, מייל תקין, נושא והודעה קצרה.', false);
+                return;
+            }
+
+            const subject = `NocPortal | ${topic} | ${name}`;
+            const body = `שם: ${name}\nמייל לחזרה: ${email}\nנושא: ${topic}\n\n${message}`;
+            const to = 'talyohay@yahoo.com,lirongo12@gmail.com';
+            const gmail = 'https://mail.google.com/mail/?view=cm&fs=1'
+                + `&to=${encodeURIComponent(to)}`
+                + `&su=${encodeURIComponent(subject)}`
+                + `&body=${encodeURIComponent(body)}`;
+            const draft = window.open(gmail, '_blank', 'noopener');
+            if (!draft) window.location.href = gmail;
+            showStatus('נפתח ג\'ימייל עם הפנייה מוכנה. שלחו אותה כדי שהיא תגיע אלינו.', true);
+        });
+    </script>
 </body>
 </html>
