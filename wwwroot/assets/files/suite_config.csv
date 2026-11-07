@@ -1,0 +1,6 @@
+id,parent_uid,display_name,suite_name,suite_number,suite_team,suite_browser,cloud_beat_id,added_at,is_patch
+1,mock-suite-uid-portal,בדיקות פורטל NOC,Portal Smoke,12,Tashtiot_UI Team,CH,cb-1001,2026-11-01 08:00:00,0
+2,mock-suite-uid-db,בדיקות בסיס נתונים,DB Health,18,Tashtiot_DBA Team,CH,cb-1002,2026-11-01 08:10:00,0
+3,mock-suite-uid-api,בדיקות API,API Regression,24,Tashtiot_API Team,CH,cb-1003,2026-11-02 09:00:00,0
+4,mock-suite-uid-core,בדיקות ליבה,Core Nightly,31,Tashtiot_Core Team,IE,cb-1004,2026-11-02 09:20:00,0
+5,mock-suite-uid-patch,בדיקות אחרי פאץ',Patch Security,40,Tashtiot_Core Team,CH,cb-2001,2026-11-05 22:00:00,1

@@ -1,0 +1,34 @@
+[
+  {
+    "Id": "map-1",
+    "Pattern": "disk",
+    "MatchType": "contains",
+    "HostPattern": "db-sql",
+    "HostMatchType": "contains",
+    "ConditionOperator": "OR",
+    "ProcedureFileName": "נוהל עבודה.docx",
+    "ProcedureName": "נוהל עבודה במשמרת",
+    "ProcedureFolderPath": "",
+    "Description": "התראת דיסק או שרת בסיס נתונים",
+    "CreatedBy": "admin",
+    "CreatedAt": "2026-11-07 08:00:00",
+    "UpdatedBy": "admin",
+    "UpdatedAt": "2026-11-07 08:00:00"
+  },
+  {
+    "Id": "map-2",
+    "Pattern": "Mock Alert",
+    "MatchType": "contains",
+    "HostPattern": "",
+    "HostMatchType": "contains",
+    "ConditionOperator": "OR",
+    "ProcedureFileName": "נוהל עבודה.docx",
+    "ProcedureName": "נוהל טיפול בהתראה",
+    "ProcedureFolderPath": "",
+    "Description": "מיפוי כללי להתראות הדמו",
+    "CreatedBy": "admin",
+    "CreatedAt": "2026-11-07 08:05:00",
+    "UpdatedBy": "admin",
+    "UpdatedAt": "2026-11-07 08:05:00"
+  }
+]

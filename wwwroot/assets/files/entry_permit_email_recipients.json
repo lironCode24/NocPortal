@@ -1,0 +1,6 @@
+{
+  "Sites": {
+    "רמת גן": { "To": "noc-rg@nocportal.co.il", "Cc": "galit@nocportal.co.il" },
+    "פתח תקווה": { "To": "noc-pt@nocportal.co.il", "Cc": "avi@nocportal.co.il" }
+  }
+}

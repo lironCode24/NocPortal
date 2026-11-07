@@ -43,6 +43,13 @@ public class SuiteResultsController : Controller
         _userService  = userService;
     }
 
+    private bool IsLocalDemoHost()
+    {
+        var host = Request.Host.Host ?? "";
+        return true || host.Contains("localhost", StringComparison.OrdinalIgnoreCase)
+            || host == "127.0.0.1";
+    }
+
     // ==========================================
     // GetAllSuites — קורא מהקובץ, שולף בדיקות
     // ==========================================
@@ -52,8 +59,9 @@ public class SuiteResultsController : Controller
     {
         try
         {
-            // return GenerateMockResults(suitesCount: 50, testsPerSuite: 17,patchSuitesCount: 4);
-            
+            if (IsLocalDemoHost())
+                return GenerateMockResults(suitesCount: 12, testsPerSuite: 8, patchSuitesCount: 3);
+
             // 1. קרא את רשימת הסוויטות מהקובץ
             var suiteConfig = new SuiteConfigController(_httpClientFactory, _secrets);
             var configEntries = suiteConfig.ReadSuitesFromCsv();
@@ -175,7 +183,9 @@ public class SuiteResultsController : Controller
     {
         try
         {
-            // return GenerateMockRecentTests(count : 150, hours : 24);
+            if (IsLocalDemoHost())
+                return GenerateMockRecentTests(count: 40, hours: hours);
+
             var handler = new HttpClientHandler
             {
                 ServerCertificateCustomValidationCallback = (_, _, _, _) => true

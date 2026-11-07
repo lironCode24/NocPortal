@@ -1,0 +1,26 @@
+[
+  {
+    "Id": "msg-sys-1",
+    "Title": "חלון תחזוקה הלילה",
+    "Content": "בין 02:00 ל-04:00 תתבצע תחזוקה על שרת הדוחות SRV-RPT-01. שאר המערכות נשארות זמינות.",
+    "CreatedAt": "2026-11-07T06:30:00",
+    "CreatedBy": "גלית",
+    "IsActive": true,
+    "TargetUserIds": [],
+    "TargetRoles": [],
+    "IsEdited": false,
+    "Acknowledgments": []
+  },
+  {
+    "Id": "msg-sys-2",
+    "Title": "שני עובדים חדשים ממתינים בספר הטלפונים",
+    "Content": "ליאור ברק והילה גולן נוספו בייצוא האחרון וממתינים לאישור מנהל.",
+    "CreatedAt": "2026-11-07T07:10:00",
+    "CreatedBy": "admin",
+    "IsActive": true,
+    "TargetUserIds": [],
+    "TargetRoles": ["Admin"],
+    "IsEdited": false,
+    "Acknowledgments": []
+  }
+]

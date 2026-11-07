@@ -1,0 +1,1992 @@
+{
+    "A1-1":  [
+                 {
+                     "StartPosition":  3,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #1-0",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  6,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #1-1",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #1-2",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #1-3",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  15,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #1-4",
+                     "Type":  "storage"
+                 }
+             ],
+    "A1-2":  [
+                 {
+                     "StartPosition":  4,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #2-0",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  6,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #2-1",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  11,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #2-2",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #2-3",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  16,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #2-4",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  19,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #2-5",
+                     "Type":  "server"
+                 }
+             ],
+    "A1-3":  [
+                 {
+                     "StartPosition":  2,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #3-0",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  7,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #3-1",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  9,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #3-2",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  12,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #3-3",
+                     "Type":  "server"
+                 }
+             ],
+    "A1-4":  [
+                 {
+                     "StartPosition":  3,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #4-0",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  5,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #4-1",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #4-2",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  11,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #4-3",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  14,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #4-4",
+                     "Type":  "switch"
+                 }
+             ],
+    "A1-5":  [
+                 {
+                     "StartPosition":  4,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #5-0",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  7,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #5-1",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  10,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #5-2",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #5-3",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  15,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #5-4",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  20,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #5-5",
+                     "Type":  "switch"
+                 }
+             ],
+    "A1-6":  [
+                 {
+                     "StartPosition":  2,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #6-0",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  5,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #6-1",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #6-2",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  10,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #6-3",
+                     "Type":  "storage"
+                 }
+             ],
+    "A1-7":  [
+                 {
+                     "StartPosition":  3,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #7-0",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  6,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #7-1",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #7-2",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #7-3",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  15,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #7-4",
+                     "Type":  "storage"
+                 }
+             ],
+    "A2-1":  [
+                 {
+                     "StartPosition":  4,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #8-0",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  6,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #8-1",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  11,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #8-2",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #8-3",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  16,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #8-4",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  19,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #8-5",
+                     "Type":  "server"
+                 }
+             ],
+    "A2-2":  [
+                 {
+                     "StartPosition":  2,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #9-0",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  7,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #9-1",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  9,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #9-2",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  12,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #9-3",
+                     "Type":  "server"
+                 }
+             ],
+    "A3-2":  [
+                 {
+                     "StartPosition":  3,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #10-0",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  5,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #10-1",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #10-2",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  11,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #10-3",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  14,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #10-4",
+                     "Type":  "switch"
+                 }
+             ],
+    "A3-3":  [
+                 {
+                     "StartPosition":  4,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #11-0",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  7,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #11-1",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  10,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #11-2",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #11-3",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  15,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #11-4",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  20,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #11-5",
+                     "Type":  "switch"
+                 }
+             ],
+    "A3-4":  [
+                 {
+                     "StartPosition":  2,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #12-0",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  5,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #12-1",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #12-2",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  10,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #12-3",
+                     "Type":  "storage"
+                 }
+             ],
+    "A3-5":  [
+                 {
+                     "StartPosition":  3,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #13-0",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  6,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #13-1",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #13-2",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #13-3",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  15,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #13-4",
+                     "Type":  "storage"
+                 }
+             ],
+    "A3-6":  [
+                 {
+                     "StartPosition":  4,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #14-0",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  6,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #14-1",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  11,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #14-2",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #14-3",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  16,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #14-4",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  19,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #14-5",
+                     "Type":  "server"
+                 }
+             ],
+    "A3-7":  [
+                 {
+                     "StartPosition":  2,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #15-0",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  7,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #15-1",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  9,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #15-2",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  12,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #15-3",
+                     "Type":  "server"
+                 }
+             ],
+    "A4-3":  [
+                 {
+                     "StartPosition":  3,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #16-0",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  5,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #16-1",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #16-2",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  11,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #16-3",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  14,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #16-4",
+                     "Type":  "switch"
+                 }
+             ],
+    "A4-4":  [
+                 {
+                     "StartPosition":  4,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #17-0",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  7,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #17-1",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  10,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #17-2",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #17-3",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  15,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #17-4",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  20,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #17-5",
+                     "Type":  "switch"
+                 }
+             ],
+    "A4-5":  [
+                 {
+                     "StartPosition":  2,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #18-0",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  5,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #18-1",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #18-2",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  10,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #18-3",
+                     "Type":  "storage"
+                 }
+             ],
+    "A4-6":  [
+                 {
+                     "StartPosition":  3,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #19-0",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  6,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #19-1",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #19-2",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #19-3",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  15,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #19-4",
+                     "Type":  "storage"
+                 }
+             ],
+    "A4-7":  [
+                 {
+                     "StartPosition":  4,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #20-0",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  6,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #20-1",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  11,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #20-2",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #20-3",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  16,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #20-4",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  19,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #20-5",
+                     "Type":  "server"
+                 }
+             ],
+    "B1-0":  [
+                 {
+                     "StartPosition":  2,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #21-0",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  7,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #21-1",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  9,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #21-2",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  12,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #21-3",
+                     "Type":  "server"
+                 }
+             ],
+    "B1-1":  [
+                 {
+                     "StartPosition":  3,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #22-0",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  5,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #22-1",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #22-2",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  11,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #22-3",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  14,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #22-4",
+                     "Type":  "switch"
+                 }
+             ],
+    "B1-2":  [
+                 {
+                     "StartPosition":  4,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #23-0",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  7,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #23-1",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  10,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #23-2",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #23-3",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  15,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #23-4",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  20,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #23-5",
+                     "Type":  "switch"
+                 }
+             ],
+    "B1-3":  [
+                 {
+                     "StartPosition":  2,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #24-0",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  5,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #24-1",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #24-2",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  10,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #24-3",
+                     "Type":  "storage"
+                 }
+             ],
+    "B1-4":  [
+                 {
+                     "StartPosition":  3,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #25-0",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  6,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #25-1",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #25-2",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #25-3",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  15,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #25-4",
+                     "Type":  "storage"
+                 }
+             ],
+    "B1-5":  [
+                 {
+                     "StartPosition":  4,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #26-0",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  6,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #26-1",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  11,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #26-2",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #26-3",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  16,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #26-4",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  19,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #26-5",
+                     "Type":  "server"
+                 }
+             ],
+    "B1-6":  [
+                 {
+                     "StartPosition":  2,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #27-0",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  7,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #27-1",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  9,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #27-2",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  12,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #27-3",
+                     "Type":  "server"
+                 }
+             ],
+    "B2-1":  [
+                 {
+                     "StartPosition":  3,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #28-0",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  5,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #28-1",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #28-2",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  11,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #28-3",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  14,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #28-4",
+                     "Type":  "switch"
+                 }
+             ],
+    "B2-2":  [
+                 {
+                     "StartPosition":  4,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #29-0",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  7,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #29-1",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  10,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #29-2",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #29-3",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  15,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #29-4",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  20,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #29-5",
+                     "Type":  "switch"
+                 }
+             ],
+    "B2-3":  [
+                 {
+                     "StartPosition":  2,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #30-0",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  5,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #30-1",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #30-2",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  10,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #30-3",
+                     "Type":  "storage"
+                 }
+             ],
+    "B2-4":  [
+                 {
+                     "StartPosition":  3,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #31-0",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  6,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #31-1",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #31-2",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #31-3",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  15,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #31-4",
+                     "Type":  "storage"
+                 }
+             ],
+    "B2-5":  [
+                 {
+                     "StartPosition":  4,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #32-0",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  6,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #32-1",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  11,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #32-2",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #32-3",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  16,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #32-4",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  19,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #32-5",
+                     "Type":  "server"
+                 }
+             ],
+    "B2-6":  [
+                 {
+                     "StartPosition":  2,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #33-0",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  7,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #33-1",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  9,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #33-2",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  12,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #33-3",
+                     "Type":  "server"
+                 }
+             ],
+    "B2-7":  [
+                 {
+                     "StartPosition":  3,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #34-0",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  5,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #34-1",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #34-2",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  11,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #34-3",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  14,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #34-4",
+                     "Type":  "switch"
+                 }
+             ],
+    "B3-1":  [
+                 {
+                     "StartPosition":  4,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #35-0",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  7,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #35-1",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  10,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #35-2",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #35-3",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  15,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #35-4",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  20,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #35-5",
+                     "Type":  "switch"
+                 }
+             ],
+    "B3-2":  [
+                 {
+                     "StartPosition":  2,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #36-0",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  5,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #36-1",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #36-2",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  10,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #36-3",
+                     "Type":  "storage"
+                 }
+             ],
+    "B3-3":  [
+                 {
+                     "StartPosition":  3,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #37-0",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  6,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #37-1",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #37-2",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #37-3",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  15,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #37-4",
+                     "Type":  "storage"
+                 }
+             ],
+    "B3-4":  [
+                 {
+                     "StartPosition":  4,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #38-0",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  6,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #38-1",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  11,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #38-2",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #38-3",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  16,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #38-4",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  19,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #38-5",
+                     "Type":  "server"
+                 }
+             ],
+    "B3-5":  [
+                 {
+                     "StartPosition":  2,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #39-0",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  7,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #39-1",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  9,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #39-2",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  12,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #39-3",
+                     "Type":  "server"
+                 }
+             ],
+    "B3-6":  [
+                 {
+                     "StartPosition":  3,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #40-0",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  5,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #40-1",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #40-2",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  11,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #40-3",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  14,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #40-4",
+                     "Type":  "switch"
+                 }
+             ],
+    "B3-7":  [
+                 {
+                     "StartPosition":  4,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #41-0",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  7,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #41-1",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  10,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #41-2",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #41-3",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  15,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #41-4",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  20,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #41-5",
+                     "Type":  "switch"
+                 }
+             ],
+    "B4-1":  [
+                 {
+                     "StartPosition":  2,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #42-0",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  5,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #42-1",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #42-2",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  10,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #42-3",
+                     "Type":  "storage"
+                 }
+             ],
+    "B4-2":  [
+                 {
+                     "StartPosition":  3,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #43-0",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  6,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #43-1",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #43-2",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #43-3",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  15,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #43-4",
+                     "Type":  "storage"
+                 }
+             ],
+    "B4-3":  [
+                 {
+                     "StartPosition":  4,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #44-0",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  6,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #44-1",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  11,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #44-2",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #44-3",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  16,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #44-4",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  19,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #44-5",
+                     "Type":  "server"
+                 }
+             ],
+    "B4-4":  [
+                 {
+                     "StartPosition":  2,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #45-0",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  7,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #45-1",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  9,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #45-2",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  12,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #45-3",
+                     "Type":  "server"
+                 }
+             ],
+    "B4-5":  [
+                 {
+                     "StartPosition":  3,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #46-0",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  5,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #46-1",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #46-2",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  11,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #46-3",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  14,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #46-4",
+                     "Type":  "switch"
+                 }
+             ],
+    "B4-6":  [
+                 {
+                     "StartPosition":  4,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #47-0",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  7,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #47-1",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  10,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #47-2",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #47-3",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  15,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #47-4",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  20,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #47-5",
+                     "Type":  "switch"
+                 }
+             ],
+    "B4-7":  [
+                 {
+                     "StartPosition":  2,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #48-0",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  5,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #48-1",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #48-2",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  10,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #48-3",
+                     "Type":  "storage"
+                 }
+             ],
+    "B5-1":  [
+                 {
+                     "StartPosition":  3,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #49-0",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  6,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #49-1",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #49-2",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #49-3",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  15,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #49-4",
+                     "Type":  "storage"
+                 }
+             ],
+    "B5-2":  [
+                 {
+                     "StartPosition":  4,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #50-0",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  6,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #50-1",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  11,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #50-2",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #50-3",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  16,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #50-4",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  19,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #50-5",
+                     "Type":  "server"
+                 }
+             ],
+    "B5-3":  [
+                 {
+                     "StartPosition":  2,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #51-0",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  7,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #51-1",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  9,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #51-2",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  12,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #51-3",
+                     "Type":  "server"
+                 }
+             ],
+    "B5-4":  [
+                 {
+                     "StartPosition":  3,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #52-0",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  5,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #52-1",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #52-2",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  11,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #52-3",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  14,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #52-4",
+                     "Type":  "switch"
+                 }
+             ],
+    "B5-5":  [
+                 {
+                     "StartPosition":  4,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #53-0",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  7,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #53-1",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  10,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #53-2",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #53-3",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  15,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #53-4",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  20,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #53-5",
+                     "Type":  "switch"
+                 }
+             ],
+    "B5-6":  [
+                 {
+                     "StartPosition":  2,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #54-0",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  5,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #54-1",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #54-2",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  10,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #54-3",
+                     "Type":  "storage"
+                 }
+             ],
+    "B5-7":  [
+                 {
+                     "StartPosition":  3,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #55-0",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  6,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #55-1",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #55-2",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #55-3",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  15,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #55-4",
+                     "Type":  "storage"
+                 }
+             ],
+    "B6-1":  [
+                 {
+                     "StartPosition":  4,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #56-0",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  6,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #56-1",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  11,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #56-2",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #56-3",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  16,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #56-4",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  19,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #56-5",
+                     "Type":  "server"
+                 }
+             ],
+    "B6-2":  [
+                 {
+                     "StartPosition":  2,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #57-0",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  7,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #57-1",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  9,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #57-2",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  12,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #57-3",
+                     "Type":  "server"
+                 }
+             ],
+    "B6-3":  [
+                 {
+                     "StartPosition":  3,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #58-0",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  5,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #58-1",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #58-2",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  11,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #58-3",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  14,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #58-4",
+                     "Type":  "switch"
+                 }
+             ],
+    "B6-4":  [
+                 {
+                     "StartPosition":  4,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #59-0",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  7,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #59-1",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  10,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #59-2",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #59-3",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  15,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #59-4",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  20,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #59-5",
+                     "Type":  "switch"
+                 }
+             ],
+    "B6-5":  [
+                 {
+                     "StartPosition":  2,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #60-0",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  5,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #60-1",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #60-2",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  10,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #60-3",
+                     "Type":  "storage"
+                 }
+             ],
+    "B6-6":  [
+                 {
+                     "StartPosition":  3,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #61-0",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  6,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #61-1",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  8,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #61-2",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #61-3",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  15,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #61-4",
+                     "Type":  "storage"
+                 }
+             ],
+    "B6-7":  [
+                 {
+                     "StartPosition":  4,
+                     "SizeUnits":  1,
+                     "Equipment":  "Cisco Nexus 9336 #62-0",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  6,
+                     "SizeUnits":  4,
+                     "Equipment":  "NetApp AFF A250 #62-1",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  11,
+                     "SizeUnits":  1,
+                     "Equipment":  "Arista 7050 Switch #62-2",
+                     "Type":  "switch"
+                 },
+                 {
+                     "StartPosition":  13,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerStore 500 #62-3",
+                     "Type":  "storage"
+                 },
+                 {
+                     "StartPosition":  16,
+                     "SizeUnits":  2,
+                     "Equipment":  "Dell PowerEdge R750 #62-4",
+                     "Type":  "server"
+                 },
+                 {
+                     "StartPosition":  19,
+                     "SizeUnits":  2,
+                     "Equipment":  "HPE ProLiant DL380 #62-5",
+                     "Type":  "server"
+                 }
+             ]
+}

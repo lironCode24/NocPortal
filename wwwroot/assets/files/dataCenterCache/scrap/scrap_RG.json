@@ -1,0 +1,13 @@
+[
+  {
+    "Equipment": "Dell PowerEdge R640 retired",
+    "RackId": "B1-2",
+    "StartPosition": 20,
+    "SizeUnits": 2,
+    "Type": "server",
+    "DataCenterType": "RG",
+    "RemovedAt": "2026-11-04T10:00:00",
+    "RemovedBy": "יבגני",
+    "Notes": "הוצא אחרי תקלת ספק"
+  }
+]

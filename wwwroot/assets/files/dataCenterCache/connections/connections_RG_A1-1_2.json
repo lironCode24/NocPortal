@@ -1,0 +1,16 @@
+[
+    {
+        "Port":  1,
+        "ConnectedTo":  "Core-SW-01",
+        "Description":  "uplink",
+        "Speed":  "25G",
+        "Type":  "fiber"
+    },
+    {
+        "Port":  2,
+        "ConnectedTo":  "iLO-SW",
+        "Description":  "management",
+        "Speed":  "1G",
+        "Type":  "copper"
+    }
+]

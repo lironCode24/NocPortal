@@ -1,0 +1,13 @@
+[
+  {
+    "Equipment": "Cisco 2960 ישן",
+    "RackId": "C1",
+    "StartPosition": 40,
+    "SizeUnits": 1,
+    "Type": "switch",
+    "DataCenterType": "PT",
+    "RemovedAt": "2026-11-02T15:30:00",
+    "RemovedBy": "אבי",
+    "Notes": "הוחלף במתג חדש"
+  }
+]

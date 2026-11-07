@@ -1,0 +1,1886 @@
+{
+    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00",
+    "NextUpdate":  "2026-11-07T19:28:16.9015306+02:00",
+    "Metrics":  {
+                    "RG:A1-1:L":  {
+                                      "RackId":  "A1-1",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.55,
+                                      "CurrentTemperature":  19.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A1-1:R":  {
+                                      "RackId":  "A1-1",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.95,
+                                      "CurrentTemperature":  20.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A1-2:L":  {
+                                      "RackId":  "A1-2",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.9,
+                                      "CurrentTemperature":  20.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A1-2:R":  {
+                                      "RackId":  "A1-2",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.3,
+                                      "CurrentTemperature":  21.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A1-3:L":  {
+                                      "RackId":  "A1-3",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.25,
+                                      "CurrentTemperature":  21.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A1-3:R":  {
+                                      "RackId":  "A1-3",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.65,
+                                      "CurrentTemperature":  22.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A1-4:L":  {
+                                      "RackId":  "A1-4",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.6,
+                                      "CurrentTemperature":  22.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A1-4:R":  {
+                                      "RackId":  "A1-4",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3,
+                                      "CurrentTemperature":  23.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A1-5:L":  {
+                                      "RackId":  "A1-5",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.95,
+                                      "CurrentTemperature":  23.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A1-5:R":  {
+                                      "RackId":  "A1-5",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.35,
+                                      "CurrentTemperature":  24.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A1-6:L":  {
+                                      "RackId":  "A1-6",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.3,
+                                      "CurrentTemperature":  18.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A1-6:R":  {
+                                      "RackId":  "A1-6",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.7,
+                                      "CurrentTemperature":  19.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A1-7:L":  {
+                                      "RackId":  "A1-7",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.2,
+                                      "CurrentTemperature":  19.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A1-7:R":  {
+                                      "RackId":  "A1-7",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.6,
+                                      "CurrentTemperature":  20.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A2-1:L":  {
+                                      "RackId":  "A2-1",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.55,
+                                      "CurrentTemperature":  20.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A2-1:R":  {
+                                      "RackId":  "A2-1",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.95,
+                                      "CurrentTemperature":  21.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A2-2:L":  {
+                                      "RackId":  "A2-2",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.9,
+                                      "CurrentTemperature":  21.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A2-2:R":  {
+                                      "RackId":  "A2-2",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.3,
+                                      "CurrentTemperature":  22.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A3-2:L":  {
+                                      "RackId":  "A3-2",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.25,
+                                      "CurrentTemperature":  22.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A3-2:R":  {
+                                      "RackId":  "A3-2",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.65,
+                                      "CurrentTemperature":  23.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A3-3:L":  {
+                                      "RackId":  "A3-3",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.6,
+                                      "CurrentTemperature":  23.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A3-3:R":  {
+                                      "RackId":  "A3-3",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3,
+                                      "CurrentTemperature":  24.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A3-4:L":  {
+                                      "RackId":  "A3-4",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.95,
+                                      "CurrentTemperature":  18.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A3-4:R":  {
+                                      "RackId":  "A3-4",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.35,
+                                      "CurrentTemperature":  19.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A3-5:L":  {
+                                      "RackId":  "A3-5",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.3,
+                                      "CurrentTemperature":  19.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A3-5:R":  {
+                                      "RackId":  "A3-5",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.7,
+                                      "CurrentTemperature":  20.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A3-6:L":  {
+                                      "RackId":  "A3-6",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.2,
+                                      "CurrentTemperature":  20.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A3-6:R":  {
+                                      "RackId":  "A3-6",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.6,
+                                      "CurrentTemperature":  21.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A3-7:L":  {
+                                      "RackId":  "A3-7",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.55,
+                                      "CurrentTemperature":  21.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A3-7:R":  {
+                                      "RackId":  "A3-7",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.95,
+                                      "CurrentTemperature":  22.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A4-3:L":  {
+                                      "RackId":  "A4-3",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.9,
+                                      "CurrentTemperature":  22.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A4-3:R":  {
+                                      "RackId":  "A4-3",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.3,
+                                      "CurrentTemperature":  23.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A4-4:L":  {
+                                      "RackId":  "A4-4",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.25,
+                                      "CurrentTemperature":  23.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A4-4:R":  {
+                                      "RackId":  "A4-4",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.65,
+                                      "CurrentTemperature":  24.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A4-5:L":  {
+                                      "RackId":  "A4-5",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.6,
+                                      "CurrentTemperature":  18.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A4-5:R":  {
+                                      "RackId":  "A4-5",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3,
+                                      "CurrentTemperature":  19.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A4-6:L":  {
+                                      "RackId":  "A4-6",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.95,
+                                      "CurrentTemperature":  19.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A4-6:R":  {
+                                      "RackId":  "A4-6",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.35,
+                                      "CurrentTemperature":  20.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A4-7:L":  {
+                                      "RackId":  "A4-7",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.3,
+                                      "CurrentTemperature":  20.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:A4-7:R":  {
+                                      "RackId":  "A4-7",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.7,
+                                      "CurrentTemperature":  21.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B1-0:L":  {
+                                      "RackId":  "B1-0",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.2,
+                                      "CurrentTemperature":  21.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B1-0:R":  {
+                                      "RackId":  "B1-0",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.6,
+                                      "CurrentTemperature":  22.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B1-1:L":  {
+                                      "RackId":  "B1-1",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.55,
+                                      "CurrentTemperature":  22.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B1-1:R":  {
+                                      "RackId":  "B1-1",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.95,
+                                      "CurrentTemperature":  23.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B1-2:L":  {
+                                      "RackId":  "B1-2",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.9,
+                                      "CurrentTemperature":  23.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B1-2:R":  {
+                                      "RackId":  "B1-2",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.3,
+                                      "CurrentTemperature":  24.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B1-3:L":  {
+                                      "RackId":  "B1-3",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.25,
+                                      "CurrentTemperature":  18.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B1-3:R":  {
+                                      "RackId":  "B1-3",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.65,
+                                      "CurrentTemperature":  19.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B1-4:L":  {
+                                      "RackId":  "B1-4",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.6,
+                                      "CurrentTemperature":  19.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B1-4:R":  {
+                                      "RackId":  "B1-4",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3,
+                                      "CurrentTemperature":  20.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B1-5:L":  {
+                                      "RackId":  "B1-5",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.95,
+                                      "CurrentTemperature":  20.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B1-5:R":  {
+                                      "RackId":  "B1-5",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.35,
+                                      "CurrentTemperature":  21.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B1-6:L":  {
+                                      "RackId":  "B1-6",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.3,
+                                      "CurrentTemperature":  21.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B1-6:R":  {
+                                      "RackId":  "B1-6",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.7,
+                                      "CurrentTemperature":  22.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B2-1:L":  {
+                                      "RackId":  "B2-1",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.2,
+                                      "CurrentTemperature":  22.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B2-1:R":  {
+                                      "RackId":  "B2-1",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.6,
+                                      "CurrentTemperature":  23.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B2-2:L":  {
+                                      "RackId":  "B2-2",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.55,
+                                      "CurrentTemperature":  23.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B2-2:R":  {
+                                      "RackId":  "B2-2",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.95,
+                                      "CurrentTemperature":  24.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B2-3:L":  {
+                                      "RackId":  "B2-3",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.9,
+                                      "CurrentTemperature":  18.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B2-3:R":  {
+                                      "RackId":  "B2-3",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.3,
+                                      "CurrentTemperature":  19.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B2-4:L":  {
+                                      "RackId":  "B2-4",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.25,
+                                      "CurrentTemperature":  19.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B2-4:R":  {
+                                      "RackId":  "B2-4",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.65,
+                                      "CurrentTemperature":  20.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B2-5:L":  {
+                                      "RackId":  "B2-5",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.6,
+                                      "CurrentTemperature":  20.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B2-5:R":  {
+                                      "RackId":  "B2-5",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3,
+                                      "CurrentTemperature":  21.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B2-6:L":  {
+                                      "RackId":  "B2-6",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.95,
+                                      "CurrentTemperature":  21.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B2-6:R":  {
+                                      "RackId":  "B2-6",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.35,
+                                      "CurrentTemperature":  22.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B2-7:L":  {
+                                      "RackId":  "B2-7",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.3,
+                                      "CurrentTemperature":  22.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B2-7:R":  {
+                                      "RackId":  "B2-7",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.7,
+                                      "CurrentTemperature":  23.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B3-1:L":  {
+                                      "RackId":  "B3-1",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.2,
+                                      "CurrentTemperature":  23.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B3-1:R":  {
+                                      "RackId":  "B3-1",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.6,
+                                      "CurrentTemperature":  24.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B3-2:L":  {
+                                      "RackId":  "B3-2",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.55,
+                                      "CurrentTemperature":  18.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B3-2:R":  {
+                                      "RackId":  "B3-2",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.95,
+                                      "CurrentTemperature":  19.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B3-3:L":  {
+                                      "RackId":  "B3-3",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.9,
+                                      "CurrentTemperature":  19.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B3-3:R":  {
+                                      "RackId":  "B3-3",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.3,
+                                      "CurrentTemperature":  20.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B3-4:L":  {
+                                      "RackId":  "B3-4",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.25,
+                                      "CurrentTemperature":  20.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B3-4:R":  {
+                                      "RackId":  "B3-4",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.65,
+                                      "CurrentTemperature":  21.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B3-5:L":  {
+                                      "RackId":  "B3-5",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.6,
+                                      "CurrentTemperature":  21.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B3-5:R":  {
+                                      "RackId":  "B3-5",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3,
+                                      "CurrentTemperature":  22.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B3-6:L":  {
+                                      "RackId":  "B3-6",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.95,
+                                      "CurrentTemperature":  22.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B3-6:R":  {
+                                      "RackId":  "B3-6",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.35,
+                                      "CurrentTemperature":  23.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B3-7:L":  {
+                                      "RackId":  "B3-7",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.3,
+                                      "CurrentTemperature":  23.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B3-7:R":  {
+                                      "RackId":  "B3-7",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.7,
+                                      "CurrentTemperature":  24.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B4-1:L":  {
+                                      "RackId":  "B4-1",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.2,
+                                      "CurrentTemperature":  18.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B4-1:R":  {
+                                      "RackId":  "B4-1",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.6,
+                                      "CurrentTemperature":  19.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B4-2:L":  {
+                                      "RackId":  "B4-2",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.55,
+                                      "CurrentTemperature":  19.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B4-2:R":  {
+                                      "RackId":  "B4-2",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.95,
+                                      "CurrentTemperature":  20.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B4-3:L":  {
+                                      "RackId":  "B4-3",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.9,
+                                      "CurrentTemperature":  20.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B4-3:R":  {
+                                      "RackId":  "B4-3",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.3,
+                                      "CurrentTemperature":  21.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B4-4:L":  {
+                                      "RackId":  "B4-4",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.25,
+                                      "CurrentTemperature":  21.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B4-4:R":  {
+                                      "RackId":  "B4-4",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.65,
+                                      "CurrentTemperature":  22.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B4-5:L":  {
+                                      "RackId":  "B4-5",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.6,
+                                      "CurrentTemperature":  22.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B4-5:R":  {
+                                      "RackId":  "B4-5",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3,
+                                      "CurrentTemperature":  23.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B4-6:L":  {
+                                      "RackId":  "B4-6",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.95,
+                                      "CurrentTemperature":  23.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B4-6:R":  {
+                                      "RackId":  "B4-6",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.35,
+                                      "CurrentTemperature":  24.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B4-7:L":  {
+                                      "RackId":  "B4-7",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.3,
+                                      "CurrentTemperature":  18.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B4-7:R":  {
+                                      "RackId":  "B4-7",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.7,
+                                      "CurrentTemperature":  19.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B5-1:L":  {
+                                      "RackId":  "B5-1",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.2,
+                                      "CurrentTemperature":  19.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B5-1:R":  {
+                                      "RackId":  "B5-1",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.6,
+                                      "CurrentTemperature":  20.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B5-2:L":  {
+                                      "RackId":  "B5-2",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.55,
+                                      "CurrentTemperature":  20.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B5-2:R":  {
+                                      "RackId":  "B5-2",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.95,
+                                      "CurrentTemperature":  21.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B5-3:L":  {
+                                      "RackId":  "B5-3",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.9,
+                                      "CurrentTemperature":  21.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B5-3:R":  {
+                                      "RackId":  "B5-3",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.3,
+                                      "CurrentTemperature":  22.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B5-4:L":  {
+                                      "RackId":  "B5-4",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.25,
+                                      "CurrentTemperature":  22.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B5-4:R":  {
+                                      "RackId":  "B5-4",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.65,
+                                      "CurrentTemperature":  23.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B5-5:L":  {
+                                      "RackId":  "B5-5",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.6,
+                                      "CurrentTemperature":  23.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B5-5:R":  {
+                                      "RackId":  "B5-5",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3,
+                                      "CurrentTemperature":  24.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B5-6:L":  {
+                                      "RackId":  "B5-6",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.95,
+                                      "CurrentTemperature":  18.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B5-6:R":  {
+                                      "RackId":  "B5-6",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.35,
+                                      "CurrentTemperature":  19.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B5-7:L":  {
+                                      "RackId":  "B5-7",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.3,
+                                      "CurrentTemperature":  19.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B5-7:R":  {
+                                      "RackId":  "B5-7",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.7,
+                                      "CurrentTemperature":  20.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B6-1:L":  {
+                                      "RackId":  "B6-1",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.2,
+                                      "CurrentTemperature":  20.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B6-1:R":  {
+                                      "RackId":  "B6-1",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.6,
+                                      "CurrentTemperature":  21.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B6-2:L":  {
+                                      "RackId":  "B6-2",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.55,
+                                      "CurrentTemperature":  21.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B6-2:R":  {
+                                      "RackId":  "B6-2",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.95,
+                                      "CurrentTemperature":  22.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B6-3:L":  {
+                                      "RackId":  "B6-3",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  1.9,
+                                      "CurrentTemperature":  22.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B6-3:R":  {
+                                      "RackId":  "B6-3",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.3,
+                                      "CurrentTemperature":  23.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B6-4:L":  {
+                                      "RackId":  "B6-4",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.25,
+                                      "CurrentTemperature":  23.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B6-4:R":  {
+                                      "RackId":  "B6-4",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.65,
+                                      "CurrentTemperature":  24.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B6-5:L":  {
+                                      "RackId":  "B6-5",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.6,
+                                      "CurrentTemperature":  18.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B6-5:R":  {
+                                      "RackId":  "B6-5",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3,
+                                      "CurrentTemperature":  19.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B6-6:L":  {
+                                      "RackId":  "B6-6",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  2.95,
+                                      "CurrentTemperature":  19.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B6-6:R":  {
+                                      "RackId":  "B6-6",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.35,
+                                      "CurrentTemperature":  20.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B6-7:L":  {
+                                      "RackId":  "B6-7",
+                                      "Side":  "L",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.3,
+                                      "CurrentTemperature":  20.5,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "RG:B6-7:R":  {
+                                      "RackId":  "B6-7",
+                                      "Side":  "R",
+                                      "DataCenterType":  "RG",
+                                      "CurrentPower":  3.7,
+                                      "CurrentTemperature":  21.7,
+                                      "Success":  true,
+                                      "Error":  null,
+                                      "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                  },
+                    "PT:F1:L":  {
+                                    "RackId":  "F1",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.55,
+                                    "CurrentTemperature":  19.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:F1:R":  {
+                                    "RackId":  "F1",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.95,
+                                    "CurrentTemperature":  20.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:F2:L":  {
+                                    "RackId":  "F2",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.9,
+                                    "CurrentTemperature":  20.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:F2:R":  {
+                                    "RackId":  "F2",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  2.3,
+                                    "CurrentTemperature":  21.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:F3:L":  {
+                                    "RackId":  "F3",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  2.25,
+                                    "CurrentTemperature":  21.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:F3:R":  {
+                                    "RackId":  "F3",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  2.65,
+                                    "CurrentTemperature":  22.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:F4:L":  {
+                                    "RackId":  "F4",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  2.6,
+                                    "CurrentTemperature":  22.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:F4:R":  {
+                                    "RackId":  "F4",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  3,
+                                    "CurrentTemperature":  23.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:F5:L":  {
+                                    "RackId":  "F5",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  2.95,
+                                    "CurrentTemperature":  23.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:F5:R":  {
+                                    "RackId":  "F5",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  3.35,
+                                    "CurrentTemperature":  24.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:E1:L":  {
+                                    "RackId":  "E1",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  3.3,
+                                    "CurrentTemperature":  18.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:E1:R":  {
+                                    "RackId":  "E1",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  3.7,
+                                    "CurrentTemperature":  19.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:E6:L":  {
+                                    "RackId":  "E6",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.2,
+                                    "CurrentTemperature":  19.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:E6:R":  {
+                                    "RackId":  "E6",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.6,
+                                    "CurrentTemperature":  20.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:E7:L":  {
+                                    "RackId":  "E7",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.55,
+                                    "CurrentTemperature":  20.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:E7:R":  {
+                                    "RackId":  "E7",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.95,
+                                    "CurrentTemperature":  21.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:E8:L":  {
+                                    "RackId":  "E8",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.9,
+                                    "CurrentTemperature":  21.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:E8:R":  {
+                                    "RackId":  "E8",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  2.3,
+                                    "CurrentTemperature":  22.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:E3 + E4:L":  {
+                                         "RackId":  "E3 + E4",
+                                         "Side":  "L",
+                                         "DataCenterType":  "PT",
+                                         "CurrentPower":  2.25,
+                                         "CurrentTemperature":  22.5,
+                                         "Success":  true,
+                                         "Error":  null,
+                                         "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                     },
+                    "PT:E3 + E4:R":  {
+                                         "RackId":  "E3 + E4",
+                                         "Side":  "R",
+                                         "DataCenterType":  "PT",
+                                         "CurrentPower":  2.65,
+                                         "CurrentTemperature":  23.7,
+                                         "Success":  true,
+                                         "Error":  null,
+                                         "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                     },
+                    "PT:D2:L":  {
+                                    "RackId":  "D2",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  2.6,
+                                    "CurrentTemperature":  23.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:D2:R":  {
+                                    "RackId":  "D2",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  3,
+                                    "CurrentTemperature":  24.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:D3:L":  {
+                                    "RackId":  "D3",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  2.95,
+                                    "CurrentTemperature":  18.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:D3:R":  {
+                                    "RackId":  "D3",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  3.35,
+                                    "CurrentTemperature":  19.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:D4:L":  {
+                                    "RackId":  "D4",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  3.3,
+                                    "CurrentTemperature":  19.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:D4:R":  {
+                                    "RackId":  "D4",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  3.7,
+                                    "CurrentTemperature":  20.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:D5:L":  {
+                                    "RackId":  "D5",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.2,
+                                    "CurrentTemperature":  20.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:D5:R":  {
+                                    "RackId":  "D5",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.6,
+                                    "CurrentTemperature":  21.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:D6:L":  {
+                                    "RackId":  "D6",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.55,
+                                    "CurrentTemperature":  21.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:D6:R":  {
+                                    "RackId":  "D6",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.95,
+                                    "CurrentTemperature":  22.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:D7:L":  {
+                                    "RackId":  "D7",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.9,
+                                    "CurrentTemperature":  22.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:D7:R":  {
+                                    "RackId":  "D7",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  2.3,
+                                    "CurrentTemperature":  23.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:D8:L":  {
+                                    "RackId":  "D8",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  2.25,
+                                    "CurrentTemperature":  23.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:D8:R":  {
+                                    "RackId":  "D8",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  2.65,
+                                    "CurrentTemperature":  24.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:C1:L":  {
+                                    "RackId":  "C1",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  2.6,
+                                    "CurrentTemperature":  18.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:C1:R":  {
+                                    "RackId":  "C1",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  3,
+                                    "CurrentTemperature":  19.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:C2:L":  {
+                                    "RackId":  "C2",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  2.95,
+                                    "CurrentTemperature":  19.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:C2:R":  {
+                                    "RackId":  "C2",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  3.35,
+                                    "CurrentTemperature":  20.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:C3:L":  {
+                                    "RackId":  "C3",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  3.3,
+                                    "CurrentTemperature":  20.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:C3:R":  {
+                                    "RackId":  "C3",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  3.7,
+                                    "CurrentTemperature":  21.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:B1:L":  {
+                                    "RackId":  "B1",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.2,
+                                    "CurrentTemperature":  21.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:B1:R":  {
+                                    "RackId":  "B1",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.6,
+                                    "CurrentTemperature":  22.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:B2:L":  {
+                                    "RackId":  "B2",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.55,
+                                    "CurrentTemperature":  22.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:B2:R":  {
+                                    "RackId":  "B2",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.95,
+                                    "CurrentTemperature":  23.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:B3:L":  {
+                                    "RackId":  "B3",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.9,
+                                    "CurrentTemperature":  23.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:B3:R":  {
+                                    "RackId":  "B3",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  2.3,
+                                    "CurrentTemperature":  24.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:B4:L":  {
+                                    "RackId":  "B4",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  2.25,
+                                    "CurrentTemperature":  18.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:B4:R":  {
+                                    "RackId":  "B4",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  2.65,
+                                    "CurrentTemperature":  19.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:A1:L":  {
+                                    "RackId":  "A1",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  2.6,
+                                    "CurrentTemperature":  19.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:A1:R":  {
+                                    "RackId":  "A1",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  3,
+                                    "CurrentTemperature":  20.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:A2:L":  {
+                                    "RackId":  "A2",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  2.95,
+                                    "CurrentTemperature":  20.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:A2:R":  {
+                                    "RackId":  "A2",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  3.35,
+                                    "CurrentTemperature":  21.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:A3:L":  {
+                                    "RackId":  "A3",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  3.3,
+                                    "CurrentTemperature":  21.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:A3:R":  {
+                                    "RackId":  "A3",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  3.7,
+                                    "CurrentTemperature":  22.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:A5:L":  {
+                                    "RackId":  "A5",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.2,
+                                    "CurrentTemperature":  22.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:A5:R":  {
+                                    "RackId":  "A5",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.6,
+                                    "CurrentTemperature":  23.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:A6:L":  {
+                                    "RackId":  "A6",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.55,
+                                    "CurrentTemperature":  23.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:A6:R":  {
+                                    "RackId":  "A6",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.95,
+                                    "CurrentTemperature":  24.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:A7:L":  {
+                                    "RackId":  "A7",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  1.9,
+                                    "CurrentTemperature":  18.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:A7:R":  {
+                                    "RackId":  "A7",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  2.3,
+                                    "CurrentTemperature":  19.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:A8:L":  {
+                                    "RackId":  "A8",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  2.25,
+                                    "CurrentTemperature":  19.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:A8:R":  {
+                                    "RackId":  "A8",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  2.65,
+                                    "CurrentTemperature":  20.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:A9:L":  {
+                                    "RackId":  "A9",
+                                    "Side":  "L",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  2.6,
+                                    "CurrentTemperature":  20.5,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                },
+                    "PT:A9:R":  {
+                                    "RackId":  "A9",
+                                    "Side":  "R",
+                                    "DataCenterType":  "PT",
+                                    "CurrentPower":  3,
+                                    "CurrentTemperature":  21.7,
+                                    "Success":  true,
+                                    "Error":  null,
+                                    "LastUpdated":  "2026-11-07T18:28:16.8721481+02:00"
+                                }
+                }
+}

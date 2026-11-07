@@ -1,2 +1,7 @@
 כותרת,כתובת URL,תיאור,אייקון,קטגוריה,תאריך יצירה,תאריך עדכון
-Google,https://www.google.com/,Google,fas fa-link,מערכות,2026-05-16 14:04:12,
+פורטל ניטור,http://localhost:5097/Dashboards?dashboard=alerts,אירועי NOC פתוחים,fas fa-bell,ניטור,2026-11-07 08:10:00,
+קטלוג מערכות,http://localhost:5097/Dashboards?dashboard=systems-catalog,רשימת המערכות הארגוניות,fas fa-sitemap,מערכות,2026-11-07 08:12:00,
+חדר שרתים,http://localhost:5097/Dashboards?dashboard=rack-metrics,מפת ארונות וצריכת חשמל,fas fa-server,תשתיות,2026-11-07 08:14:00,
+שינויים ו-CAB,http://localhost:5097/Dashboards?dashboard=changes,שינויים מתוכננים השבוע,fas fa-exchange-alt,שינויים,2026-11-07 08:16:00,
+תוצאות סוויטות,http://localhost:5097/Dashboards?dashboard=suite-results,בדיקות אוטומציה אחרונות,fas fa-vial,בדיקות,2026-11-07 08:18:00,
+נהלי חירום,http://localhost:5097/Home,נהלי עבודה בחדר המחשב,fas fa-book,נהלים,2026-11-07 08:20:00,

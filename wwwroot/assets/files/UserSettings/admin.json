@@ -43,17 +43,17 @@
     "searchTerm": "",
     "sortColumn": null,
     "sortDirection": "asc",
-    "timestamp": "2026-11-07T16:16:12.557Z"
+    "timestamp": "2026-11-07T16:30:34.656Z"
   },
   "sectionStates": {
     "shifts": true,
-    "employeeTasks": false,
+    "employeeTasks": true,
     "phoneDirectory": false,
     "activityManagement": false,
     "procedures": false,
     "messages": false,
     "dailyTasks": false,
-    "teamLinks": false,
+    "teamLinks": true,
     "datacenter": true,
     "alerts": true,
     "changes": true
@@ -165,5 +165,2421 @@
     "107": "#f4a8d4",
     "108": "#a8f4e0"
   },
-  "portalColorTheme": "dark"
+  "portalColorTheme": "dark",
+  "alertsStatusFilters": [
+    "OPEN",
+    "ACK",
+    "ASSIGN"
+  ],
+  "alertsKnownIds": [
+    "8a7956348a6a457b",
+    "8e81595c6eb7479f",
+    "63929c1cefa64fa0",
+    "eeb0c9ee8dec4dd7",
+    "9c4d7ef55f464293",
+    "8d4fd44d2b2840d5",
+    "06488968b29f42f9",
+    "1f5bfd6398db4254",
+    "e39e0895253d4925",
+    "b74df55f04324e0b",
+    "aca3af388a694737",
+    "2dd58ec5b9da42c6",
+    "ce9c0c781dd749fc",
+    "036bc604cdde4e11",
+    "f3fb20e3383a48ec",
+    "eb45773c075e4d44",
+    "55848f8d722a452d",
+    "1d2c28a61ab54581",
+    "195bbfb6c31b4d41",
+    "7094e9d95f2e480f",
+    "118ba1172f1746f0",
+    "f4209614395d4ee4",
+    "716b6de3ab9c426e",
+    "a6f427d00a6847a3",
+    "03adebbc96774318",
+    "75519bcfc02a4d24",
+    "0207fbace6a3493b",
+    "a523c002bbc341fa",
+    "20e5c61a7ff54ae9",
+    "42d9f167e44943cb",
+    "540af1fe71044867",
+    "e3a4a951bec14a62",
+    "db0f27fbacf946d7",
+    "0794e84bf3104d01",
+    "5f45c04d19204c29",
+    "c743a42fea424af7",
+    "d35a5054aeb54521",
+    "81c755622a7c46a0",
+    "02b9275bad224a7d",
+    "9a7f88a71de5487a",
+    "a2d029e7f8b843d4",
+    "e5210ea631214dcc",
+    "dc97a9ad49544366",
+    "b394d152d1c14016",
+    "0f38fe2baeb741df",
+    "222e2f5c477f45ee",
+    "2e199f069fe54036",
+    "1a3fe2e5adf940d0",
+    "d525b725e1e947ee",
+    "3455fbc6276749a9"
+  ],
+  "alertsProcedurePopupShown": [
+    "1f5bfd6398db4254",
+    "eb45773c075e4d44",
+    "e3a4a951bec14a62",
+    "9a7f88a71de5487a"
+  ],
+  "rackMetricsDashboard_cache": {
+    "PT:F1": {
+      "rackId": "F1",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 1.55,
+        "currentTemperature": 19.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.95,
+        "currentTemperature": 20.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 20.7,
+      "totalPower": 3.5,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:F2": {
+      "rackId": "F2",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 1.9,
+        "currentTemperature": 20.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.3,
+        "currentTemperature": 21.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 21.7,
+      "totalPower": 4.199999999999999,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:F3": {
+      "rackId": "F3",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 2.25,
+        "currentTemperature": 21.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.65,
+        "currentTemperature": 22.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 22.7,
+      "totalPower": 4.9,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:F4": {
+      "rackId": "F4",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 2.6,
+        "currentTemperature": 22.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3,
+        "currentTemperature": 23.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 23.7,
+      "totalPower": 5.6,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:F5": {
+      "rackId": "F5",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 2.95,
+        "currentTemperature": 23.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.35,
+        "currentTemperature": 24.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 24.7,
+      "totalPower": 6.300000000000001,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:E1": {
+      "rackId": "E1",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 3.3,
+        "currentTemperature": 18.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.7,
+        "currentTemperature": 19.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 19.7,
+      "totalPower": 7,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:E6": {
+      "rackId": "E6",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 1.2,
+        "currentTemperature": 19.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.6,
+        "currentTemperature": 20.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 20.7,
+      "totalPower": 2.8,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:E7": {
+      "rackId": "E7",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 1.55,
+        "currentTemperature": 20.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.95,
+        "currentTemperature": 21.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 21.7,
+      "totalPower": 3.5,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:E8": {
+      "rackId": "E8",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 1.9,
+        "currentTemperature": 21.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.3,
+        "currentTemperature": 22.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 22.7,
+      "totalPower": 4.199999999999999,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:E3 \u002B E4": {
+      "rackId": "E3 \u002B E4",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 2.25,
+        "currentTemperature": 22.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.65,
+        "currentTemperature": 23.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 23.7,
+      "totalPower": 4.9,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:D2": {
+      "rackId": "D2",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 2.6,
+        "currentTemperature": 23.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3,
+        "currentTemperature": 24.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 24.7,
+      "totalPower": 5.6,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:D3": {
+      "rackId": "D3",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 2.95,
+        "currentTemperature": 18.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.35,
+        "currentTemperature": 19.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 19.7,
+      "totalPower": 6.300000000000001,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:D4": {
+      "rackId": "D4",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 3.3,
+        "currentTemperature": 19.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.7,
+        "currentTemperature": 20.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 20.7,
+      "totalPower": 7,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:D5": {
+      "rackId": "D5",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 1.2,
+        "currentTemperature": 20.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.6,
+        "currentTemperature": 21.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 21.7,
+      "totalPower": 2.8,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:D6": {
+      "rackId": "D6",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 1.55,
+        "currentTemperature": 21.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.95,
+        "currentTemperature": 22.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 22.7,
+      "totalPower": 3.5,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:D7": {
+      "rackId": "D7",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 1.9,
+        "currentTemperature": 22.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.3,
+        "currentTemperature": 23.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 23.7,
+      "totalPower": 4.199999999999999,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:D8": {
+      "rackId": "D8",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 2.25,
+        "currentTemperature": 23.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.65,
+        "currentTemperature": 24.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 24.7,
+      "totalPower": 4.9,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:C1": {
+      "rackId": "C1",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 2.6,
+        "currentTemperature": 18.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3,
+        "currentTemperature": 19.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 19.7,
+      "totalPower": 5.6,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:C2": {
+      "rackId": "C2",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 2.95,
+        "currentTemperature": 19.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.35,
+        "currentTemperature": 20.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 20.7,
+      "totalPower": 6.300000000000001,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:C3": {
+      "rackId": "C3",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 3.3,
+        "currentTemperature": 20.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.7,
+        "currentTemperature": 21.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 21.7,
+      "totalPower": 7,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:B1": {
+      "rackId": "B1",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 1.2,
+        "currentTemperature": 21.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.6,
+        "currentTemperature": 22.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 22.7,
+      "totalPower": 2.8,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:B2": {
+      "rackId": "B2",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 1.55,
+        "currentTemperature": 22.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.95,
+        "currentTemperature": 23.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 23.7,
+      "totalPower": 3.5,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:B3": {
+      "rackId": "B3",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 1.9,
+        "currentTemperature": 23.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.3,
+        "currentTemperature": 24.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 24.7,
+      "totalPower": 4.199999999999999,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:B4": {
+      "rackId": "B4",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 2.25,
+        "currentTemperature": 18.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.65,
+        "currentTemperature": 19.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 19.7,
+      "totalPower": 4.9,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:A1": {
+      "rackId": "A1",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 2.6,
+        "currentTemperature": 19.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3,
+        "currentTemperature": 20.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 20.7,
+      "totalPower": 5.6,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:A2": {
+      "rackId": "A2",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 2.95,
+        "currentTemperature": 20.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.35,
+        "currentTemperature": 21.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 21.7,
+      "totalPower": 6.300000000000001,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:A3": {
+      "rackId": "A3",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 3.3,
+        "currentTemperature": 21.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.7,
+        "currentTemperature": 22.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 22.7,
+      "totalPower": 7,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:A5": {
+      "rackId": "A5",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 1.2,
+        "currentTemperature": 22.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.6,
+        "currentTemperature": 23.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 23.7,
+      "totalPower": 2.8,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:A6": {
+      "rackId": "A6",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 1.55,
+        "currentTemperature": 23.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.95,
+        "currentTemperature": 24.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 24.7,
+      "totalPower": 3.5,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:A7": {
+      "rackId": "A7",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 1.9,
+        "currentTemperature": 18.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.3,
+        "currentTemperature": 19.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 19.7,
+      "totalPower": 4.199999999999999,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:A8": {
+      "rackId": "A8",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 2.25,
+        "currentTemperature": 19.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.65,
+        "currentTemperature": 20.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 20.7,
+      "totalPower": 4.9,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "PT:A9": {
+      "rackId": "A9",
+      "dataCenterType": "PT",
+      "room": "OTHER",
+      "L": {
+        "success": true,
+        "currentPower": 2.6,
+        "currentTemperature": 20.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3,
+        "currentTemperature": 21.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 21.7,
+      "totalPower": 5.6,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:A1-1": {
+      "rackId": "A1-1",
+      "dataCenterType": "RG",
+      "room": "STORAGE",
+      "L": {
+        "success": true,
+        "currentPower": 1.55,
+        "currentTemperature": 19.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.95,
+        "currentTemperature": 20.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 20.7,
+      "totalPower": 3.5,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:A1-2": {
+      "rackId": "A1-2",
+      "dataCenterType": "RG",
+      "room": "STORAGE",
+      "L": {
+        "success": true,
+        "currentPower": 1.9,
+        "currentTemperature": 20.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.3,
+        "currentTemperature": 21.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 21.7,
+      "totalPower": 4.199999999999999,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:A1-3": {
+      "rackId": "A1-3",
+      "dataCenterType": "RG",
+      "room": "STORAGE",
+      "L": {
+        "success": true,
+        "currentPower": 2.25,
+        "currentTemperature": 21.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.65,
+        "currentTemperature": 22.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 22.7,
+      "totalPower": 4.9,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:A1-4": {
+      "rackId": "A1-4",
+      "dataCenterType": "RG",
+      "room": "STORAGE",
+      "L": {
+        "success": true,
+        "currentPower": 2.6,
+        "currentTemperature": 22.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3,
+        "currentTemperature": 23.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 23.7,
+      "totalPower": 5.6,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:A1-5": {
+      "rackId": "A1-5",
+      "dataCenterType": "RG",
+      "room": "STORAGE",
+      "L": {
+        "success": true,
+        "currentPower": 2.95,
+        "currentTemperature": 23.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.35,
+        "currentTemperature": 24.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 24.7,
+      "totalPower": 6.300000000000001,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:A1-6": {
+      "rackId": "A1-6",
+      "dataCenterType": "RG",
+      "room": "STORAGE",
+      "L": {
+        "success": true,
+        "currentPower": 3.3,
+        "currentTemperature": 18.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.7,
+        "currentTemperature": 19.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 19.7,
+      "totalPower": 7,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:A1-7": {
+      "rackId": "A1-7",
+      "dataCenterType": "RG",
+      "room": "STORAGE",
+      "L": {
+        "success": true,
+        "currentPower": 1.2,
+        "currentTemperature": 19.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.6,
+        "currentTemperature": 20.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 20.7,
+      "totalPower": 2.8,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:A2-1": {
+      "rackId": "A2-1",
+      "dataCenterType": "RG",
+      "room": "STORAGE",
+      "L": {
+        "success": true,
+        "currentPower": 1.55,
+        "currentTemperature": 20.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.95,
+        "currentTemperature": 21.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 21.7,
+      "totalPower": 3.5,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:A2-2": {
+      "rackId": "A2-2",
+      "dataCenterType": "RG",
+      "room": "STORAGE",
+      "L": {
+        "success": true,
+        "currentPower": 1.9,
+        "currentTemperature": 21.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.3,
+        "currentTemperature": 22.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 22.7,
+      "totalPower": 4.199999999999999,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:A3-2": {
+      "rackId": "A3-2",
+      "dataCenterType": "RG",
+      "room": "STORAGE",
+      "L": {
+        "success": true,
+        "currentPower": 2.25,
+        "currentTemperature": 22.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.65,
+        "currentTemperature": 23.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 23.7,
+      "totalPower": 4.9,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:A3-3": {
+      "rackId": "A3-3",
+      "dataCenterType": "RG",
+      "room": "STORAGE",
+      "L": {
+        "success": true,
+        "currentPower": 2.6,
+        "currentTemperature": 23.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3,
+        "currentTemperature": 24.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 24.7,
+      "totalPower": 5.6,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:A3-4": {
+      "rackId": "A3-4",
+      "dataCenterType": "RG",
+      "room": "STORAGE",
+      "L": {
+        "success": true,
+        "currentPower": 2.95,
+        "currentTemperature": 18.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.35,
+        "currentTemperature": 19.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 19.7,
+      "totalPower": 6.300000000000001,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:A3-5": {
+      "rackId": "A3-5",
+      "dataCenterType": "RG",
+      "room": "STORAGE",
+      "L": {
+        "success": true,
+        "currentPower": 3.3,
+        "currentTemperature": 19.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.7,
+        "currentTemperature": 20.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 20.7,
+      "totalPower": 7,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:A3-6": {
+      "rackId": "A3-6",
+      "dataCenterType": "RG",
+      "room": "STORAGE",
+      "L": {
+        "success": true,
+        "currentPower": 1.2,
+        "currentTemperature": 20.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.6,
+        "currentTemperature": 21.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 21.7,
+      "totalPower": 2.8,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:A3-7": {
+      "rackId": "A3-7",
+      "dataCenterType": "RG",
+      "room": "STORAGE",
+      "L": {
+        "success": true,
+        "currentPower": 1.55,
+        "currentTemperature": 21.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.95,
+        "currentTemperature": 22.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 22.7,
+      "totalPower": 3.5,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:A4-3": {
+      "rackId": "A4-3",
+      "dataCenterType": "RG",
+      "room": "STORAGE",
+      "L": {
+        "success": true,
+        "currentPower": 1.9,
+        "currentTemperature": 22.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.3,
+        "currentTemperature": 23.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 23.7,
+      "totalPower": 4.199999999999999,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:A4-4": {
+      "rackId": "A4-4",
+      "dataCenterType": "RG",
+      "room": "STORAGE",
+      "L": {
+        "success": true,
+        "currentPower": 2.25,
+        "currentTemperature": 23.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.65,
+        "currentTemperature": 24.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 24.7,
+      "totalPower": 4.9,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:A4-5": {
+      "rackId": "A4-5",
+      "dataCenterType": "RG",
+      "room": "STORAGE",
+      "L": {
+        "success": true,
+        "currentPower": 2.6,
+        "currentTemperature": 18.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3,
+        "currentTemperature": 19.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 19.7,
+      "totalPower": 5.6,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:A4-7": {
+      "rackId": "A4-7",
+      "dataCenterType": "RG",
+      "room": "STORAGE",
+      "L": {
+        "success": true,
+        "currentPower": 3.3,
+        "currentTemperature": 20.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.7,
+        "currentTemperature": 21.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 21.7,
+      "totalPower": 7,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:A4-6": {
+      "rackId": "A4-6",
+      "dataCenterType": "RG",
+      "room": "STORAGE",
+      "L": {
+        "success": true,
+        "currentPower": 2.95,
+        "currentTemperature": 19.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.35,
+        "currentTemperature": 20.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 20.7,
+      "totalPower": 6.300000000000001,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B1-0": {
+      "rackId": "B1-0",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 1.2,
+        "currentTemperature": 21.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.6,
+        "currentTemperature": 22.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 22.7,
+      "totalPower": 2.8,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B1-1": {
+      "rackId": "B1-1",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 1.55,
+        "currentTemperature": 22.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.95,
+        "currentTemperature": 23.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 23.7,
+      "totalPower": 3.5,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B1-2": {
+      "rackId": "B1-2",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 1.9,
+        "currentTemperature": 23.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.3,
+        "currentTemperature": 24.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 24.7,
+      "totalPower": 4.199999999999999,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B1-3": {
+      "rackId": "B1-3",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 2.25,
+        "currentTemperature": 18.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.65,
+        "currentTemperature": 19.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 19.7,
+      "totalPower": 4.9,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B1-4": {
+      "rackId": "B1-4",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 2.6,
+        "currentTemperature": 19.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3,
+        "currentTemperature": 20.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 20.7,
+      "totalPower": 5.6,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B1-5": {
+      "rackId": "B1-5",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 2.95,
+        "currentTemperature": 20.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.35,
+        "currentTemperature": 21.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 21.7,
+      "totalPower": 6.300000000000001,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B1-6": {
+      "rackId": "B1-6",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 3.3,
+        "currentTemperature": 21.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.7,
+        "currentTemperature": 22.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 22.7,
+      "totalPower": 7,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B2-1": {
+      "rackId": "B2-1",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 1.2,
+        "currentTemperature": 22.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.6,
+        "currentTemperature": 23.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 23.7,
+      "totalPower": 2.8,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B2-2": {
+      "rackId": "B2-2",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 1.55,
+        "currentTemperature": 23.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.95,
+        "currentTemperature": 24.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 24.7,
+      "totalPower": 3.5,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B2-3": {
+      "rackId": "B2-3",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 1.9,
+        "currentTemperature": 18.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.3,
+        "currentTemperature": 19.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 19.7,
+      "totalPower": 4.199999999999999,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B2-4": {
+      "rackId": "B2-4",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 2.25,
+        "currentTemperature": 19.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.65,
+        "currentTemperature": 20.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 20.7,
+      "totalPower": 4.9,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B2-5": {
+      "rackId": "B2-5",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 2.6,
+        "currentTemperature": 20.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3,
+        "currentTemperature": 21.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 21.7,
+      "totalPower": 5.6,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B2-6": {
+      "rackId": "B2-6",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 2.95,
+        "currentTemperature": 21.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.35,
+        "currentTemperature": 22.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 22.7,
+      "totalPower": 6.300000000000001,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B2-7": {
+      "rackId": "B2-7",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 3.3,
+        "currentTemperature": 22.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.7,
+        "currentTemperature": 23.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 23.7,
+      "totalPower": 7,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B3-1": {
+      "rackId": "B3-1",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 1.2,
+        "currentTemperature": 23.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.6,
+        "currentTemperature": 24.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 24.7,
+      "totalPower": 2.8,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B3-2": {
+      "rackId": "B3-2",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 1.55,
+        "currentTemperature": 18.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.95,
+        "currentTemperature": 19.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 19.7,
+      "totalPower": 3.5,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B3-3": {
+      "rackId": "B3-3",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 1.9,
+        "currentTemperature": 19.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.3,
+        "currentTemperature": 20.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 20.7,
+      "totalPower": 4.199999999999999,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B3-4": {
+      "rackId": "B3-4",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 2.25,
+        "currentTemperature": 20.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.65,
+        "currentTemperature": 21.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 21.7,
+      "totalPower": 4.9,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B3-5": {
+      "rackId": "B3-5",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 2.6,
+        "currentTemperature": 21.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3,
+        "currentTemperature": 22.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 22.7,
+      "totalPower": 5.6,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B3-6": {
+      "rackId": "B3-6",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 2.95,
+        "currentTemperature": 22.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.35,
+        "currentTemperature": 23.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 23.7,
+      "totalPower": 6.300000000000001,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B3-7": {
+      "rackId": "B3-7",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 3.3,
+        "currentTemperature": 23.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.7,
+        "currentTemperature": 24.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 24.7,
+      "totalPower": 7,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B4-1": {
+      "rackId": "B4-1",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 1.2,
+        "currentTemperature": 18.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.6,
+        "currentTemperature": 19.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 19.7,
+      "totalPower": 2.8,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B4-2": {
+      "rackId": "B4-2",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 1.55,
+        "currentTemperature": 19.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.95,
+        "currentTemperature": 20.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 20.7,
+      "totalPower": 3.5,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B4-3": {
+      "rackId": "B4-3",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 1.9,
+        "currentTemperature": 20.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.3,
+        "currentTemperature": 21.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 21.7,
+      "totalPower": 4.199999999999999,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B4-4": {
+      "rackId": "B4-4",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 2.25,
+        "currentTemperature": 21.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.65,
+        "currentTemperature": 22.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 22.7,
+      "totalPower": 4.9,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B4-5": {
+      "rackId": "B4-5",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 2.6,
+        "currentTemperature": 22.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3,
+        "currentTemperature": 23.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 23.7,
+      "totalPower": 5.6,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B4-6": {
+      "rackId": "B4-6",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 2.95,
+        "currentTemperature": 23.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.35,
+        "currentTemperature": 24.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 24.7,
+      "totalPower": 6.300000000000001,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B4-7": {
+      "rackId": "B4-7",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 3.3,
+        "currentTemperature": 18.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.7,
+        "currentTemperature": 19.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 19.7,
+      "totalPower": 7,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B5-1": {
+      "rackId": "B5-1",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 1.2,
+        "currentTemperature": 19.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.6,
+        "currentTemperature": 20.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 20.7,
+      "totalPower": 2.8,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B5-2": {
+      "rackId": "B5-2",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 1.55,
+        "currentTemperature": 20.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.95,
+        "currentTemperature": 21.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 21.7,
+      "totalPower": 3.5,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B5-3": {
+      "rackId": "B5-3",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 1.9,
+        "currentTemperature": 21.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.3,
+        "currentTemperature": 22.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 22.7,
+      "totalPower": 4.199999999999999,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B5-4": {
+      "rackId": "B5-4",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 2.25,
+        "currentTemperature": 22.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.65,
+        "currentTemperature": 23.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 23.7,
+      "totalPower": 4.9,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B5-5": {
+      "rackId": "B5-5",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 2.6,
+        "currentTemperature": 23.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3,
+        "currentTemperature": 24.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 24.7,
+      "totalPower": 5.6,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B5-6": {
+      "rackId": "B5-6",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 2.95,
+        "currentTemperature": 18.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.35,
+        "currentTemperature": 19.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 19.7,
+      "totalPower": 6.300000000000001,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B5-7": {
+      "rackId": "B5-7",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 3.3,
+        "currentTemperature": 19.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.7,
+        "currentTemperature": 20.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 20.7,
+      "totalPower": 7,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B6-1": {
+      "rackId": "B6-1",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 1.2,
+        "currentTemperature": 20.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.6,
+        "currentTemperature": 21.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 21.7,
+      "totalPower": 2.8,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B6-2": {
+      "rackId": "B6-2",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 1.55,
+        "currentTemperature": 21.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 1.95,
+        "currentTemperature": 22.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 22.7,
+      "totalPower": 3.5,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B6-3": {
+      "rackId": "B6-3",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 1.9,
+        "currentTemperature": 22.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.3,
+        "currentTemperature": 23.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 23.7,
+      "totalPower": 4.199999999999999,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B6-4": {
+      "rackId": "B6-4",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 2.25,
+        "currentTemperature": 23.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 2.65,
+        "currentTemperature": 24.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 24.7,
+      "totalPower": 4.9,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B6-5": {
+      "rackId": "B6-5",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 2.6,
+        "currentTemperature": 18.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3,
+        "currentTemperature": 19.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 19.7,
+      "totalPower": 5.6,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B6-6": {
+      "rackId": "B6-6",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 2.95,
+        "currentTemperature": 19.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.35,
+        "currentTemperature": 20.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 20.7,
+      "totalPower": 6.300000000000001,
+      "status": "normal",
+      "fromFileCache": true
+    },
+    "RG:B6-7": {
+      "rackId": "B6-7",
+      "dataCenterType": "RG",
+      "room": "MAIN",
+      "L": {
+        "success": true,
+        "currentPower": 3.3,
+        "currentTemperature": 20.5,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "R": {
+        "success": true,
+        "currentPower": 3.7,
+        "currentTemperature": 21.7,
+        "fromCache": true,
+        "lastUpdated": "2026-11-07T18:28:16.8721481\u002B02:00",
+        "nextUpdate": "2026-11-07T19:28:16.9015306\u002B02:00"
+      },
+      "maxTemperature": 21.7,
+      "totalPower": 7,
+      "status": "normal",
+      "fromFileCache": true
+    }
+  },
+  "rackMetricsDashboard_cacheTime": 1794068957521
 }

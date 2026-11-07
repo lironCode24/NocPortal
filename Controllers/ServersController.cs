@@ -66,6 +66,13 @@ public class ServersController : Controller
         _userService   = userService; 
     }
 
+    private bool IsLocalDemoHost()
+    {
+        var host = Request.Host.Host ?? "";
+        return host.Contains("localhost", StringComparison.OrdinalIgnoreCase)
+            || host == "127.0.0.1";
+    }
+
     // ─── GET: קבל את כל השרתים ────────────────────────────────
     [HttpGet]
     public IActionResult GetServers()
@@ -1535,11 +1542,65 @@ public IActionResult SearchServer(string name)
     /// Proxy לשרת BigFix - מחזיר סטטוס Pending Restart
     /// לכל השרתים בקבוצות Windows Servers Prod/NP Nir
     /// </summary>
+    private object BuildLocalhostBigFixStatus(List<string>? onlyNames)
+    {
+        var names = new List<string>();
+        if (System.IO.File.Exists(_jsonStorePath))
+        {
+            try
+            {
+                var json = System.IO.File.ReadAllText(_jsonStorePath, Encoding.UTF8);
+                var servers = JsonSerializer.Deserialize<List<ServerRecord>>(json,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (servers != null)
+                    names.AddRange(servers.Select(s => s.Name).Where(n => !string.IsNullOrWhiteSpace(n)));
+            }
+            catch { }
+        }
+
+        if (names.Count == 0)
+        {
+            names.AddRange(new[] { "SRV-WEB-01", "DB-SQL-01", "APP-API-01", "SRV-MON-01" });
+        }
+
+        if (onlyNames != null && onlyNames.Count > 0)
+        {
+            var wanted = new HashSet<string>(onlyNames, StringComparer.OrdinalIgnoreCase);
+            names = names.Where(n => wanted.Contains(n)).ToList();
+        }
+
+        var statuses = new[] { "False", "True", "Pending Restart", "False", "Need Restart" };
+        var updates = new[] { "0", "2", "0", "1", "5" };
+        var list = new List<BigFixServerStatus>();
+        for (int i = 0; i < names.Count; i++)
+        {
+            list.Add(new BigFixServerStatus
+            {
+                Name = names[i],
+                LastReport = DateTime.Now.AddMinutes(-((i + 1) * 12)).ToString("yyyy-MM-dd HH:mm:ss"),
+                PendingRestart = statuses[i % statuses.Length],
+                CriticalUpdates = updates[i % updates.Length],
+                GrafanaUpdates = (i % 3).ToString()
+            });
+        }
+
+        return new
+        {
+            success = true,
+            count = list.Count,
+            statusMap = list,
+            source = "mock"
+        };
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetBigFixStatus()
     {
         try
         {
+            if (IsLocalDemoHost())
+                return Json(BuildLocalhostBigFixStatus(null));
+
             // ─── קרא הגדרות מ-appsettings ────────────────────────
             var username = _secrets.BigFixUsername;
             var password = _secrets.BigFixPassword;
@@ -1674,6 +1735,9 @@ public IActionResult SearchServer(string name)
                     success = false,
                     error   = "לא נשלחו שמות שרתים"
                 });
+
+            if (IsLocalDemoHost())
+                return Json(BuildLocalhostBigFixStatus(request.ServerNames));
 
             // ─── קרא הגדרות ──────────────────────────────────────
             var username = _secrets.BigFixUsername;
