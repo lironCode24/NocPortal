@@ -4,7 +4,8 @@ const hub = {
     category: "הכל",
     audience: "הכל",
     selected: null,
-    openedScreen: null
+    openedScreen: null,
+    step: 0
 };
 
 const $ = (id) => document.getElementById(id);
@@ -209,32 +210,74 @@ function screenHit(hit, query) {
         </button>`;
 }
 
+function quotedParts(step) {
+    return [...String(step).matchAll(/"([^"]+)"/g)].map(match => match[1]);
+}
+
 function renderGuide() {
     const { feature, cap } = findCap(hub.selected.featureId, hub.selected.capId);
     if (!feature || !cap) {
         hub.selected = null;
+        hub.step = 0;
         renderBoard();
         return;
     }
-    const steps = (cap.steps || []).map((step, index) =>
-        `<li><span class="num">${index + 1}</span><span>${escapeHtml(step)}</span></li>`
-    ).join("");
+
+    const steps = cap.steps || [];
+    const last = Math.max(steps.length - 1, 0);
+    const index = Math.max(0, Math.min(hub.step || 0, last));
+    hub.step = index;
+    const step = steps[index] || feature.summary;
+    const quotes = quotedParts(step);
+    const target = quotes.length ? quotes[quotes.length - 1] : "";
+    const place = quotes.length > 1 ? quotes.slice(0, -1).join(" · ") : "";
     const backLabel = hub.query.trim() ? "חזרה לתוצאות" : "חזרה לכל המדריכים";
+    const dots = steps.map((_, dotIndex) =>
+        `<span class="step-dot ${dotIndex === index ? "on" : ""} ${dotIndex < index ? "done" : ""}"></span>`
+    ).join("");
+    const click = target
+        ? `<div class="click-stage">
+                <div class="click-kicker">כאן לוחצים</div>
+                ${place ? `<div class="click-place">בתוך ${escapeHtml(place)}</div>` : ""}
+                <div class="fake-btn" aria-hidden="true">
+                    <span class="pulse"></span>
+                    <i class="fas fa-hand-pointer"></i>
+                    <span>${escapeHtml(target)}</span>
+                </div>
+           </div>`
+        : `<div class="click-stage plain">
+                <div class="click-kicker">מה עושים בשלב הזה</div>
+           </div>`;
+    const prev = index > 0
+        ? `<button type="button" class="back-btn" id="prevStep">שלב קודם</button>`
+        : `<span></span>`;
+    const next = index < last
+        ? `<button type="button" class="next-step" id="nextStep">עבור לשלב הבא</button>`
+        : `<span class="step-done">זה השלב האחרון</span>`;
+
     $("hubStage").innerHTML = `
         <article class="guide">
             <div class="guide-copy">
                 <div class="guide-kicker">${escapeHtml(feature.title)} · ${escapeHtml(feature.category)}</div>
                 <h2>${escapeHtml(cap.title)}</h2>
-                <p class="summary">${escapeHtml(feature.summary)}</p>
                 <div class="meta guide-meta">
                     <span class="pill">${escapeHtml(cap.permission)}</span>
                     <span class="pill">${escapeHtml(feature.audience)}</span>
+                    <span class="pill quiet">שלב ${index + 1} מתוך ${steps.length || 1}</span>
                 </div>
-                <ol class="steps">${steps}</ol>
+                <div class="step-dots" aria-hidden="true">${dots}</div>
+                ${click}
+                <p class="step-line">${escapeHtml(step)}</p>
             </div>
             <div class="guide-foot">
-                <button type="button" class="back-btn" id="backToGrid">${backLabel}</button>
-                <a class="open-screen" href="${escapeHtml(feature.route)}">פתח את המסך</a>
+                <div class="foot-side">
+                    <button type="button" class="back-btn" id="backToGrid">${backLabel}</button>
+                    ${prev}
+                </div>
+                <div class="foot-side">
+                    ${next}
+                    <a class="open-screen" href="${escapeHtml(feature.route)}" target="_blank" rel="noopener">מעבר למסך</a>
+                </div>
             </div>
         </article>`;
 }
@@ -262,6 +305,7 @@ document.addEventListener("click", (event) => {
     const cap = event.target.closest("[data-cap]");
     if (cap) {
         hub.selected = { featureId: cap.dataset.feature, capId: cap.dataset.cap };
+        hub.step = 0;
         renderBoard();
         window.scrollTo({ top: 0, behavior: "smooth" });
         return;
@@ -273,8 +317,21 @@ document.addEventListener("click", (event) => {
         return;
     }
 
+    if (event.target.id === "prevStep") {
+        hub.step = Math.max(0, (hub.step || 0) - 1);
+        renderBoard();
+        return;
+    }
+
+    if (event.target.id === "nextStep") {
+        hub.step = (hub.step || 0) + 1;
+        renderBoard();
+        return;
+    }
+
     if (event.target.id === "backToGrid") {
         hub.selected = null;
+        hub.step = 0;
         renderBoard();
     }
 });
@@ -293,6 +350,11 @@ $("clearSearch").addEventListener("click", () => {
     hub.openedScreen = null;
     renderBoard();
     $("featureSearch").focus();
+});
+
+document.querySelectorAll(".hub-nav a").forEach(link => {
+    link.target = "_blank";
+    link.rel = "noopener";
 });
 
 fetch("/data/features-catalog.json")

@@ -43,7 +43,7 @@
     "searchTerm": "",
     "sortColumn": null,
     "sortDirection": "asc",
-    "timestamp": "2026-11-07T11:28:58.636Z"
+    "timestamp": "2026-11-07T16:16:12.557Z"
   },
   "sectionStates": {
     "shifts": true,
@@ -164,5 +164,6 @@
     "106": "#d4a8f4",
     "107": "#f4a8d4",
     "108": "#a8f4e0"
-  }
+  },
+  "portalColorTheme": "dark"
 }

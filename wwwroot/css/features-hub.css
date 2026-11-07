@@ -141,6 +141,7 @@ body.features-page {
 .clear-search[hidden] { display: none; }
 .clear-search:hover { background: #e4d9f7; }
 
+.hub-lead[hidden] { display: none !important; }
 .hub-lead {
     display: flex;
     justify-content: space-between;
@@ -252,6 +253,76 @@ body.features-page {
 .back-inline { margin: 0 2px 12px; padding: 0; }
 
 .guide-meta { margin-top: 12px; }
+.step-dots { display: flex; gap: 6px; margin-top: 18px; }
+.step-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #e4dced;
+}
+.step-dot.done { background: #c4b5fd; }
+.step-dot.on { background: var(--brand); transform: scale(1.25); }
+.click-stage {
+    margin-top: 18px;
+    padding: 22px;
+    border-radius: 20px;
+    background:
+        radial-gradient(420px 160px at 80% 0%, #efe7ff 0%, transparent 70%),
+        #faf8ff;
+    border: 1px dashed #d4c6f5;
+}
+.click-kicker {
+    color: var(--brand-2);
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.2px;
+}
+.click-place { margin-top: 6px; color: var(--muted); font-size: 14px; }
+.fake-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+    padding: 14px 18px;
+    border-radius: 14px;
+    background: var(--brand);
+    color: white;
+    font-weight: 800;
+    font-size: 18px;
+    box-shadow: 0 12px 28px rgba(50, 15, 91, 0.22);
+}
+.fake-btn .pulse {
+    position: absolute;
+    inset: -8px;
+    border-radius: 18px;
+    border: 3px solid #7c3aed;
+    animation: click-pulse 1.4s ease-out infinite;
+}
+.fake-btn i { animation: point-nudge 1.4s ease-in-out infinite; }
+@keyframes click-pulse {
+    0% { opacity: 0.9; transform: scale(0.96); }
+    100% { opacity: 0; transform: scale(1.08); }
+}
+@keyframes point-nudge {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+}
+.step-line {
+    margin: 16px 0 0;
+    font-size: 18px;
+    line-height: 1.6;
+}
+.foot-side { display: flex; gap: 10px; align-items: center; }
+.next-step {
+    background: white;
+    color: var(--brand);
+    border: 1px solid var(--brand);
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-weight: 800;
+    cursor: pointer;
+}
+.next-step:hover { background: var(--soft); }
+.step-done { color: var(--muted); font-weight: 800; }
 
 .guide {
     background: white;
