@@ -42,5 +42,49 @@
     "IpAddress": "::1",
     "Details": "כניסה מוצלחת | Role: Admin",
     "Success": true
+  },
+  {
+    "Id": "b94b7e4c-9cba-4d62-b86d-d1991947a5db",
+    "Timestamp": "2026-11-07T10:40:20.3829332Z",
+    "EventType": "LOGOUT",
+    "Username": "admin",
+    "UserId": "admin-default-001",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "יציאה מהמערכת",
+    "Success": true
+  },
+  {
+    "Id": "4a2f60b7-a3a7-472d-9f8a-2d27c71c52a5",
+    "Timestamp": "2026-11-07T10:42:41.6976068Z",
+    "EventType": "LOGIN",
+    "Username": "admin",
+    "UserId": "admin-default-001",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "כניסה מוצלחת | Role: Admin",
+    "Success": true
+  },
+  {
+    "Id": "ef99018e-9131-4c02-8ae8-fa1062bdde93",
+    "Timestamp": "2026-11-07T10:43:05.6671252Z",
+    "EventType": "LOGIN",
+    "Username": "admin",
+    "UserId": "admin-default-001",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "כניסה מוצלחת | Role: Admin",
+    "Success": true
+  },
+  {
+    "Id": "12567c89-0ca9-4f58-b506-6cd9df293717",
+    "Timestamp": "2026-11-07T10:45:30.7642638Z",
+    "EventType": "LOGIN",
+    "Username": "admin",
+    "UserId": "admin-default-001",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "כניסה מוצלחת | Role: Admin",
+    "Success": true
   }
 ]

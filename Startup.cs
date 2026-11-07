@@ -96,17 +96,20 @@ namespace MyWebApp
                 endpoints.MapControllerRoute(
                     name: "landing",
                     pattern: "",
-                    defaults: new { controller = "Home", action = "Landing" });
+                    defaults: new { controller = "Home", action = "Landing" },
+                    constraints: new { controller = "Home", action = "Landing" });
 
                 endpoints.MapControllerRoute(
                     name: "home",
                     pattern: "Home",
-                    defaults: new { controller = "Home", action = "Index" });
+                    defaults: new { controller = "Home", action = "Index" },
+                    constraints: new { controller = "Home", action = "Index" });
 
                 endpoints.MapControllerRoute(
                     name: "dashboards",
                     pattern: "Dashboards",
-                    defaults: new { controller = "Dashboards", action = "Index" });
+                    defaults: new { controller = "Dashboards", action = "Index" },
+                    constraints: new { controller = "Dashboards", action = "Index" });
 
                 endpoints.MapControllerRoute(
                     name: "systemValidate",
@@ -116,12 +119,14 @@ namespace MyWebApp
                 endpoints.MapControllerRoute(
                     name: "systemsCatalog",
                     pattern: "SystemsCatalog",
-                    defaults: new { controller = "SystemsCatalog", action = "Index" });
+                    defaults: new { controller = "SystemsCatalog", action = "Index" },
+                    constraints: new { controller = "SystemsCatalog", action = "Index" });
 
                 endpoints.MapControllerRoute(
                     name: "features",
                     pattern: "features",
-                    defaults: new { controller = "Features", action = "Index" });
+                    defaults: new { controller = "Features", action = "Index" },
+                    constraints: new { controller = "Features", action = "Index" });
 
                 endpoints.MapControllerRoute(
                     name: "default",

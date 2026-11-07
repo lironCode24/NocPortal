@@ -21,6 +21,20 @@ namespace MyWebApp.Controllers
         }
         // ─────────────────────────────────────────────────────────────
 
+        [AllowAnonymous]
+        [HttpGet]
+        public IActionResult Landing()
+        {
+            if (User.Identity?.IsAuthenticated == true)
+            {
+                if (User.IsInRole("Admin") || User.IsInRole("NOC"))
+                    return RedirectToAction(nameof(Index));
+                return RedirectToAction("Index", "Dashboards");
+            }
+
+            return View();
+        }
+
         [Authorize(Roles = "Admin,NOC")]
         public IActionResult Index()
         {
