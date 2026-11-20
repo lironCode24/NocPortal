@@ -43,20 +43,20 @@
     "searchTerm": "",
     "sortColumn": null,
     "sortDirection": "asc",
-    "timestamp": "2026-11-07T17:34:25.654Z"
+    "timestamp": "2026-11-20T10:24:47.873Z"
   },
   "sectionStates": {
-    "shifts": true,
-    "employeeTasks": true,
+    "shifts": false,
+    "employeeTasks": false,
     "phoneDirectory": false,
     "activityManagement": false,
     "procedures": false,
     "messages": false,
     "dailyTasks": false,
-    "teamLinks": true,
-    "datacenter": true,
-    "alerts": true,
-    "changes": true
+    "teamLinks": false,
+    "datacenter": false,
+    "alerts": false,
+    "changes": false
   },
   "dashboardColorTheme": "dark",
   "noc-sections-default-order": {

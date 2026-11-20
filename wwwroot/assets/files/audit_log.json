@@ -152,5 +152,126 @@
     "IpAddress": "::1",
     "Details": "כניסה מוצלחת | Role: Admin",
     "Success": true
+  },
+  {
+    "Id": "d786ffce-61ba-483a-b72a-2338098d44e3",
+    "Timestamp": "2026-11-14T08:15:47.1756155Z",
+    "EventType": "LOGIN",
+    "Username": "admin",
+    "UserId": "admin-default-001",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "כניסה מוצלחת | Role: Admin",
+    "Success": true
+  },
+  {
+    "Id": "57f56594-9cac-4b38-a6dc-4000fd33549c",
+    "Timestamp": "2026-11-14T08:19:58.3721261Z",
+    "EventType": "LOGIN",
+    "Username": "admin",
+    "UserId": "admin-default-001",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "כניסה מוצלחת | Role: Admin",
+    "Success": true
+  },
+  {
+    "Id": "59d965f8-34d9-4754-967e-3951b1904abb",
+    "Timestamp": "2026-11-14T08:21:39.3099813Z",
+    "EventType": "LOGIN",
+    "Username": "admin",
+    "UserId": "admin-default-001",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "כניסה מוצלחת | Role: Admin",
+    "Success": true
+  },
+  {
+    "Id": "c9b987c8-fe34-46fc-a3da-494ee54fc41f",
+    "Timestamp": "2026-11-14T08:22:04.2347832Z",
+    "EventType": "LOGIN",
+    "Username": "admin",
+    "UserId": "admin-default-001",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "כניסה מוצלחת | Role: Admin",
+    "Success": true
+  },
+  {
+    "Id": "4e9c0097-bfd8-462a-bb42-7b1ceaeb531b",
+    "Timestamp": "2026-11-14T08:24:59.3941586Z",
+    "EventType": "LOGIN",
+    "Username": "admin",
+    "UserId": "admin-default-001",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "כניסה מוצלחת | Role: Admin",
+    "Success": true
+  },
+  {
+    "Id": "e658b80e-5e37-454a-856a-b353e0566662",
+    "Timestamp": "2026-11-14T08:25:31.2423047Z",
+    "EventType": "LOGIN",
+    "Username": "admin",
+    "UserId": "admin-default-001",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "כניסה מוצלחת | Role: Admin",
+    "Success": true
+  },
+  {
+    "Id": "2503db8c-b8c8-4663-b042-33e2e6b77d70",
+    "Timestamp": "2026-11-14T08:26:23.8467687Z",
+    "EventType": "LOGIN",
+    "Username": "admin",
+    "UserId": "admin-default-001",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "כניסה מוצלחת | Role: Admin",
+    "Success": true
+  },
+  {
+    "Id": "fcfd5290-b55d-4c62-9396-4c5ae4038f5d",
+    "Timestamp": "2026-11-14T08:27:39.9806743Z",
+    "EventType": "LOGIN",
+    "Username": "admin",
+    "UserId": "admin-default-001",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "כניסה מוצלחת | Role: Admin",
+    "Success": true
+  },
+  {
+    "Id": "d4a16ad0-82d0-40de-a2fa-ca18fe379648",
+    "Timestamp": "2026-11-20T10:20:39.9127067Z",
+    "EventType": "LOGIN",
+    "Username": "admin",
+    "UserId": "admin-default-001",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "כניסה מוצלחת | Role: Admin",
+    "Success": true
+  },
+  {
+    "Id": "2ee37949-19cf-4b32-ab9d-9ea3f8906d03",
+    "Timestamp": "2026-11-20T10:24:47.0507812Z",
+    "EventType": "LOGIN",
+    "Username": "admin",
+    "UserId": "admin-default-001",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "כניסה מוצלחת | Role: Admin",
+    "Success": true
+  },
+  {
+    "Id": "7fc7b001-85e1-499f-8492-0a3f3d256fd9",
+    "Timestamp": "2026-11-20T10:25:53.1793753Z",
+    "EventType": "LOGIN",
+    "Username": "admin",
+    "UserId": "admin-default-001",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "כניסה מוצלחת | Role: Admin",
+    "Success": true
   }
 ]

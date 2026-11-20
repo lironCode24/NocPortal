@@ -331,7 +331,63 @@ body.features-page {
     overflow: hidden;
     box-shadow: 0 16px 40px rgba(50, 15, 91, 0.07);
 }
-.guide-copy { padding: 28px 28px 8px; max-width: 760px; }
+.guide-copy { padding: 28px 28px 8px; }
+.step-shot {
+    display: table;
+    margin: 18px 0 0;
+    max-width: min(440px, 100%);
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    background: #140c22;
+    cursor: zoom-in;
+    box-shadow: 0 12px 32px rgba(50, 15, 91, 0.08);
+}
+.step-shot img {
+    display: block;
+    width: auto;
+    max-width: 440px;
+    max-height: 220px;
+    height: auto;
+}
+.step-shot figcaption {
+    display: table-caption;
+    caption-side: bottom;
+    padding: 8px 14px 10px;
+    color: #efe8ff;
+    font-size: 13px;
+    font-weight: 700;
+    background: #140c22;
+}
+.shot-lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: rgba(16, 8, 32, 0.82);
+    display: grid;
+    place-items: center;
+    padding: 28px;
+}
+.shot-lightbox img {
+    max-width: min(1280px, 100%);
+    max-height: calc(100vh - 56px);
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+.shot-close {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    width: 40px;
+    height: 40px;
+    border: 0;
+    border-radius: 50%;
+    background: white;
+    color: var(--brand);
+    font-size: 26px;
+    line-height: 1;
+    cursor: pointer;
+}
 .guide-kicker { color: var(--brand-2); font-weight: 800; font-size: 13px; }
 .guide-copy h2 { margin: 6px 0 8px; font-size: 30px; line-height: 1.2; }
 .guide-copy .summary { color: var(--muted); line-height: 1.6; }

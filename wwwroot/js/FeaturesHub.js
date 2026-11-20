@@ -234,21 +234,17 @@ function renderGuide() {
     const index = Math.max(0, Math.min(hub.step || 0, last));
     hub.step = index;
     const step = steps[index] || feature.summary;
-    const target = clickLabel(step);
+    const target = clickLabel(typeof step === "string" ? step : (step.text || ""));
+    const stepText = typeof step === "string" ? step : (step.text || feature.summary);
     const backLabel = hub.query.trim() ? "חזרה לתוצאות" : "חזרה לכל המדריכים";
     const dots = steps.map((_, dotIndex) =>
         `<span class="step-dot ${dotIndex === index ? "on" : ""} ${dotIndex < index ? "done" : ""}"></span>`
     ).join("");
-    const click = target
-        ? `<div class="click-stage">
-                <div class="click-kicker">חפשו על המסך</div>
-                <div class="fake-btn" aria-hidden="true">
-                    <span class="pulse"></span>
-                    <i class="fas fa-hand-pointer"></i>
-                    <span>${escapeHtml(target)}</span>
-                </div>
-           </div>`
-        : "";
+    const shotSrc = `/images/feature-guide/${encodeURIComponent(feature.id)}/${encodeURIComponent(cap.id)}-${index}.jpg`;
+    const click = `<figure class="step-shot" data-label="${escapeHtml(target)}">
+            <img src="${shotSrc}" alt="איפה ללחוץ: ${escapeHtml(stepText)}" onerror="window.guideShotFailed && window.guideShotFailed(this)" />
+            <figcaption>${target ? `לחצו על «${escapeHtml(target)}». המסגרת האדומה מראה איפה.` : "המסגרת האדומה מראה איפה לפעול במסך."}</figcaption>
+        </figure>`;
     const prev = index > 0
         ? `<button type="button" class="back-btn" id="prevStep">שלב קודם</button>`
         : `<span></span>`;
@@ -268,7 +264,7 @@ function renderGuide() {
                 </div>
                 <div class="step-dots" aria-hidden="true">${dots}</div>
                 ${click}
-                <p class="step-line">${escapeHtml(step)}</p>
+                <p class="step-line">${escapeHtml(stepText)}</p>
             </div>
             <div class="guide-foot">
                 <div class="foot-side">
@@ -283,7 +279,39 @@ function renderGuide() {
         </article>`;
 }
 
+window.guideShotFailed = (img) => {
+    const figure = img.closest(".step-shot");
+    if (!figure || figure.dataset.failed) return;
+    figure.dataset.failed = "1";
+    const label = figure.dataset.label || "";
+    if (!label) {
+        figure.remove();
+        return;
+    }
+    figure.outerHTML = `<div class="click-stage">
+        <div class="click-kicker">חפשו על המסך</div>
+        <div class="fake-btn" aria-hidden="true"><span class="pulse"></span><i class="fas fa-hand-pointer"></i><span>${escapeHtml(label)}</span></div>
+    </div>`;
+};
+
+function openShot(src) {
+    const box = document.createElement("div");
+    box.className = "shot-lightbox";
+    box.innerHTML = `<button type="button" class="shot-close" aria-label="סגירה">×</button><img alt="" />`;
+    box.querySelector("img").src = src;
+    box.addEventListener("click", (e) => {
+        if (e.target === box || e.target.closest(".shot-close")) box.remove();
+    });
+    document.body.appendChild(box);
+}
+
 document.addEventListener("click", (event) => {
+    const shot = event.target.closest(".step-shot img");
+    if (shot) {
+        openShot(shot.src);
+        return;
+    }
+
     const side = event.target.closest("[data-kind]");
     if (side) {
         hub[side.dataset.kind] = side.dataset.value;

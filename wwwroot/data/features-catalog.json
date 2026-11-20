@@ -1811,7 +1811,7 @@
             "summary": "הודעה שהמשתמש חייב לאשר, כולל סטטיסטיקה.",
             "category": "ניהול",
             "audience": "מנהלים",
-            "route": "/UserMessages",
+            "route": "/UserMessages/Index",
             "icon": "fa-bullhorn",
             "tags": [
                 "הודעות",
@@ -1855,7 +1855,7 @@
             "summary": "תור השינויים לפני שהם נכנסים לספר.",
             "category": "ניהול",
             "audience": "מנהלים",
-            "route": "/PhoneDirectoryChanges",
+            "route": "/PhoneDirectoryChanges/Index",
             "icon": "fa-exchange-alt",
             "tags": [
                 "ספר טלפונים",
