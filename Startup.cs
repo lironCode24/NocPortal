@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.HttpOverrides;
 using NocPortal.Services;
 
 namespace MyWebApp
@@ -30,6 +31,16 @@ namespace MyWebApp
 
             services.AddControllersWithViews();
             services.AddHttpClient();
+
+            // Azure terminates HTTPS and forwards HTTP. Trust the proxy headers
+            // so redirects and the auth cookie see the original https scheme.
+            services.Configure<ForwardedHeadersOptions>(options =>
+            {
+                options.ForwardedHeaders =
+                    ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+                options.KnownNetworks.Clear();
+                options.KnownProxies.Clear();
+            });
 
             services.AddScoped<SuiteConfigController>();
 
@@ -81,6 +92,7 @@ namespace MyWebApp
                 app.UseHsts();
             }
 
+            app.UseForwardedHeaders();
             app.UseHttpsRedirection();
             app.UseStaticFiles();
 
