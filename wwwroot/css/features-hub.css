@@ -436,3 +436,96 @@ body.features-page {
     .hit { grid-template-columns: 42px minmax(0, 1fr) 16px; }
     .hit .pill { display: none; }
 }
+
+/* ==========================================
+   MOBILE RESPONSIVENESS
+   ========================================== */
+@media (max-width: 767px) {
+    html,
+    body {
+        max-width: 100%;
+        overflow-x: hidden;
+    }
+
+    .hub-header {
+        width: 100%;
+        padding: 12px;
+        gap: 10px;
+    }
+
+    .hub-brand {
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    .hub-brand h1 {
+        font-size: 20px;
+    }
+
+    .hub-nav {
+        width: 100%;
+        max-width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .hub-nav a {
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .hub-shell,
+    .hub-grid,
+    .hub-grid.single,
+    .hit-list {
+        width: 100%;
+        max-width: 100%;
+        grid-template-columns: 1fr;
+    }
+
+    .hub-shell {
+        padding: 12px 12px 32px;
+    }
+
+    .hub-side {
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .hub-search,
+    #featureSearch,
+    .hub-lead,
+    .feature-card,
+    .hit,
+    .empty {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    .hub-lead {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    #featureSearch {
+        min-height: 48px;
+        font-size: 16px;
+    }
+
+    .hit {
+        grid-template-columns: 42px minmax(0, 1fr) 16px;
+    }
+
+    .cap-links,
+    .card-top {
+        flex-wrap: wrap;
+    }
+
+    .cap-link,
+    .clear-search,
+    .side-btn {
+        min-height: 44px;
+    }
+}

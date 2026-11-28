@@ -273,5 +273,38 @@
     "IpAddress": "::1",
     "Details": "כניסה מוצלחת | Role: Admin",
     "Success": true
+  },
+  {
+    "Id": "da1f0954-51b7-46ed-a65d-673165009a8b",
+    "Timestamp": "2026-11-28T08:00:42.437399Z",
+    "EventType": "LOGIN",
+    "Username": "admin",
+    "UserId": "admin-default-001",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "כניסה מוצלחת | Role: Admin",
+    "Success": true
+  },
+  {
+    "Id": "a5c78ba0-d681-4918-ad19-a78fdf24b390",
+    "Timestamp": "2026-11-28T08:05:55.200142Z",
+    "EventType": "LOGIN_FAILED",
+    "Username": "admin",
+    "UserId": "",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "שם משתמש או סיסמה שגויים",
+    "Success": false
+  },
+  {
+    "Id": "97cf1841-aeae-4f67-aa7d-a8a510593966",
+    "Timestamp": "2026-11-28T08:06:36.6621526Z",
+    "EventType": "LOGIN",
+    "Username": "admin",
+    "UserId": "admin-default-001",
+    "PerformedBy": "",
+    "IpAddress": "::1",
+    "Details": "כניסה מוצלחת | Role: Admin",
+    "Success": true
   }
 ]

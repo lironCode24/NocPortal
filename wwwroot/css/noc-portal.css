@@ -33117,3 +33117,467 @@ mark.quick-highlight {
     color: var(--text-secondary);
     white-space: nowrap;
 }
+
+/* ==========================================
+   MOBILE RESPONSIVENESS
+   ========================================== */
+@media (max-width: 767px) {
+    html,
+    body {
+        max-width: 100%;
+        overflow-x: hidden;
+    }
+
+    body {
+        min-width: 0;
+    }
+
+    .container,
+    .header .container {
+        width: 100%;
+        max-width: 100%;
+        padding-inline: 10px;
+    }
+
+    .header {
+        margin-bottom: 12px;
+        padding: 10px 0;
+    }
+
+    .header-info,
+    .main-content-row,
+    .actions-bar,
+    .control-panel-buttons,
+    .tasks-controls,
+    .phone-directory-controls,
+    .procedures-header,
+    .employee-tasks-controls,
+    .activity-quick-actions,
+    .shifts-controls {
+        width: 100%;
+        min-width: 0;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .header-info {
+        gap: 8px;
+        min-height: 0;
+        flex-wrap: wrap;
+    }
+
+    .title-section {
+        position: static;
+        transform: none;
+        width: 100%;
+        order: 2;
+        white-space: normal;
+    }
+
+    .main-title {
+        font-size: 1.45rem;
+        gap: 8px;
+        white-space: normal;
+    }
+
+    .header-spacer {
+        display: none;
+    }
+
+    .control-panel,
+    .shift-section,
+    .logo-section,
+    .logout-section,
+    .user-greeting-section,
+    .user-menu-section,
+    .shift-and-user-wrapper {
+        width: 100%;
+        max-width: 100%;
+        margin: 0;
+    }
+
+    .control-panel {
+        min-width: 0;
+    }
+
+    .control-panel-buttons {
+        flex-wrap: wrap;
+    }
+
+    .toggle-all-sections-btn,
+    .reset-layout-btn,
+    .btn-header-admin,
+    .btn-header-logout,
+    #backToPortalBtn {
+        min-height: 44px;
+    }
+
+    .alerts-section,
+    .messages-section,
+    .daily-tasks-section,
+    .employee-tasks-section,
+    .phone-directory-section,
+    .procedures-section,
+    .shifts-table-container,
+    .team-links-section,
+    .activity-management-section,
+    .changes-section,
+    .datacenter-section {
+        width: 100%;
+        min-width: 0;
+        padding: 12px;
+        border-radius: 12px;
+    }
+
+    .search-container,
+    .search-box,
+    .date-search-box,
+    .filters-container,
+    .filter-group,
+    .filter-tabs,
+    .task-controls-row,
+    .task-filters-bar {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    .search-container,
+    .filters-container,
+    .filter-tabs,
+    .task-controls-row,
+    .task-filters-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .search-box input,
+    .date-search-box input,
+    .alerts-search input,
+    input,
+    select,
+    textarea,
+    button {
+        max-width: 100%;
+    }
+
+    .alerts-search input {
+        width: 100%;
+    }
+
+    .notices-grid,
+    .procedures-grid,
+    .quick-procedures-grid,
+    .team-links-grid,
+    .activity-completion-summary {
+        grid-template-columns: 1fr;
+    }
+
+    .shifts-table-container,
+    .changes-table-wrap,
+    .phone-directory-section,
+    .alerts-section,
+    .table-responsive,
+    .modal-body {
+        overflow-x: auto;
+    }
+
+    .phone-directory-table,
+    .alerts-table,
+    .shifts-table,
+    .changes-table {
+        min-width: 680px;
+    }
+
+    .modal-content,
+    .task-modal-content,
+    .message-popup-content,
+    .quick-procedures-modal-content,
+    .modal-box {
+        width: calc(100vw - 20px);
+        max-width: calc(100vw - 20px);
+        max-height: 90vh;
+    }
+
+    .quick-procedures-modal-header-actions,
+    .quick-procedures-search-bar,
+    .template-item,
+    .template-actions,
+    .template-upload-header,
+    .quick-note-footer {
+        width: 100%;
+        max-width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .template-item {
+        min-width: 0;
+    }
+
+    .btn,
+    .add-task-btn,
+    .add-contact-btn,
+    .upload-procedure-btn,
+    .pagination-btn,
+    .page-number {
+        min-height: 44px;
+    }
+}
+
+@media (max-width: 480px) {
+    .main-title,
+    .messages-page-title,
+    .alerts-title,
+    .daily-tasks-title,
+    .employee-tasks-title,
+    .phone-directory-title,
+    .procedures-title,
+    .shifts-table-title,
+    .team-links-title,
+    .datacenter-title {
+        font-size: 1.25rem;
+    }
+
+    .container,
+    .header .container {
+        padding-inline: 8px;
+    }
+
+    .all-racks-grid,
+    .activity-completion-summary,
+    .procedures-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .notice-card,
+    .task-item,
+    .employee-task-item,
+    .procedure-card,
+    .quick-procedure-note {
+        width: 100%;
+        min-width: 0;
+    }
+}
+
+/* ==========================================
+   MOBILE LAYOUT OVERRIDES
+   Keep portal sections and dashboard menus stacked on phones.
+   ========================================== */
+@media (max-width: 767px) {
+    .main-content-row {
+        display: flex !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 12px !important;
+        margin-bottom: 16px !important;
+    }
+
+    .shifts-column,
+    .messages-column {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        flex: 1 1 100% !important;
+    }
+
+    .alerts-row,
+    .alerts-section,
+    .shifts-table-container,
+    .phone-directory-section,
+    .procedures-section,
+    .team-links-section,
+    .messages-section,
+    .daily-tasks-section,
+    .employee-tasks-section,
+    .activity-management-section,
+    .changes-section,
+    .datacenter-section {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .header {
+        margin-bottom: 10px !important;
+    }
+
+    .header-info {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 8px !important;
+        min-height: 0 !important;
+    }
+
+    .title-section {
+        order: -1 !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        padding: 4px 0 !important;
+    }
+
+    .main-title {
+        justify-content: center;
+        width: 100%;
+        text-align: center;
+    }
+
+    .control-panel,
+    .user-greeting-section,
+    .shift-section,
+    .logo-section,
+    .logout-section {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+    }
+
+    .control-panel {
+        position: static !important;
+    }
+
+    .control-panel-buttons {
+        width: 100% !important;
+        display: grid !important;
+        grid-template-columns: repeat(3, minmax(44px, 1fr)) !important;
+    }
+
+    .control-panel-buttons > button {
+        width: 100% !important;
+        min-height: 44px !important;
+    }
+
+    .user-greeting-section,
+    .shift-section,
+    .logout-section {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+
+    .user-greeting-section {
+        gap: 6px !important;
+    }
+
+    .shift-section {
+        margin: 0 !important;
+    }
+
+    .logo-section {
+        justify-content: center !important;
+    }
+
+    .logout-section form,
+    .logout-section button,
+    .logout-section #backToPortalBtn {
+        margin: 0 !important;
+        left: auto !important;
+        top: auto !important;
+    }
+
+    .btn-header-admin,
+    .btn-header-logout,
+    .user-info,
+    .current-shift-indicator,
+    #backToPortalBtn {
+        min-height: 44px !important;
+    }
+
+    .dashboard-header {
+        height: auto !important;
+        min-height: 62px !important;
+        padding: 8px !important;
+        display: flex !important;
+        flex-wrap: wrap !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 6px !important;
+    }
+
+    .dashboard-header h1 {
+        order: 0;
+        width: 100%;
+        min-width: 0;
+        margin: 0;
+        font-size: 1.05rem !important;
+        text-align: center;
+    }
+
+    .dashboard-right-controls,
+    .dashboard-left-controls {
+        max-width: 100% !important;
+        flex-wrap: wrap !important;
+        gap: 4px !important;
+    }
+
+    .dashboard-right-controls {
+        order: 1;
+        width: 100%;
+        justify-content: center;
+    }
+
+    .dashboard-left-controls {
+        order: 2;
+        width: 100%;
+        justify-content: center;
+    }
+
+    .dashboard-left-controls .user-menu-section {
+        width: 100%;
+        max-width: 100%;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 4px;
+    }
+
+    .dashboard-left-controls .user-menu-section-right,
+    .dashboard-left-controls .user-info {
+        position: static !important;
+        width: auto;
+        max-width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .back-to-main-btn,
+    .auto-switch-btn,
+    .reset-order-btn,
+    .toggle-filters-btn,
+    .btn-header-admin,
+    .btn-header-logout,
+    #backToPortalBtn {
+        min-height: 44px !important;
+        min-width: 44px !important;
+        padding: 8px 10px !important;
+    }
+
+    .auto-switch-active-indicator {
+        min-height: 44px;
+    }
+
+    .dashboards-list {
+        height: auto !important;
+        min-height: calc(100vh - 150px) !important;
+        padding: 8px !important;
+        overflow: visible !important;
+    }
+
+    .dashboards-grid {
+        grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
+        grid-template-rows: auto !important;
+        height: auto !important;
+        gap: 10px !important;
+    }
+
+    .dashboard-card {
+        min-height: 130px !important;
+        padding: 14px !important;
+    }
+
+    .dashboard-content {
+        height: auto !important;
+        min-height: calc(100vh - 150px) !important;
+    }
+}

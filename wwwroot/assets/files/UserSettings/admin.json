@@ -43,11 +43,11 @@
     "searchTerm": "",
     "sortColumn": null,
     "sortDirection": "asc",
-    "timestamp": "2026-11-20T10:24:47.873Z"
+    "timestamp": "2026-11-28T08:14:54.724Z"
   },
   "sectionStates": {
-    "shifts": false,
-    "employeeTasks": false,
+    "shifts": true,
+    "employeeTasks": true,
     "phoneDirectory": false,
     "activityManagement": false,
     "procedures": false,

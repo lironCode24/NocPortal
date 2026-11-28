@@ -432,3 +432,78 @@ footer {
     .panel-metrics { grid-template-columns: 1fr; }
     footer { flex-direction: column; }
 }
+
+/* ==========================================
+   MOBILE RESPONSIVENESS
+   ========================================== */
+@media (max-width: 767px) {
+    html,
+    body {
+        max-width: 100%;
+        overflow-x: hidden;
+    }
+
+    .navbar,
+    .hero-grid,
+    .idea,
+    .band,
+    .contact-grid,
+    footer {
+        width: calc(100% - 24px);
+        max-width: 100%;
+    }
+
+    .hero-grid,
+    .idea-grid,
+    .contact-grid,
+    .band-grid,
+    .hero-buttons,
+    footer {
+        grid-template-columns: 1fr;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .hero h1 {
+        font-size: clamp(2rem, 10vw, 2.8rem);
+    }
+
+    .subtitle {
+        font-size: 1.05rem;
+    }
+
+    .hero-panel,
+    .idea-card,
+    .contact-card,
+    .panel-metrics,
+    .metric,
+    .btn,
+    .nav-login-btn {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .btn,
+    .nav-login-btn,
+    .nav-toggle {
+        min-height: 44px;
+    }
+
+    .navbar-links {
+        right: 12px;
+        left: 12px;
+    }
+
+    .navbar-links a {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+    }
+
+    .contact-form input,
+    .contact-form textarea,
+    .contact-form select {
+        width: 100%;
+        max-width: 100%;
+    }
+}
